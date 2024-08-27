@@ -18,5 +18,5 @@ cat ai.go | ai
 ```
 git clone https://github.com/tot-ra/ai-cli.git ~/ai-cli
 cd ai-cli && go build ai.go
-alias ai="~/ai-cli/ai"
+echo "source alias ai=~/ai-cli/ai" >> ~/.zshrc
 ```
