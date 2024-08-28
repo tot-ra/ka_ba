@@ -19,6 +19,11 @@ Questioning:
 (echo -e "what do you think about these files?"; ls) | ai
 ```
 
+Blindly trust the machine
+```
+$(ai "generate a CLI command to list hidden files, return only one command for mac so that it could be executed with eval, nothing else. NOTHING ELSE, avoid quotes")
+```
+
 
 ### Installation
 ```
