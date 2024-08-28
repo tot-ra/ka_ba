@@ -14,6 +14,12 @@ Piping:
 cat ai.go | ai
 ```
 
+Questioning:
+```
+(echo -e "what do you think about these files?"; ls) | ai
+```
+
+
 ### Installation
 ```
 git clone https://github.com/tot-ra/ai-cli.git ~/ai-cli
