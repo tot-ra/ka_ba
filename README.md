@@ -1,5 +1,6 @@
 ## ai command line command
-This requires [LM Studio](https://lmstudio.ai/) running
+This requires [LM Studio](https://lmstudio.ai/) running, so install it and also [lms cli](https://lmstudio.ai/blog/lms)
+`lms server start`
 
 ### Usage
 Easy interaction
