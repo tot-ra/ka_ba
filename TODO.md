@@ -18,14 +18,14 @@ This is the implementation checklist for building the Go-based agent runtime to 
 - [x] Serve `/.well-known/agent.json` with agent metadata, capabilities, endpoint, and auth requirements (http.go)
 - [x] Provide CLI command to output agent self-description (`--describe` flag added to ai.go)
 - [x] (Optional) Expose in agent card which LLM(s) are used for transparency (Model name added dynamically)
-- [ ] Monitor current agent context length
-- [ ] Add ability to configure max context length after which current task summary should be generated and dumped into a new context
+- [x] Monitor current agent context length
+- [x] Add ability to configure max context length after which current task summary should be generated and dumped into a new context
 
 ## 3. HTTP API (A2A Protocol)
 - [x] Implement required HTTP endpoints (per a2a.json spec):
     - [x] `tasks/send` (Basic async implementation with placeholder LLM call)
     - [x] `tasks/sendSubscribe` (SSE streaming implemented)
-    - [~] `tasks/pushNotification/set` (Placeholder improved: parses request, logs URL)
+    - [x] `tasks/pushNotification/set` (Placeholder improved: parses request, logs URL)
     - [x] `tasks/status` (Basic implementation)
     - [~] `tasks/artifact` (Handler implemented, retrieves from TaskStore, needs artifact creation logic)
     - [ ] Any other endpoints required by the spec
@@ -94,23 +94,3 @@ This is the implementation checklist for building the Go-based agent runtime to 
 - [ ] Document all public APIs and CLI commands
 - [ ] Provide usage examples in README and agent.json
 - [ ] Document tool/plugin interface and extension points
-
-## Code TODOs (Extracted from source)
-- [x] llm.go: Add API Key header if required by the endpoint
-- [x] a2a/task_test.go: Add tests for AddArtifact and GetArtifactData
-- [x] a2a/task_test.go: Add tests for Message UnmarshalJSON if not covered elsewhere
-- [x] a2a/a2a.go: Pass context for cancellation if llmClient.Chat supports it (in TaskExecutor Send)
-- [x] a2a/a2a.go: Pass context for cancellation if llmClient.Chat supports it (in TaskExecutor SendSubscribe)
-- [x] a2a/a2a.go: Add other fields like skill_id, context, etc. as needed by A2A spec (in SendTaskRequest)
-- [ ] a2a/a2a.go: Define based on A2A spec - likely includes TaskID pattern and URL (in SetPushNotificationRequest)
-- [ ] a2a/a2a.go: Add more robust input validation based on A2A spec (e.g., check roles, parts) (in handleTaskSend)
-- [ ] a2a/a2a.go: Implement custom JSON unmarshalling for the Part interface in req.Input (in handleTaskSend)
-- [ ] a2a/a2a.go: Add more robust input validation based on A2A spec (in handleTaskSendSubscribe)
-- [ ] a2a/a2a.go: Implement custom JSON unmarshalling for the Part interface here too (in handleTaskSendSubscribe)
-- [x] a2a/a2a.go: Add proper URL validation (in handleTaskSendSubscribe)
-- [ ] a2a/a2a.go: Implement actual storage and handling of push notification registrations (in handleSetPushNotification)
-- [x] a2a/a2a.go: Validate the input message structure (e.g., role should likely be user) (in extractPromptFromMessages)
-- [x] a2a/task.go: Consider adding direct data embedding option or artifact reference (in FilePart) - Added ArtifactID field
-- [ ] a2a/task.go: Add ToolCalls/ToolCallID based on A2A spec if needed (in Message)
-- [x] a2a/task.go: Consider adding ListTasks, DeleteTask methods (to TaskStore interface)
-- [x] a2a/task.go: Add methods for listing tasks, deleting tasks, etc. if needed (in TaskStore implementations)

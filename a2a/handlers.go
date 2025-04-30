@@ -12,7 +12,10 @@ import (
 )
 
 type SendTaskRequest struct {
-	Input []Message `json:"input"`
+	Input   []Message `json:"input"`
+	SkillID string    `json:"skill_id,omitempty"`
+	Context string    `json:"context,omitempty"`
+	// Add other fields as needed by A2A spec
 }
 
 type SendTaskResponse struct {
@@ -22,10 +25,6 @@ type SendTaskResponse struct {
 type ProvideInputRequest struct {
 	TaskID string  `json:"task_id"`
 	Input  Message `json:"input"`
-}
-
-type SetPushNotificationRequest struct {
-	TargetURL string `json:"target_url"`
 }
 
 type SSEWriter struct {
@@ -115,12 +114,110 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		var req SendTaskRequest
 
-		if err := json.Unmarshal(body, &req); err != nil || len(req.Input) == 0 {
-			http.Error(w, "Bad Request: Invalid JSON or missing/empty input messages", http.StatusBadRequest)
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Bad Request: Invalid JSON", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("[TaskSend] Received %d input messages.", len(req.Input))
+		if len(req.Input) == 0 {
+			http.Error(w, "Bad Request: Input messages array is empty", http.StatusBadRequest)
+			return
+		}
+
+		// Add robust input validation based on A2A spec
+		for i, msg := range req.Input {
+			if msg.Role == "" {
+				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty role", i), http.StatusBadRequest)
+				return
+			}
+			if len(msg.Parts) == 0 {
+				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty parts array", i), http.StatusBadRequest)
+				return
+			}
+			for j, part := range msg.Parts {
+				if part == nil {
+					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d is null", i, j), http.StatusBadRequest)
+					return
+				}
+				// Check concrete part types and their fields
+				switch p := part.(type) {
+				case TextPart:
+					if p.Type == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty type", i, j), http.StatusBadRequest)
+						return
+					}
+					if p.Text == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty text", i, j), http.StatusBadRequest)
+						return
+					}
+				case FilePart:
+					if p.Type == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty type", i, j), http.StatusBadRequest)
+						return
+					}
+					if p.URI == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty URI", i, j), http.StatusBadRequest)
+						return
+					}
+					if p.MimeType == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty mime_type", i, j), http.StatusBadRequest)
+						return
+					}
+				case DataPart:
+					if p.Type == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty type", i, j), http.StatusBadRequest)
+						return
+					}
+					// Validate Data field (which is 'any')
+					if p.Data == nil {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has null data", i, j), http.StatusBadRequest)
+						return
+					}
+					// Check if the underlying data has content.
+					hasContent := false
+					switch dataVal := p.Data.(type) {
+					case string:
+						if dataVal != "" {
+							hasContent = true
+						}
+					case []byte: // This is the most likely intended type for raw data
+						if len(dataVal) > 0 {
+							hasContent = true
+						}
+					case []any: // For JSON arrays
+						if len(dataVal) > 0 {
+							hasContent = true
+						}
+					case map[string]any: // For JSON objects
+						if len(dataVal) > 0 {
+							hasContent = true
+						}
+					default:
+						// If it's a different type, consider it an error for strict validation.
+						log.Printf("[TaskSend] Warning: DataPart data field has unexpected type %T for message %d, part %d", dataVal, i, j)
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has unexpected data type %T", i, j, dataVal), http.StatusBadRequest)
+						return
+					}
+
+					if !hasContent {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty data content", i, j), http.StatusBadRequest)
+						return
+					}
+
+					if p.MimeType == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty mime_type", i, j), http.StatusBadRequest)
+						return
+					}
+				default:
+					// This case should ideally not be hit if UnmarshalJSON for Message/Part works correctly,
+					// but added as a safeguard.
+					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d has unknown type", i, j), http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
+		log.Printf("[TaskSend] Received %d input messages. Validation successful.", len(req.Input))
 
 		task, err := taskExecutor.taskStore.CreateTask(req.Input)
 		if err != nil {
@@ -188,7 +285,100 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("[TaskSendSubscribe] Received %d input messages.", len(req.Input))
+		// Add robust input validation based on A2A spec
+		for i, msg := range req.Input {
+			if msg.Role == "" {
+				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty role", i), http.StatusBadRequest)
+				return
+			}
+			if len(msg.Parts) == 0 {
+				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty parts array", i), http.StatusBadRequest)
+				return
+			}
+			for j, part := range msg.Parts {
+				if part == nil {
+					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d is null", i, j), http.StatusBadRequest)
+					return
+				}
+				// Check concrete part types and their fields
+				switch p := part.(type) {
+				case TextPart:
+					if p.Type == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty type", i, j), http.StatusBadRequest)
+						return
+					}
+					if p.Text == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty text", i, j), http.StatusBadRequest)
+						return
+					}
+				case FilePart:
+					if p.Type == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty type", i, j), http.StatusBadRequest)
+						return
+					}
+					if p.URI == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty URI", i, j), http.StatusBadRequest)
+						return
+					}
+					if p.MimeType == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty mime_type", i, j), http.StatusBadRequest)
+						return
+					}
+				case DataPart:
+					if p.Type == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty type", i, j), http.StatusBadRequest)
+						return
+					}
+					// Validate Data field (which is 'any')
+					if p.Data == nil {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has null data", i, j), http.StatusBadRequest)
+						return
+					}
+					// Check if the underlying data has content.
+					hasContent := false
+					switch dataVal := p.Data.(type) {
+					case string:
+						if dataVal != "" {
+							hasContent = true
+						}
+					case []byte: // This is the most likely intended type for raw data
+						if len(dataVal) > 0 {
+							hasContent = true
+						}
+					case []any: // For JSON arrays
+						if len(dataVal) > 0 {
+							hasContent = true
+						}
+					case map[string]any: // For JSON objects
+						if len(dataVal) > 0 {
+							hasContent = true
+						}
+					default:
+						// If it's a different type, consider it an error for strict validation.
+						log.Printf("[TaskSendSubscribe] Warning: DataPart data field has unexpected type %T for message %d, part %d", dataVal, i, j)
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has unexpected data type %T", i, j, dataVal), http.StatusBadRequest)
+						return
+					}
+
+					if !hasContent {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty data content", i, j), http.StatusBadRequest)
+						return
+					}
+
+					if p.MimeType == "" {
+						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty mime_type", i, j), http.StatusBadRequest)
+						return
+					}
+				default:
+					// This case should ideally not be hit if UnmarshalJSON for Message/Part works correctly,
+					// but added as a safeguard.
+					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d has unknown type", i, j), http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
+		log.Printf("[TaskSendSubscribe] Received %d input messages. Validation successful.", len(req.Input))
 
 		task, err := taskExecutor.taskStore.CreateTask(req.Input)
 		if err != nil {
@@ -231,12 +421,12 @@ func TasksPushNotificationSetHandler(taskStore TaskStore) http.HandlerFunc {
 		defer r.Body.Close()
 
 		var req SetPushNotificationRequest
-		if err := json.Unmarshal(body, &req); err != nil || req.TargetURL == "" {
-			http.Error(w, "Bad Request: Invalid JSON or missing/invalid target_url", http.StatusBadRequest)
+		if err := json.Unmarshal(body, &req); err != nil || req.URL == "" {
+			http.Error(w, "Bad Request: Invalid JSON or missing/invalid url", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("[PushNotify] Received registration request for URL: %s (Implementation Pending)", req.TargetURL)
+		log.Printf("[PushNotify] Received registration request for URL: %s (Implementation Pending)", req.URL)
 
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, `{"message": "Push notification endpoint registered (implementation pending)"}`)

@@ -11,27 +11,34 @@ import (
 	"strings"
 	"sync"
 
-	"net/url"
 	"clarifai-agent/llm"
+	"net/http"
+	"net/url"
 )
 
-
-type TaskExecutor struct {
-	llmClient *llm.LLMClient
-	taskStore TaskStore
-	mu        sync.Mutex
-	resumeChannels map[string]chan struct{}
+// SetPushNotificationRequest represents the request body for setting push notifications.
+// Define based on A2A spec - likely includes TaskID pattern and URL
+type SetPushNotificationRequest struct {
+	TaskID string `json:"task_id"`
+	URL    string `json:"url"`
 }
 
+type TaskExecutor struct {
+	llmClient                     *llm.LLMClient
+	taskStore                     TaskStore
+	mu                            sync.Mutex
+	resumeChannels                map[string]chan struct{}
+	pushNotificationRegistrations map[string]string // Map taskID to notification URL
+}
 
 func NewTaskExecutor(client *llm.LLMClient, store TaskStore) *TaskExecutor {
 	return &TaskExecutor{
-		llmClient:      client,
-		taskStore:      store,
-		resumeChannels: make(map[string]chan struct{}),
+		llmClient:                     client,
+		taskStore:                     store,
+		resumeChannels:                make(map[string]chan struct{}),
+		pushNotificationRegistrations: make(map[string]string), // Initialize the map
 	}
 }
-
 
 func (te *TaskExecutor) registerChannel(taskID string) chan struct{} {
 	te.mu.Lock()
@@ -42,7 +49,6 @@ func (te *TaskExecutor) registerChannel(taskID string) chan struct{} {
 	return ch
 }
 
-
 func (te *TaskExecutor) removeChannel(taskID string) {
 	te.mu.Lock()
 	defer te.mu.Unlock()
@@ -50,14 +56,12 @@ func (te *TaskExecutor) removeChannel(taskID string) {
 	log.Printf("[Executor] Removed resume channel for task %s", taskID)
 }
 
-
 func (te *TaskExecutor) getChannel(taskID string) (chan struct{}, bool) {
 	te.mu.Lock()
 	defer te.mu.Unlock()
 	ch, ok := te.resumeChannels[taskID]
 	return ch, ok
 }
-
 
 func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) {
 	taskID := task.ID
@@ -69,7 +73,6 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 
 		fmt.Printf("[Task %s] Starting processing via Executor...\n", t.ID)
 		te.taskStore.SetState(t.ID, TaskStateWorking)
-
 
 		for {
 
@@ -83,7 +86,6 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 				log.Printf("[Task %s] Task was cancelled externally. Stopping.", t.ID)
 				return
 			}
-
 
 			var promptBuilder strings.Builder
 			var extractErr error
@@ -111,7 +113,6 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 				}
 
 				// Second pass: Build the prompt string
-
 
 				for _, msg := range currentTask.Input {
 					if msg.Role == RoleUser || msg.Role == RoleAssistant {
@@ -154,13 +155,10 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 			}
 			fmt.Printf("[Task %s] Combined prompt for LLM:\n---\n%s\n---\n", t.ID, logPrompt)
 
-
-
 			var resultBuffer bytes.Buffer
 
 			err = te.llmClient.Chat(ctx, prompt, false, &resultBuffer) // Pass context
 			result := resultBuffer.String()
-
 
 			if err != nil {
 				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
@@ -183,7 +181,6 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 
 				}
 
-
 				setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
 				if setStateErr != nil {
 					fmt.Printf("[Task %s] Failed to set task state to InputRequired: %v\n", t.ID, setStateErr)
@@ -191,11 +188,9 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 				}
 				fmt.Printf("[Task %s] Input Required. Waiting for signal...\n", t.ID)
 
-
 				select {
 				case <-resumeCh:
 					fmt.Printf("[Task %s] Resume signal received. Continuing loop.\n", t.ID)
-
 
 					continue
 				case <-ctx.Done():
@@ -216,12 +211,10 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 					fmt.Printf("[Task %s] Failed to update task with completed output: %v\n", t.ID, updateErr)
 				}
 
-
 				artifactErr := te.taskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_response.txt", Data: []byte(result)})
 				if artifactErr != nil {
 					fmt.Printf("[Task %s] Warning: Failed to save result as artifact: %v\n", t.ID, artifactErr)
 				}
-
 
 				setStateErr := te.taskStore.SetState(t.ID, TaskStateCompleted)
 				if setStateErr != nil {
@@ -245,7 +238,6 @@ func isValidFileURI(uri string) bool {
 	return u.Scheme == "file"
 }
 
-
 func (te *TaskExecutor) ResumeTask(taskID string) error {
 	resumeCh, ok := te.getChannel(taskID)
 	if !ok {
@@ -254,18 +246,15 @@ func (te *TaskExecutor) ResumeTask(taskID string) error {
 		return fmt.Errorf("task %s not actively waiting for input", taskID)
 	}
 
-
 	err := te.taskStore.SetState(taskID, TaskStateWorking)
 	if err != nil {
 		log.Printf("[Executor] Failed to set task %s state to working before resuming: %v", taskID, err)
 		return fmt.Errorf("failed to set task state to working: %w", err)
 	}
 
-
 	select {
 	case resumeCh <- struct{}{}:
 		log.Printf("[Executor] Sent resume signal to task %s", taskID)
-
 
 	default:
 
@@ -275,12 +264,9 @@ func (te *TaskExecutor) ResumeTask(taskID string) error {
 	return nil
 }
 
-
 func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Context, sseWriter *SSEWriter) {
 	taskID := task.ID
 	resumeCh := te.registerChannel(taskID)
-
-
 
 	go func(t *Task, ctx context.Context) {
 
@@ -292,7 +278,6 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 		sseWriter.SendEvent("state", string(workingStateData))
 
 		te.taskStore.SetState(t.ID, TaskStateWorking)
-
 
 		for {
 
@@ -308,7 +293,6 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 
 				return
 			}
-
 
 			var promptBuilder strings.Builder
 			var extractErr error
@@ -338,10 +322,13 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 				for _, msg := range currentTask.Input {
 					if msg.Role == RoleUser || msg.Role == RoleAssistant {
 						for _, part := range msg.Parts {
-							if promptBuilder.Len() > 0 { promptBuilder.WriteString("\n\n---\n\n") }
+							if promptBuilder.Len() > 0 {
+								promptBuilder.WriteString("\n\n---\n\n")
+							}
 							switch p := part.(type) {
 							case TextPart:
-								promptBuilder.WriteString(p.Text); promptFound = true
+								promptBuilder.WriteString(p.Text)
+								promptFound = true
 							case FilePart:
 								if !isValidFileURI(p.URI) {
 									extractErr = fmt.Errorf("invalid file URI format or scheme: %s", p.URI)
@@ -377,20 +364,17 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 			}
 			prompt := promptBuilder.String()
 			logPrompt := prompt
-			if len(logPrompt) > 200 { logPrompt = logPrompt[:200] + "..." }
+			if len(logPrompt) > 200 {
+				logPrompt = logPrompt[:200] + "..."
+			}
 			fmt.Printf("[Task %s Stream] Combined prompt for LLM:\n---\n%s\n---\n", t.ID, logPrompt)
-
-
 
 			log.Printf("[Task %s Stream] Sending prompt to LLM for streaming...\n", t.ID)
 			var responseBuffer bytes.Buffer
 			multiWriter := io.MultiWriter(sseWriter, &responseBuffer)
 
-
 			llmErr := te.llmClient.Chat(ctx, prompt, true, multiWriter) // Pass context
 			fullResultString := responseBuffer.String()
-
-
 
 			if llmErr != nil {
 
@@ -426,7 +410,6 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] Failed to update task with input required output: %v\n", t.ID, updateErr)
 				}
 
-
 				setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
 				if setStateErr == nil {
 					inputRequiredStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateInputRequired)})
@@ -439,7 +422,6 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					return
 				}
 				fmt.Printf("[Task %s Stream] Input Required. Waiting for signal...\n", t.ID)
-
 
 				select {
 				case <-resumeCh:
@@ -468,12 +450,10 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] Failed to update task with completed output: %v\n", t.ID, updateErr)
 				}
 
-
 				artifactErr := te.taskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_streamed_response.txt", Data: []byte(fullResultString)})
 				if artifactErr != nil {
 					fmt.Printf("[Task %s Stream] Warning: Failed to save streamed result as artifact: %v\n", t.ID, artifactErr)
 				}
-
 
 				setStateErr := te.taskStore.SetState(t.ID, TaskStateCompleted)
 				if setStateErr == nil {
@@ -490,4 +470,20 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 			}
 		}
 	}(task, requestContext)
+}
+
+func (te *TaskExecutor) handleSetPushNotification(w http.ResponseWriter, r *http.Request) {
+	var req SetPushNotificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	te.mu.Lock()
+	te.pushNotificationRegistrations[req.TaskID] = req.URL
+	te.mu.Unlock()
+	log.Printf("Stored push notification registration for TaskID: %s, URL: %s", req.TaskID, req.URL)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "registered"})
 }

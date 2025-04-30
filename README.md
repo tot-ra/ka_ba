@@ -91,6 +91,11 @@ cat README.md | ./clarifai-agent ai "Summarize this file."
 ./clarifai-agent ai --describe
 ```
 
+**Maximum Context Length:**
+```bash
+./clarifai-agent ai --max_context_length 4096 "Hello, world!"
+```
+
 ## Configuration
 
 LLM connection details (API key, base URL, model) can be configured via environment variables (e.g., `LLM_API_KEY`, `LLM_API_BASE`, `LLM_MODEL`). See `llm/llm.go` for details.

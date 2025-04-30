@@ -22,7 +22,6 @@ const (
 	TaskStateCanceled      TaskState = "canceled"
 )
 
-
 type MessageRole string
 
 const (
@@ -32,11 +31,9 @@ const (
 	RoleTool      MessageRole = "tool"
 )
 
-
 type Part interface {
 	GetType() string
 }
-
 
 type TextPart struct {
 	Type string `json:"type"`
@@ -45,16 +42,14 @@ type TextPart struct {
 
 func (tp TextPart) GetType() string { return "text" }
 
-
 type FilePart struct {
-	Type     string `json:"type"`
+	Type       string `json:"type"`
 	MimeType   string `json:"mime_type"`
-	URI        string `json:"uri,omitempty"` // URI might be optional if ArtifactID is provided
+	URI        string `json:"uri,omitempty"`         // URI might be optional if ArtifactID is provided
 	ArtifactID string `json:"artifact_id,omitempty"` // Reference to an existing artifact
 }
 
 func (fp FilePart) GetType() string { return "file" }
-
 
 type DataPart struct {
 	Type     string `json:"type"`
@@ -64,13 +59,15 @@ type DataPart struct {
 
 func (dp DataPart) GetType() string { return "data" }
 
-
 type Message struct {
 	Role  MessageRole `json:"role"`
 	Parts []Part      `json:"parts"`
-
+	// ToolCalls represents a list of tool calls made by the assistant.
+	// The exact structure needs to be defined based on the A2A spec.
+	ToolCalls json.RawMessage `json:"tool_calls,omitempty"` // Placeholder for tool calls structure
+	// ToolCallID is used in a tool message to indicate which tool call this message is a response to.
+	ToolCallID string `json:"tool_call_id,omitempty"`
 }
-
 
 func (m *Message) UnmarshalJSON(data []byte) error {
 
@@ -78,18 +75,20 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 
 	tmp := struct {
 		MessageAlias
-		Parts []json.RawMessage `json:"parts"`
+		Parts      []json.RawMessage `json:"parts"`
+		ToolCalls  json.RawMessage   `json:"tool_calls,omitempty"`   // Include for unmarshalling
+		ToolCallID string            `json:"tool_call_id,omitempty"` // Include for unmarshalling
 	}{}
-
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return fmt.Errorf("failed to unmarshal message base structure: %w", err)
 	}
 
-
-	*m = Message(tmp.MessageAlias)
-	m.Parts = make([]Part, 0, len(tmp.Parts))
-
+	// Assign fields from the temporary struct, including new ones
+	m.Role = tmp.Role
+	m.Parts = make([]Part, 0, len(tmp.Parts)) // Parts will be unmarshaled below
+	m.ToolCalls = tmp.ToolCalls
+	m.ToolCallID = tmp.ToolCallID
 
 	for i, rawPart := range tmp.Parts {
 
@@ -104,7 +103,6 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 			log.Printf("Warning: Part %d missing or invalid 'type' field. Raw: %s", i, string(rawPart))
 			continue
 		}
-
 
 		var part Part
 		var err error
@@ -137,17 +135,12 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-
-
-
 type Artifact struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
 	Filename string `json:"filename,omitempty"`
 	Data     []byte `json:"data,omitempty"`
-
 }
-
 
 type Task struct {
 	ID        string               `json:"id"`
@@ -160,22 +153,18 @@ type Task struct {
 	Artifacts map[string]*Artifact `json:"artifacts,omitempty"`
 }
 
-
 type InMemoryTaskStore struct {
 	mu    sync.RWMutex
 	tasks map[string]*Task
 }
 
-
 func NewInMemoryTaskStore() *InMemoryTaskStore {
 	return &InMemoryTaskStore{tasks: make(map[string]*Task)}
 }
 
-
 func (s *InMemoryTaskStore) CreateTask(inputMessages []Message) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 
 	id := fmt.Sprintf("task-%s", time.Now().Format(time.RFC3339Nano))
 	now := time.Now()
@@ -193,7 +182,6 @@ func (s *InMemoryTaskStore) CreateTask(inputMessages []Message) (*Task, error) {
 	return task, nil
 }
 
-
 func (s *InMemoryTaskStore) GetTask(id string) (*Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -203,7 +191,6 @@ func (s *InMemoryTaskStore) GetTask(id string) (*Task, error) {
 	}
 	return t, nil
 }
-
 
 func (s *InMemoryTaskStore) SetState(taskID string, state TaskState) error {
 	s.mu.Lock()
@@ -218,7 +205,6 @@ func (s *InMemoryTaskStore) SetState(taskID string, state TaskState) error {
 	return ErrTaskNotFound
 }
 
-
 func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -227,7 +213,6 @@ func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error
 	if !ok {
 		return nil, ErrTaskNotFound
 	}
-
 
 	err := updateFn(task)
 	if err != nil {
@@ -240,7 +225,6 @@ func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error
 	return task, nil
 }
 
-
 func (s *InMemoryTaskStore) AddMessage(taskID string, message Message) error {
 	_, err := s.UpdateTask(taskID, func(task *Task) error {
 		task.Output = append(task.Output, message)
@@ -248,7 +232,6 @@ func (s *InMemoryTaskStore) AddMessage(taskID string, message Message) error {
 	})
 	return err
 }
-
 
 func (s *InMemoryTaskStore) AddArtifact(taskID string, artifact Artifact) error {
 	if artifact.ID == "" {
@@ -265,7 +248,6 @@ func (s *InMemoryTaskStore) AddArtifact(taskID string, artifact Artifact) error 
 	})
 	return err
 }
-
 
 func (s *InMemoryTaskStore) GetArtifactData(taskID string, artifactID string) ([]byte, *Artifact, error) {
 	s.mu.RLock()
@@ -284,7 +266,6 @@ func (s *InMemoryTaskStore) GetArtifactData(taskID string, artifactID string) ([
 	return artifact.Data, artifact, nil
 }
 
-
 func (s *InMemoryTaskStore) ListTasks() ([]*Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -295,7 +276,6 @@ func (s *InMemoryTaskStore) ListTasks() ([]*Task, error) {
 	}
 	return taskList, nil
 }
-
 
 func (s *InMemoryTaskStore) DeleteTask(taskID string) error {
 	s.mu.Lock()
@@ -308,8 +288,6 @@ func (s *InMemoryTaskStore) DeleteTask(taskID string) error {
 	fmt.Printf("[TaskStore] Deleted Task: %s\n", taskID)
 	return nil
 }
-
-
 
 type TaskStore interface {
 	CreateTask(inputMessages []Message) (*Task, error)
