@@ -1,11 +1,13 @@
 package main
 
 import (
-	"bytes"
+	"clarifai-agent/a2a"
+	"clarifai-agent/llm"
+	"context" // Import the context package
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 )
 
@@ -13,121 +15,77 @@ const (
 	model         = "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
 	systemMessage = "Think step by step and provide clear instructions to the user."
 	apiURL        = "http://localhost:1234/v1/chat/completions"
-	contentType   = "application/json"
 )
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-type Request struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float32   `json:"temperature"`
-	MaxTokens   int       `json:"max_tokens"`
-	Stream      bool      `json:"stream"`
-}
-
 func main() {
-	var prompt string
-	var cliInput string
+	serveFlag := flag.Bool("serve", false, "Run the agent as an A2A HTTP server")
+	streamFlag := flag.Bool("stream", false, "Enable streaming output for CLI chat")
+	describeFlag := flag.Bool("describe", false, "Output the agent's self-description (agent.json) and exit")
 
-	// Check if a prompt is provided as a parameter or from STDIN
-	if len(os.Args) > 1 {
-		prompt = os.Args[1]
-	}
+	flag.Parse()
 
-	// Read from STDIN if connected
-	if !isTerminal() {
-		input, err := ioutil.ReadAll(os.Stdin)
+	if *describeFlag {
+		agentCardJSON, err := json.MarshalIndent(agentCard, "", "  ")
 		if err != nil {
-			fmt.Println("Error reading from STDIN:", err)
+			fmt.Fprintln(os.Stderr, "Error marshalling agent description:", err)
 			os.Exit(1)
 		}
-		cliInput = string(input)
+		fmt.Println(string(agentCardJSON))
+		os.Exit(0)
 	}
 
-	// Create JSON for the system message and user input
-	systemMessageJSON := Message{Role: "system", Content: systemMessage}
-	//fmt.Println("System JSON:", toJSON(systemMessageJSON))
+	// Pass apiKey to the client constructor
+	llmClient := llm.NewLLMClient(apiURL, model, systemMessage) // Removed apiKey argument
 
-	var userInput Message
-	if cliInput != "" {
-		userInput = Message{Role: "user", Content: cliInput}
-	} else if prompt != "" {
-		userInput = Message{Role: "user", Content: prompt}
+	if *serveFlag {
+		fmt.Println("[main] Starting in server mode...")
+		taskStore, err := a2a.NewFileTaskStore("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing file task store: %v\n", err)
+			os.Exit(1)
+		}
+		startHTTPServer(llmClient, taskStore)
 	} else {
-		fmt.Println("Error: Please provide a prompt or input from STDIN")
-		os.Exit(1)
-	}
-	//fmt.Println("User Input JSON:", toJSON(userInput))
+		fmt.Println("[main] Starting in CLI chat mode...")
+		stream := *streamFlag
+		if os.Getenv("LLM_STREAM") == "true" {
+			stream = true
+		}
 
-	// Create the request payload
-	request := Request{
-		Model:       model,
-		Messages:    []Message{systemMessageJSON, userInput},
-		Temperature: 0.7,
-		MaxTokens:   -1,
-		Stream:      false,
-	}
+		var userPrompt string
+		args := flag.Args()
+		if len(args) > 0 {
+			userPrompt = args[0]
+		} else if !isTerminal(os.Stdin) {
+			inputBytes, err := ioutil.ReadAll(os.Stdin)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
+				os.Exit(1)
+			}
+			userPrompt = string(inputBytes)
+		}
 
-	// Marshal the request payload to JSON
-	payload, err := json.Marshal(request)
-	if err != nil {
-		fmt.Println("Error marshaling JSON:", err)
-		os.Exit(1)
-	}
+		if userPrompt == "" {
+			fmt.Fprintln(os.Stderr, "Error: No prompt provided via arguments or stdin.")
+			fmt.Fprintln(os.Stderr, "Usage: clarifai-agent [options] \"Your prompt here\"")
+			fmt.Fprintln(os.Stderr, "   or: echo \"Your prompt here\" | clarifai-agent [options]")
+			fmt.Fprintln(os.Stderr, "Options:")
+			flag.PrintDefaults()
+			os.Exit(1)
+		}
 
-	// Create the HTTP request
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payload))
-	if err != nil {
-		fmt.Println("Error creating HTTP request:", err)
-		os.Exit(1)
+		// Added context.Background() as the first argument
+		if err := llmClient.Chat(context.Background(), userPrompt, stream, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "LLM error:", err)
+			os.Exit(1)
+		}
 	}
-	req.Header.Set("Content-Type", contentType)
-
-	// Execute the HTTP request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("Error executing HTTP request:", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	// Read the response
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("Error reading HTTP response:", err)
-		os.Exit(1)
-	}
-
-	//fmt.Println("Raw response:", string(responseBody))
-
-	// Uncomment the lines below if needed to parse the response JSON
-	var jsonResponse map[string]interface{}
-	if err := json.Unmarshal(responseBody, &jsonResponse); err != nil {
-		fmt.Println("Error parsing JSON response:", err)
-		os.Exit(1)
-	}
-	content := jsonResponse["choices"].([]interface{})[0].(map[string]interface{})["message"].(map[string]interface{})["content"].(string)
-	fmt.Println(content)
 }
 
-func toJSON(v interface{}) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return ""
-	}
-	return string(b)
-}
-
-func isTerminal() bool {
-	// Check if the process is connected to a terminal
-	fileInfo, err := os.Stdin.Stat()
+func isTerminal(f *os.File) bool {
+	fileInfo, err := f.Stat()
 	if err != nil {
 		return false
 	}
-	return fileInfo.Mode()&os.ModeCharDevice != 0
+	return (fileInfo.Mode() & os.ModeCharDevice) != 0
 }
