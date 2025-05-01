@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	model                   = "qwen3-8b"
+	model                   = "qwen3-30b-a3b"
 	systemMessage           = "Think step by step and provide clear instructions to the user."
 	apiURL                  = "http://localhost:1234/v1/chat/completions"
 	defaultMaxContextLength = 2048
@@ -23,6 +23,7 @@ func main() {
 	streamFlag := flag.Bool("stream", false, "Enable streaming output for CLI chat")
 	describeFlag := flag.Bool("describe", false, "Output the agent's self-description (agent.json) and exit")
 	maxContextLengthFlag := flag.Int("max_context_length", defaultMaxContextLength, "Maximum context length for the LLM")
+	modelFlag := flag.String("model", model, "LLM model to use")
 
 	flag.Parse()
 
@@ -37,7 +38,7 @@ func main() {
 	}
 
 	// Pass apiKey to the client constructor
-	llmClient := llm.NewLLMClient(apiURL, model, systemMessage, *maxContextLengthFlag) // Removed apiKey argument
+	llmClient := llm.NewLLMClient(apiURL, *modelFlag, systemMessage, *maxContextLengthFlag) // Removed apiKey argument
 
 	if *serveFlag {
 		fmt.Println("[main] Starting in server mode...")
