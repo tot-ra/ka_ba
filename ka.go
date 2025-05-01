@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv" // Added for port conversion
 )
 
 const (
@@ -27,6 +28,19 @@ func main() {
 	portFlag := flag.Int("port", 8080, "Port for the A2A HTTP server")
 
 	flag.Parse()
+
+	// Determine the port
+	port := *portFlag // Start with the flag value (or default)
+	envPortStr := os.Getenv("PORT")
+	if envPortStr != "" {
+		envPort, err := strconv.Atoi(envPortStr)
+		if err == nil {
+			port = envPort // Use environment variable if valid
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Invalid PORT environment variable '%s', using default/flag value: %d\n", envPortStr, port)
+		}
+	}
+
 
 	// Check for "server" as a non-flag argument
 	args := flag.Args()
@@ -56,8 +70,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error initializing file task store: %v\n", err)
 			os.Exit(1)
 		}
-		// Pass the port to the server start function
-		startHTTPServer(llmClient, taskStore, *portFlag)
+		// Pass the determined port to the server start function
+		startHTTPServer(llmClient, taskStore, port)
 	} else {
 		fmt.Println("[main] Starting in CLI chat mode...")
 		stream := *streamFlag
