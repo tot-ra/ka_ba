@@ -341,8 +341,9 @@ const resolvers = {
       if (apiBaseUrl) env.LLM_API_BASE = apiBaseUrl;
 
 
-      // Use absolute path to the ka executable
-      const kaPath = './ka/ka'; // Absolute path
+      // Calculate absolute path to the ka executable relative to this script's location
+      const kaExecutablePath = join(__dirname, '..', '..', '..', 'ka', 'ka');
+      console.log(`Calculated absolute path for ka executable: ${kaExecutablePath}`);
 
       let agentPort: number;
       try {
@@ -387,10 +388,10 @@ const resolvers = {
       kaArgs.push('server'); // Add the command last
       console.log('Spawning ka with args:', kaArgs);
 
-      // Spawn ka agent with flags and 'server' command, port is set via environment variable
-      const kaProcess = spawn(kaPath, kaArgs, {
+      // Spawn ka agent using absolute path, port is set via environment variable
+      // Removed cwd as we are using an absolute path for the executable
+      const kaProcess = spawn(kaExecutablePath, kaArgs, {
         env,
-        cwd: '/Users/artjom/work/ka', // Set cwd to the directory containing the executable
         detached: true, // Allows the child process to run independently of the parent
         stdio: ['ignore', 'pipe', 'pipe'] // Pipe stdout and stderr
       });

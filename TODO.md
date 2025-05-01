@@ -1,11 +1,13 @@
-# ba TODO
-ba is a control layer of ai agents (ka)
+# TODO
+- [x] Fix agent spawning relative path issue (ENOENT error for `./ka/ka`) (Attempt 2: Used absolute path)
 
-- [ ] Investigate `ba` backend agent spawning logic (`spawnKaAgent`).
-- [ ] Fix `ka` agent to respect the `PORT` environment variable.
-- [ ] Verify agent spawning works correctly after the fix.
-- [ ] Consider improving frontend error handling for agent spawning failures.
-- [ ] Design the data model and logic for defining and managing orchestration workflows in the `ba` backend.
+# Kaba Project README Fix
+- [ ] Implement Task management of the agent on the frontend
+    - [x] Create UI component to display the list of tasks for a selected agent (`src/components/TaskList.tsx`).
+    - [ ] Implement API call to fetch tasks for a selected agent from the `ba` backend (Placeholder in `TaskList.tsx`).
+    - [x] Implement UI to display task details (ID, status, timestamps, latest message) (Basic implementation in `TaskList.tsx`).
+    - [ ] Implement UI to view full task history (messages, parts, artifacts) - potentially in a modal or separate view (Placeholder comment in `TaskList.tsx`).
+    - [x] Integrate the task list component into the agent details/management page (`src/pages/AgentManagement.tsx`).
 - [ ] Implement `ba` backend logic to execute orchestration workflows, using the A2A client to interact with multiple agents.
 - [ ] Implement `ba` backend API endpoints for managing orchestration workflows (create, view, start, stop).
 - [ ] Create frontend UI pages/components for orchestration management and visualization.
@@ -31,8 +33,6 @@ ba is a control layer of ai agents (ka)
 - [ ] Add comprehensive testing for both frontend and backend components.
 - [ ] Consider and document deployment strategies for `ba` and `ka` agents.
 
-**NOTE:** Encountered persistent TypeScript errors related to `fastify-gql` and `spawn` module resolution during backend setup. Code is written with correct imports based on package names, but local environment may require troubleshooting.
-
 
 # ka AI agent TODO
 
@@ -47,9 +47,9 @@ This is the implementation checklist for building the Go-based agent runtime to 
     - [~] `tasks/artifact` (Handler implemented, retrieves from TaskStore, needs artifact creation logic)
     - [ ] Any other endpoints required by the spec
 - [ ] Support authentication schemes as declared in agent.json
-    - [ ] Implement JWT authentication for API endpoints
-    - [ ] Add API key validation middleware
-    - [ ] Update agent.json to reflect authentication requirements
+    - [x] Implement JWT authentication for API endpoints (Basic HMAC validation added)
+    - [x] Add API key validation middleware (Basic header check added)
+    - [x] Update agent.json to reflect authentication requirements
 
 ## 4. Task Management
 - [x] Define Task object model (states: submitted, working, input-required, completed, failed, canceled) - In `a2a/task.go`
@@ -70,9 +70,9 @@ This is the implementation checklist for building the Go-based agent runtime to 
     - [~] Handlers need logic to process non-TextPart inputs (e.g., download files from URI) (Basic file:// read and DataPart marshalling added to prompt extraction)
 - [x] Implement Artifact model for outputs (Basic struct and storage in Task defined)
     - [x] Implement actual artifact creation during task processing (LLM output saved for send/sendSubscribe)
-- [ ] Enhance FilePart handling
-    - [ ] Implement support for http:// URIs (download remote files)
-    - [ ] Add support for data:// URIs (base64 encoded data)
+- [x] Enhance FilePart handling
+    - [x] Implement support for http:// URIs (download remote files)
+    - [x] Add support for data:// URIs (base64 encoded data)
     - [ ] Implement file size limits and validation
 - [ ] Improve DataPart handling
     - [ ] Add structured data validation
@@ -124,10 +124,6 @@ This is the implementation checklist for building the Go-based agent runtime to 
     - [x] Document streaming usage and error handling (Basic README update needed)
     - [ ] Test with both LM Studio and OpenAI endpoints (Manual testing required)
 - [x] Provide error handling and logging for LLM calls (Basic error handling exists)
-- [ ] Improve token counting implementation
-    - [ ] Replace simple character-based estimation with proper tokenization
-    - [ ] Add support for different tokenizers based on model
-    - [ ] Implement token usage tracking and reporting
 - [ ] Document how to configure and swap LLM backends
     - [ ] Create detailed configuration guide
     - [ ] Add examples for different LLM providers
@@ -148,7 +144,7 @@ This is the implementation checklist for building the Go-based agent runtime to 
     - [ ] Implement graceful degradation under resource constraints
     - [ ] Support for container signals (SIGTERM, etc.)
 - [ ] Implement healthcheck endpoint for orchestration
-    - [ ] Create `/health` endpoint with component status
+    - [x] Create `/health` endpoint with component status
     - [ ] Add readiness and liveness probes
     - [ ] Implement proper shutdown handling
 
@@ -197,10 +193,7 @@ This is the implementation checklist for building the Go-based agent runtime to 
 - [ ] Improve error reporting and diagnostics
 - [ ] Implement graceful degradation modes
 - [ ] Add crash recovery mechanisms
-
-**Current focus:**
-- Improve token counting implementation with proper tokenization
-- Implement webhook push notifications for task updates
-- Enhance FilePart handling with support for http:// and data:// URIs
-- Add structured logging and metrics for better observability
-- Increase test coverage for core components
+- [ ] Implement webhook push notifications for task updates
+- [ ] Enhance FilePart handling with support for http:// and data:// URIs
+- [ ] Add structured logging and metrics for better observability
+- [ ] Increase test coverage for core components

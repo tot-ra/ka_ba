@@ -1,13 +1,19 @@
-# ◼️ ka_ba. AI agent runtime and UI control layer bundle.
+# ◼️ Kaba: AI Agent Runtime (`ka`) and UI (`ba`)
 
-In short, this allows you to spin up AI agents and control them.
+Kaba is a project combining two main components:
+
+1.  **`ka`**: (Located in `ka/`) A Go-based AI agent runtime compatible with the Agent-to-Agent (A2A) communication protocol. It provides a CLI and an HTTP server for task management.
+2.  **`ba`**: (Located in `src/`) A web-based UI (Vite/React) acting as a control layer for A2A agents, including `ka`.
+3.  **`backend`**: (Located in `backend/`) A potential backend service for `ba`, intended for spawning local `ka` instances. *Note: As of this writing, the backend implementation is pending.*
+
+This README provides details for both `ka` and `ba`.
 
 
-## ba - A2A Agent UI, Control, and Orchestration Layer
+## `ba` - A2A Agent UI, Control, and Orchestration Layer (`src/`)
 
-> ba (𓅽) - is the ancient Egyptian concept of the soul manifestation, the "personality".
+> *ba* (𓅽) - is the ancient Egyptian concept of the soul manifestation, the "personality".
 
-`ba` is a web application built with Vite and React, designed to serve as a user interface, control panel, and orchestration layer for Agent-to-Agent (A2A) compliant AI agents. It aims to provide a unified interface for interacting with various agents, including the local [ka](#ka---ai-agent-runtime) agent runtime.
+`ba` is a web application built with Vite and React (located in the `src/` directory), designed to serve as a user interface, control panel, and orchestration layer for Agent-to-Agent (A2A) compliant AI agents. It aims to provide a unified interface for interacting with various agents, including the local [`ka`](#ka---ai-agent-runtime-ka) agent runtime.
 
 
 ## Purpose
@@ -20,7 +26,7 @@ The primary goal of `ba` is to enable users to:
 *   Monitor task status and view results, including streaming output and artifacts.
 *   Eventually, orchestrate complex workflows involving multiple agents.
 
-## Features
+## `ba` Features
 
 `ba` is being developed to include the following features (see [TODO.md](TODO.md) for detailed tasks and progress):
 
@@ -47,46 +53,41 @@ For effective interaction and future orchestration capabilities within `ba`, A2A
 *   Go (if you plan to spawn local `ka` agents)
 *   An A2A-compliant agent running and accessible via a URL (e.g., a running `ka` instance).
 
-### Setup
+### `ba` Setup
 
-1.  Navigate to the `ba` directory:
-    ```bash
-    cd ba
-    ```
-2.  Install frontend dependencies:
+*Note: These commands should typically be run from the project root (`kaba/`).*
+
+1.  Install frontend dependencies:
     ```bash
     npm install # or yarn install or pnpm install
     ```
-3.  Set up the backend for `ba`. The backend is necessary for spawning local `ka` processes and potentially proxying requests to handle CORS or other issues. The choice of backend technology is pending (see [TODO.md](TODO.md)). Follow the backend setup instructions once the technology is decided and implemented.
+2.  **Backend Setup (Pending):** The dedicated backend for `ba` (in `backend/`), intended for spawning local `ka` processes, is not yet implemented. Functionality requiring the backend (like spawning `ka` from the UI) will not be available until it's built.
 
-### Running the Application
+### Running `ba`
 
-1.  Start the `ba` frontend development server:
+1.  Start the `ba` frontend development server (from the project root):
     ```bash
     npm run dev # or yarn dev or pnpm dev
     ```
     The application should now be running at `http://localhost:5173` (or another port if 5173 is in use).
-2.  Ensure your A2A agent(s) (including `ka` if desired) are running and accessible.
+2.  Ensure your target A2A agent(s) (e.g., a running `ka` instance) are accessible from your browser or via a proxy if needed.
 
-## Project Structure
+## `ba` Project Structure
 
-*   `/src`: Frontend source code (React/TypeScript).
-*   `/backend`: Backend source code (will be created based on the chosen technology).
-*   `TODO.md`: Detailed list of planned features and tasks.
-*   `README.md`: This file.
-
+*   `src/`: Frontend source code (React/TypeScript).
+*   `backend/`: Placeholder for the pending backend service.
+*   `vite.config.ts`, `package.json`, etc. in the root directory configure the frontend build.
 
 
-## ka - AI agent runtime
-> The ka (𓂓) is the ancient Egyptian concept of the soul manifestation, the "vital essence".
+## `ka` - AI Agent Runtime (`ka/`)
+> *ka* (𓂓) - is the ancient Egyptian concept of the soul manifestation, the "vital essence".
 
-This project implements a Go-based agent runtime designed to be compatible with the Agent-to-Agent (A2A) communication protocol. It provides both a command-line interface (`ka`) for direct interaction with a configured LLM and an HTTP server exposing A2A-compliant endpoints for task management and interaction.
+Located in the `ka/` directory, this project implements a Go-based agent runtime compatible with the Agent-to-Agent (A2A) communication protocol. It provides both a command-line interface (`ka`) for direct interaction with a configured LLM and an HTTP server exposing A2A-compliant endpoints for task management.
 
-The primary goal is to create a flexible and extensible runtime that can manage tasks, interact with LLMs (initially via LM Studio's OpenAI-compatible API), and potentially integrate with other tools and capabilities in the future.
+The primary goal is to create a flexible and extensible runtime that can manage tasks, interact with LLMs (initially via LM Studio's OpenAI-compatible API), and potentially integrate with other tools and capabilities.
 
 
-
-## Features
+## `ka` Features
 
 *   **A2A HTTP Server:**
     *   Serves agent self-description at `/.well-known/agent.json`.
@@ -113,86 +114,117 @@ The primary goal is to create a flexible and extensible runtime that can manage 
     *   Configurable via environment variables (see `llm/llm.go`).
     *   Supports streaming responses from the LLM.
 
-## Getting Started
+## `ka` Getting Started
 
-### Prerequisites
+### `ka` Prerequisites
 
 *   Go (version 1.22 or later recommended)
-*   [LM Studio](https://lmstudio.ai/) installed and running (`lms server start`) for LLM interaction.
+*   [LM Studio](https://lmstudio.ai/) installed and running (`lms server start`) or another OpenAI-compatible API endpoint accessible for LLM interaction.
 
-### Building
+### Building `ka`
 
-```bash
-make build
-```
-This creates the `ka` executable in the project root.
+*Note: These commands should be run from the `ka/` directory.*
 
-### Running the A2A Server
+1.  Navigate to the `ka` directory:
+    ```bash
+    cd ka
+    ```
+2.  Build the executable:
+    ```bash
+    make build
+    # Or directly:
+    # go build -o ../ka .
+    ```
+    This creates the `ka` executable in the project root (`kaba/`).
 
+### Running the `ka` A2A Server
+
+*Note: Run these commands from the project root (`kaba/`).*
+
+Start the server (uses in-memory task storage by default):
 ```bash
 ./ka server
-# Or using the default command:
+# Or simply:
 # ./ka
 ```
-This starts the HTTP server (defaulting to port 8080) using the `InMemoryTaskStore`.
+The server defaults to port 8080.
 
-To use the persistent `FileTaskStore`:
+To use persistent file-based task storage:
 ```bash
-./ka server --task-store file --task-store-path ./my_tasks
+./ka server --task-store file --task-store-path ./_ka_tasks
 ```
+(This will create and use the `_ka_tasks` directory in the project root).
 
-The server exposes endpoints like:
+The server exposes standard A2A endpoints:
 *   `http://localhost:8080/.well-known/agent.json`
 *   `http://localhost:8080/tasks/send` (POST)
 *   `http://localhost:8080/tasks/sendSubscribe` (POST)
 *   `http://localhost:8080/tasks/status?id={task_id}` (GET)
 *   `http://localhost:8080/tasks/input` (POST)
-*   ... and others.
+*   `http://localhost:8080/tasks/artifact?id={task_id}&artifact_id={artifact_id}` (GET)
+*   ... and others as defined in the A2A specification.
 
 ### Using the `ka` CLI Tool
 
-Ensure the `ka` binary is in your PATH or use the full path.
+*Note: Run these commands from the project root (`kaba/`). Ensure the `ka` executable exists there.*
 
 **Basic Interaction:**
 ```bash
-./ka "Hello, world!"
+./ka ai "Hello, world!"
 ```
 
 **Streaming:**
 ```bash
-./ka --stream "Tell me a story."
+./ka ai --stream "Tell me a story."
 ```
 
-**Piping:**
+**Piping Input:**
 ```bash
 cat README.md | ./ka ai "Summarize this file."
 ```
 
-**Agent Description:**
+**Agent Description (from server):**
 ```bash
-./ka --describe
+./ka describe
 ```
 
 **Maximum Context Length:**
 ```bash
-./ka --max_context_length 4096 "Hello, world!"
+./ka ai --max_context_length 4096 "Prompt requiring specific context length"
 ```
 
-## Configuration
+## `ka` Configuration (Environment Variables)
 
-LLM connection details (API key, base URL, model) can be configured via environment variables (e.g., `LLM_API_KEY`, `LLM_API_BASE`, `LLM_MODEL`). See `llm/llm.go` for details.
+The `ka` agent (both server and CLI) uses environment variables for configuration, primarily for connecting to the LLM:
 
-## Development
+*   `LLM_API_BASE`: (Required) The base URL of the OpenAI-compatible API (e.g., `http://localhost:1234/v1` for LM Studio).
+*   `LLM_API_KEY`: The API key for the LLM service (often optional for local models like LM Studio, e.g., `lm-studio`).
+*   `LLM_MODEL`: The model identifier to use (e.g., `local-model`). If not set, `ka` might use a default or the first available model.
+*   `KA_SERVER_PORT`: Port for the A2A HTTP server (defaults to `8080`).
+*   `KA_TASK_STORE`: Type of task store (`memory` or `file`, defaults to `memory`).
+*   `KA_TASK_STORE_PATH`: Path for the file task store (defaults to `_tasks/` relative to where `ka` is run).
+
+Example `.env` file (place in `kaba/` and source it or use a tool like `direnv`):
+```dotenv
+LLM_API_BASE="http://localhost:1234/v1"
+LLM_API_KEY="lm-studio"
+LLM_MODEL="local-model"
+KA_SERVER_PORT="8081"
+KA_TASK_STORE="file"
+KA_TASK_STORE_PATH="./_ka_tasks"
+```
+
+## `ka` Development (`ka/` directory)
 
 *   **Code Structure:**
-    *   `main.go`: Entrypoint for CLI commands and server startup.
-    *   `http.go`: A2A HTTP server setup and agent card definition.
-    *   `ai.go`: Implementation of the `ka` CLI command.
+    *   `main.go`: Entrypoint for CLI commands (`ai`, `server`, `describe`) and server startup.
+    *   `http.go`: A2A HTTP server setup, routing, and agent card definition.
+    *   `ai.go`: Implementation of the `ka ai` CLI command logic.
     *   `a2a/`: Package containing A2A protocol types (Task, Message, Part, Artifact), TaskStore interface/implementations, and HTTP handlers.
     *   `llm/`: Package for LLM client abstraction and interaction.
-*   **Building:** `make build`
-*   **Testing:** `make test` (or `go test ./...`)
-*   **TODO:** See `TODO.md` for the current implementation status and planned features.
+*   **Building:** Navigate to `ka/` and run `make build` (outputs to `kaba/ka`).
+*   **Testing:** Navigate to `ka/` and run `make test` (or `go test ./...`).
+*   **TODO:** See the main project [TODO.md](../TODO.md) for the current implementation status and planned features for `ka`.
 
 ## Future Work
 
@@ -203,5 +235,3 @@ LLM connection details (API key, base URL, model) can be configured via environm
 *   More robust error handling and input validation.
 *   Comprehensive unit and integration tests.
 *   Containerization improvements (health checks, etc.).
-
-

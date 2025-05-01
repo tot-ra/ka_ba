@@ -3,17 +3,18 @@ package a2a
 import (
 	"bytes"
 	"context"
+	"encoding/base64" // Added for data URI decoding
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io" // Ensure io is imported
 	"log"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
 	"ka/llm"
-	"net/http"
-	"net/url"
 )
 
 // SetPushNotificationRequest represents the request body for setting push notifications.
@@ -125,10 +126,66 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 								promptBuilder.WriteString(p.Text)
 								promptFound = true
 							case FilePart:
-								promptBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
+								parsedURI, ok := isValidPartURI(p.URI)
+								if !ok {
+									extractErr = fmt.Errorf("invalid or unsupported URI scheme in FilePart: %s", p.URI)
+									goto handleExtractionError // Use goto to break out of nested loops
+								}
+
+								switch parsedURI.Scheme {
+								case "http", "https":
+									const maxDownloadSize = 1024 * 1024 // 1MB limit
+									content, downloadErr := downloadHTTPContent(p.URI, maxDownloadSize)
+									if downloadErr != nil {
+										log.Printf("[Task %s] Error downloading FilePart content from %s: %v", t.ID, p.URI, downloadErr)
+										// Include error in prompt instead of failing the task entirely? Or fail? Let's include an error marker for now.
+										promptBuilder.WriteString(fmt.Sprintf("[File Download Error: %s (%s) - %v]", p.URI, p.MimeType, downloadErr))
+										// Optionally set extractErr here if download failure should halt processing
+										// extractErr = fmt.Errorf("failed to download content for FilePart %s: %w", p.URI, downloadErr)
+										// goto handleExtractionError
+									} else {
+										contentStr := string(content)
+										// Include only a snippet in the prompt
+										snippetLen := 500
+										if len(contentStr) > snippetLen {
+											contentStr = contentStr[:snippetLen] + "..."
+										}
+										promptBuilder.WriteString(fmt.Sprintf("[File Content from %s (%s)]:\n%s\n[/File Content]", p.URI, p.MimeType, contentStr))
+										promptFound = true // Content was successfully added
+									}
+								case "file":
+									// Keep original behavior for file:// URIs
+									promptBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
+									promptFound = true // Placeholder is considered content
+								case "data":
+									// Handle data:// URIs
+									dataContent, decodeErr := decodeDataURI(p.URI)
+									if decodeErr != nil {
+										log.Printf("[Task %s] Error decoding Data URI for FilePart %s: %v", t.ID, p.URI, decodeErr)
+										promptBuilder.WriteString(fmt.Sprintf("[Data URI Decode Error: %s - %v]", p.MimeType, decodeErr))
+										// Optionally set extractErr here if decode failure should halt processing
+										// extractErr = fmt.Errorf("failed to decode data URI for FilePart %s: %w", p.URI, decodeErr)
+										// goto handleExtractionError
+									} else {
+										contentStr := string(dataContent)
+										// Include only a snippet in the prompt
+										snippetLen := 500
+										if len(contentStr) > snippetLen {
+											contentStr = contentStr[:snippetLen] + "..."
+										}
+										promptBuilder.WriteString(fmt.Sprintf("[Data Content (%s)]:\n%s\n[/Data Content]", p.MimeType, contentStr))
+										promptFound = true // Content was successfully added
+									}
+								default:
+									// Should not happen due to isValidPartURI, but handle defensively
+									extractErr = fmt.Errorf("unexpected URI scheme after validation: %s", parsedURI.Scheme)
+									goto handleExtractionError
+								}
 
 							case DataPart:
+								// TODO: Handle DataPart content similarly if needed (e.g., decode base64)
 								promptBuilder.WriteString(fmt.Sprintf("[Data: %s]", p.MimeType))
+								promptFound = true // Placeholder is considered content
 							default:
 								promptBuilder.WriteString(fmt.Sprintf("[Unknown Part Type: %T]", p))
 							}
@@ -137,7 +194,20 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 				}
 			}
 
+		handleExtractionError: // Label added for goto jump target
+			if extractErr != nil {
+				// Error already set during part processing
+				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+					task.Error = extractErr.Error()
+					return nil
+				})
+				te.taskStore.SetState(t.ID, TaskStateFailed)
+				fmt.Printf("[Task %s] Failed during input extraction: %v\n", t.ID, extractErr)
+				return
+			}
+
 			if !promptFound {
+				// This case handles when no parts suitable for prompt were found at all
 				extractErr = fmt.Errorf("could not extract suitable prompt content from messages")
 				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Error = extractErr.Error()
@@ -156,20 +226,25 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 			fmt.Printf("[Task %s] Combined prompt for LLM:\n---\n%s\n---\n", t.ID, logPrompt)
 
 			var resultBuffer bytes.Buffer
-
-			err = te.llmClient.Chat(ctx, prompt, false, &resultBuffer) // Pass context
-			result := resultBuffer.String()
+			// Capture result, tokens, and error from the updated Chat function
+			result, inputTokens, completionTokens, err := te.llmClient.Chat(ctx, prompt, false, &resultBuffer) // Pass context
+			// Note: 'result' now directly contains the string, no need for resultBuffer.String()
 
 			if err != nil {
+				fmt.Printf("[Task %s] LLM Error. Input Tokens: %d\n", t.ID, inputTokens) // Log input tokens even on error
 				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
-					task.Error = err.Error()
+					task.Error = err.Error() // Store the error message
 					return nil
 				})
 				te.taskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s] Failed during LLM call: %v\n", t.ID, err)
 				return
-			} else if strings.Contains(result, "[INPUT_REQUIRED]") {
+			}
 
+			// Log token usage on success
+			fmt.Printf("[Task %s] LLM Success. Input Tokens: %d, Completion Tokens: %d\n", t.ID, inputTokens, completionTokens)
+
+			if strings.Contains(result, "[INPUT_REQUIRED]") {
 				outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: result}}}
 				_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Output = append(task.Output, outputMessage)
@@ -236,6 +311,63 @@ func isValidFileURI(uri string) bool {
 	}
 	// Currently only allow file:// scheme
 	return u.Scheme == "file"
+}
+
+// isValidPartURI performs basic validation on a part URI.
+// It checks if it's a valid URL and allows "file", "http", "https", and "data" schemes.
+func isValidPartURI(uri string) (u *url.URL, ok bool) {
+	// Handle data URIs separately first, as url.Parse might struggle with complex ones
+	if strings.HasPrefix(uri, "data:") {
+		// Return a minimal URL object just indicating the scheme and the opaque part
+		// We don't need full URL parsing for data URIs here.
+		return &url.URL{Scheme: "data", Opaque: strings.SplitN(uri, ":", 2)[1]}, true
+	}
+
+	// Try parsing other schemes
+	parsedURL, err := url.Parse(uri)
+	if err != nil {
+		return nil, false // If it's not data: and fails parsing, it's invalid
+	}
+
+	switch parsedURL.Scheme {
+	case "file", "http", "https": // Keep existing valid schemes
+		return parsedURL, true
+	default:
+		return nil, false // Reject other schemes
+	}
+}
+
+// downloadHTTPContent downloads content from an HTTP/HTTPS URL, limiting the size.
+// Returns the downloaded content and any error encountered.
+func downloadHTTPContent(uri string, maxSize int64) ([]byte, error) {
+	// Use http.DefaultClient which has reasonable timeouts
+	resp, err := http.Get(uri)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch URI %s: %w", uri, err)
+	}
+	defer resp.Body.Close() // Ensure the response body is closed
+
+	if resp.StatusCode != http.StatusOK {
+		// Read a small portion of the body for better error messages if possible
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 512)) // Need to import "io"
+		return nil, fmt.Errorf("failed to fetch URI %s: status code %d, body: %s", uri, resp.StatusCode, string(bodyBytes))
+	}
+
+	// Limit the amount of data read from the response body
+	limitedReader := &io.LimitedReader{R: resp.Body, N: maxSize} // Need to import "io"
+	content, err := io.ReadAll(limitedReader)                    // Need to import "io"
+	// io.ReadAll returns EOF when the reader is exhausted, which is not an error in this context unless no bytes were read.
+	// However, if an error occurs *during* reading (other than EOF), it should be reported.
+	if err != nil {
+		return nil, fmt.Errorf("failed to read content from URI %s: %w", uri, err)
+	}
+
+	// Check if the limit was reached
+	if limitedReader.N == 0 && len(content) == int(maxSize) {
+		log.Printf("Warning: Content from %s exceeded maxSize %d, truncated.", uri, maxSize)
+	}
+
+	return content, nil
 }
 
 func (te *TaskExecutor) ResumeTask(taskID string) error {
@@ -330,16 +462,61 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 								promptBuilder.WriteString(p.Text)
 								promptFound = true
 							case FilePart:
-								if !isValidFileURI(p.URI) {
-									extractErr = fmt.Errorf("invalid file URI format or scheme: %s", p.URI)
-									// Break out of inner loops and handle error below
+								parsedURI, ok := isValidPartURI(p.URI) // Use the new validation function
+								if !ok {
+									extractErr = fmt.Errorf("invalid or unsupported URI scheme in FilePart: %s", p.URI)
+									goto handleExtractionError // Use goto to break out of nested loops
+								}
+
+								switch parsedURI.Scheme {
+								case "http", "https":
+									const maxDownloadSize = 1024 * 1024 // 1MB limit
+									content, downloadErr := downloadHTTPContent(p.URI, maxDownloadSize)
+									if downloadErr != nil {
+										log.Printf("[Task %s Stream] Error downloading FilePart content from %s: %v", t.ID, p.URI, downloadErr)
+										promptBuilder.WriteString(fmt.Sprintf("[File Download Error: %s (%s) - %v]", p.URI, p.MimeType, downloadErr))
+										// Optionally set extractErr here if download failure should halt processing
+										// extractErr = fmt.Errorf("failed to download content for FilePart %s: %w", p.URI, downloadErr)
+										// goto handleExtractionError
+									} else {
+										contentStr := string(content)
+										snippetLen := 500 // Include only a snippet in the prompt
+										if len(contentStr) > snippetLen {
+											contentStr = contentStr[:snippetLen] + "..."
+										}
+										promptBuilder.WriteString(fmt.Sprintf("[File Content from %s (%s)]:\n%s\n[/File Content]", p.URI, p.MimeType, contentStr))
+										promptFound = true // Content was successfully added
+									}
+								case "file":
+									// Keep original behavior for file:// URIs
+									promptBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
+									promptFound = true // Placeholder is considered content
+								case "data":
+									// Handle data:// URIs
+									dataContent, decodeErr := decodeDataURI(p.URI)
+									if decodeErr != nil {
+										log.Printf("[Task %s Stream] Error decoding Data URI for FilePart %s: %v", t.ID, p.URI, decodeErr)
+										promptBuilder.WriteString(fmt.Sprintf("[Data URI Decode Error: %s - %v]", p.MimeType, decodeErr))
+										// Optionally set extractErr here if decode failure should halt processing
+										// extractErr = fmt.Errorf("failed to decode data URI for FilePart %s: %w", p.URI, decodeErr)
+										// goto handleExtractionError
+									} else {
+										contentStr := string(dataContent)
+										// Include only a snippet in the prompt
+										snippetLen := 500
+										if len(contentStr) > snippetLen {
+											contentStr = contentStr[:snippetLen] + "..."
+										}
+										promptBuilder.WriteString(fmt.Sprintf("[Data Content (%s)]:\n%s\n[/Data Content]", p.MimeType, contentStr))
+										promptFound = true // Content was successfully added
+									}
+								default:
+									// Should not happen due to isValidPartURI, but handle defensively
+									extractErr = fmt.Errorf("unexpected URI scheme after validation: %s", parsedURI.Scheme)
 									goto handleExtractionError
 								}
-								// TODO: Handlers need logic to process non-TextPart inputs (e.g., download files from URI)
-								// For now, just include the URI in the prompt
-								promptBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
-								promptFound = true // Consider file parts as contributing to prompt content
 							case DataPart:
+								// TODO: Handle DataPart content similarly if needed (e.g., decode base64)
 								promptBuilder.WriteString(fmt.Sprintf("[Data: %s]", p.MimeType))
 								promptFound = true // Consider data parts as contributing to prompt content
 							default:
@@ -350,11 +527,21 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 				}
 			}
 
-		handleExtractionError: // Label to jump to on extraction error
-			if extractErr != nil || !promptFound {
-				if extractErr == nil {
-					extractErr = fmt.Errorf("could not extract suitable prompt content")
-				}
+		handleExtractionError: // Label to jump to on extraction error - Ensure this label exists and is used correctly
+			if extractErr != nil {
+				// Error already set during part processing
+				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
+				te.taskStore.SetState(t.ID, TaskStateFailed)
+				fmt.Printf("[Task %s Stream] Failed during input extraction: %v\n", t.ID, extractErr)
+				failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": extractErr.Error()})
+				sseWriter.SendEvent("state", string(failedStateData))
+				return
+			}
+
+			if !promptFound {
+				// This case handles when no parts suitable for prompt were found at all
+				extractErr = fmt.Errorf("could not extract suitable prompt content")
+				// } // Removed extra brace
 				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
 				te.taskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s Stream] Failed: %v\n", t.ID, extractErr)
@@ -370,14 +557,14 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 			fmt.Printf("[Task %s Stream] Combined prompt for LLM:\n---\n%s\n---\n", t.ID, logPrompt)
 
 			log.Printf("[Task %s Stream] Sending prompt to LLM for streaming...\n", t.ID)
-			var responseBuffer bytes.Buffer
-			multiWriter := io.MultiWriter(sseWriter, &responseBuffer)
-
-			llmErr := te.llmClient.Chat(ctx, prompt, true, multiWriter) // Pass context
-			fullResultString := responseBuffer.String()
+			// The llm.Chat function now handles writing to the output (sseWriter) internally when streaming.
+			// It also returns the full completion text and token counts.
+			// We don't need the responseBuffer or multiWriter here anymore for the primary call.
+			// We pass sseWriter directly as the output writer.
+			fullResultString, inputTokens, completionTokens, llmErr := te.llmClient.Chat(ctx, prompt, true, sseWriter) // Pass context and sseWriter
 
 			if llmErr != nil {
-
+				fmt.Printf("[Task %s Stream] LLM Error. Input Tokens: %d\n", t.ID, inputTokens) // Log input tokens even on error
 				finalState := TaskStateFailed
 				if errors.Is(llmErr, context.Canceled) || errors.Is(llmErr, context.DeadlineExceeded) {
 					log.Printf("[Task %s Stream] LLM stream cancelled or timed out (client likely disconnected): %v\n", t.ID, llmErr)
@@ -386,7 +573,7 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] LLM stream failed: %v\n", t.ID, llmErr)
 				}
 
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = llmErr.Error(); return nil })
+				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = llmErr.Error(); return nil }) // Store the error
 				setStateErr := te.taskStore.SetState(t.ID, finalState)
 
 				if setStateErr == nil && finalState == TaskStateFailed {
@@ -396,8 +583,12 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] Failed to set final task state to %s after LLM error: %v\n", t.ID, finalState, setStateErr)
 				}
 				return
-			} else if strings.Contains(fullResultString, "[INPUT_REQUIRED]") {
+			}
 
+			// Log token usage on success
+			fmt.Printf("[Task %s Stream] LLM Success. Input Tokens: %d, Completion Tokens: %d\n", t.ID, inputTokens, completionTokens)
+
+			if strings.Contains(fullResultString, "[INPUT_REQUIRED]") {
 				log.Printf("[Task %s Stream] LLM streaming completed, input required.\n", t.ID)
 
 				outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
@@ -486,4 +677,42 @@ func (te *TaskExecutor) handleSetPushNotification(w http.ResponseWriter, r *http
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "registered"})
+}
+
+// decodeDataURI parses a data URI and decodes its base64 content.
+// Example: data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==
+func decodeDataURI(uri string) ([]byte, error) {
+	if !strings.HasPrefix(uri, "data:") {
+		return nil, fmt.Errorf("invalid data URI: does not start with 'data:'")
+	}
+
+	// Find the comma separating metadata and data
+	commaIndex := strings.Index(uri, ",")
+	if commaIndex == -1 {
+		return nil, fmt.Errorf("invalid data URI: missing comma separator")
+	}
+
+	// Extract the base64 encoded data part
+	encodedData := uri[commaIndex+1:]
+
+	// Check if the data is base64 encoded (optional, but good practice)
+	meta := uri[5:commaIndex] // Get the part between "data:" and ","
+	isBase64 := strings.Contains(meta, ";base64")
+
+	if isBase64 {
+		// Decode the base64 data
+		decodedData, err := base64.StdEncoding.DecodeString(encodedData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode base64 data: %w", err)
+		}
+		return decodedData, nil
+	} else {
+		// Handle non-base64 encoded data (e.g., URL-encoded) if necessary
+		// For now, we assume base64 is required or the most common case.
+		// If not base64, maybe just return the raw string after the comma?
+		// Or return an error if only base64 is supported.
+		// Let's return an error for now, assuming base64 is expected.
+		// return []byte(encodedData), nil // If plain data is allowed
+		return nil, fmt.Errorf("data URI is not marked as base64 encoded")
+	}
 }

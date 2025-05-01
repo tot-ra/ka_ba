@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios'; // Assuming axios is used for HTTP requests
+import TaskList from '../components/TaskList'; // Import the TaskList component
 
 type Tab = 'manage' | 'add';
 type SpawnMessageType = 'success' | 'error' | null;
@@ -276,6 +277,12 @@ const AgentManagement: React.FC = () => {
                   </li>
                 ))}
               </ul>
+              {/* Display TaskList when an agent is selected */}
+              {selectedAgentId && (
+                <div style={{ marginTop: '20px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
+                   <TaskList agentId={selectedAgentId} />
+                </div>
+              )}
             </div>
 
             <div style={{ marginBottom: '30px' }}>

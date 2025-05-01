@@ -9,8 +9,8 @@ import (
 	"ka/llm"
 	"os"
 	"strconv" // Added for port conversion
+	"strings" // Added for API key splitting
 )
-
 
 const (
 	model                   = "qwen3-30b-a3b"
@@ -28,6 +28,8 @@ func main() {
 	portFlag := flag.Int("port", 8080, "Port for the A2A HTTP server")
 	nameFlag := flag.String("name", "Default ka agent", "Name of the agent")
 	descriptionFlag := flag.String("description", "A spawned ka agent instance.", "Description of the agent")
+	jwtSecretFlag := flag.String("jwt-secret", "", "JWT secret key for securing endpoints (if provided, JWT auth is enabled)")
+	apiKeysFlag := flag.String("api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
 
 	flag.Parse()
 
@@ -63,9 +65,26 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error initializing file task store: %v\n", err)
 			os.Exit(1)
 		}
-		// Pass the determined port and agent info to the server start function
-		startHTTPServer(llmClient, taskStore, port, *nameFlag, *descriptionFlag, *modelFlag)
+
+		// Process API keys from flag
+		apiKeys := []string{}
+		if *apiKeysFlag != "" {
+			keys := strings.Split(*apiKeysFlag, ",")
+			for _, key := range keys {
+				trimmedKey := strings.TrimSpace(key)
+				if trimmedKey != "" {
+					apiKeys = append(apiKeys, trimmedKey)
+				}
+			}
+		}
+
+		// Pass the determined port, agent info, and auth config to the server start function
+		startHTTPServer(llmClient, taskStore, port, *nameFlag, *descriptionFlag, *modelFlag, *jwtSecretFlag, apiKeys)
 	} else {
+		// Ensure auth flags are not accidentally used in CLI mode (or warn)
+		if *jwtSecretFlag != "" || *apiKeysFlag != "" {
+			fmt.Fprintln(os.Stderr, "Warning: --jwt-secret and --api-keys flags are only used in server mode (--serve or 'server' argument).")
+		}
 		fmt.Println("[main] Starting in CLI chat mode...")
 		stream := *streamFlag
 		if os.Getenv("LLM_STREAM") == "true" {
@@ -95,10 +114,14 @@ func main() {
 		}
 
 		// Added context.Background() as the first argument
-		if err := llmClient.Chat(context.Background(), userPrompt, stream, os.Stdout); err != nil {
+		// Update call to handle new return values (completion, inputTokens, completionTokens, err)
+		_, inputTokens, completionTokens, err := llmClient.Chat(context.Background(), userPrompt, stream, os.Stdout)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "LLM error:", err)
 			os.Exit(1)
 		}
+		// Optionally log token usage in CLI mode
+		fmt.Fprintf(os.Stderr, "\n[CLI Mode] Input Tokens: %d, Completion Tokens: %d\n", inputTokens, completionTokens)
 	}
 }
 
