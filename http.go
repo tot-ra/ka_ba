@@ -10,8 +10,8 @@ import (
 )
 
 var agentCard = map[string]interface{}{
-	"name":        "Clarifai Go Agent",
-	"description": "A2A-compatible agent runtime in Go with LLM backend (LM Studio)",
+	"name":        "ka AI agent",
+	"description": "A2A-compatible agent runtime in Go with LLM backend (LM Studio or others)",
 	"version": "0.1.0",
 	"url": "http://localhost:8080/",
 	"capabilities": map[string]interface{}{

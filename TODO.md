@@ -1,4 +1,4 @@
-# clarifai-agent TODO
+# ka AI agent TODO
 
 This is the implementation checklist for building the Go-based agent runtime to comply with the A2A protocol and requirements.
 

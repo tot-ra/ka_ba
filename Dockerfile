@@ -29,13 +29,13 @@ FROM alpine:latest
 WORKDIR /app
 
 # Copy the built binary from the builder stage
-COPY --from=builder /app/clarifai-agent .
+COPY --from=builder /app/ka .
 
 # Expose the port the server listens on (default 8080 from http.go)
 EXPOSE 8080
 
 # Set the entrypoint to run the agent in server mode
-ENTRYPOINT ["./clarifai-agent", "--serve"]
+ENTRYPOINT ["./ka", "--serve"]
 
 # Optional: Add a non-root user for security
 # RUN addgroup -S appgroup && adduser -S appuser -G appgroup
