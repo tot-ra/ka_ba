@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"clarifai-agent/llm"
-	"clarifai-agent/a2a"
+	"ka/llm"
+	"ka/a2a"
 )
 
 var agentCard = map[string]interface{}{

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"clarifai-agent/llm"
+	"ka/llm"
 	"net/http"
 	"net/url"
 )

@@ -1,7 +1,7 @@
 # ka - AI agent runtime
 > The ka (𓂓) was the Egyptian concept of the soul.
 
-This project implements a Go-based agent runtime designed to be compatible with the Agent-to-Agent (A2A) communication protocol. It provides both a command-line interface (`ai`) for direct interaction with a configured LLM and an HTTP server exposing A2A-compliant endpoints for task management and interaction.
+This project implements a Go-based agent runtime designed to be compatible with the Agent-to-Agent (A2A) communication protocol. It provides both a command-line interface (`ka`) for direct interaction with a configured LLM and an HTTP server exposing A2A-compliant endpoints for task management and interaction.
 
 The primary goal is to create a flexible and extensible runtime that can manage tasks, interact with LLMs (initially via LM Studio's OpenAI-compatible API), and potentially integrate with other tools and capabilities in the future.
 
@@ -22,11 +22,11 @@ The primary goal is to create a flexible and extensible runtime that can manage 
 *   **Task Management:**
     *   Defines a `Task` model with states (`submitted`, `working`, `input-required`, `completed`, `failed`, `canceled`).
     *   Includes both an `InMemoryTaskStore` (default, non-persistent) and a `FileTaskStore` (persistent, saves tasks as JSON files in `_tasks/`).
-*   **`ai` Command-Line Tool:**
+*   **`ka` Command-Line Tool:**
     *   Provides direct interaction with the configured LLM (requires LM Studio running).
-    *   Supports piping input (`cat file | ai`).
-    *   Supports streaming responses (`ai --stream "prompt"`).
-    *   Can output the agent's self-description (`ai --describe`).
+    *   Supports piping input (`cat file | ka`).
+    *   Supports streaming responses (`ka --stream "prompt"`).
+    *   Can output the agent's self-description (`ka --describe`).
 *   **LLM Integration:**
     *   Connects to OpenAI-compatible APIs (tested with LM Studio).
     *   Configurable via environment variables (see `llm/llm.go`).
@@ -44,20 +44,20 @@ The primary goal is to create a flexible and extensible runtime that can manage 
 ```bash
 make build
 ```
-This creates the `clarifai-agent` executable in the project root.
+This creates the `ka` executable in the project root.
 
 ### Running the A2A Server
 
 ```bash
-./clarifai-agent server
+./ka server
 # Or using the default command:
-# ./clarifai-agent
+# ./ka
 ```
 This starts the HTTP server (defaulting to port 8080) using the `InMemoryTaskStore`.
 
 To use the persistent `FileTaskStore`:
 ```bash
-./clarifai-agent server --task-store file --task-store-path ./my_tasks
+./ka server --task-store file --task-store-path ./my_tasks
 ```
 
 The server exposes endpoints like:
@@ -70,31 +70,31 @@ The server exposes endpoints like:
 
 ### Using the `ai` CLI Tool
 
-Ensure the `clarifai-agent` binary is in your PATH or use the full path.
+Ensure the `ka` binary is in your PATH or use the full path.
 
 **Basic Interaction:**
 ```bash
-./clarifai-agent ai "Hello, world!"
+./ka "Hello, world!"
 ```
 
 **Streaming:**
 ```bash
-./clarifai-agent ai --stream "Tell me a story."
+./ka --stream "Tell me a story."
 ```
 
 **Piping:**
 ```bash
-cat README.md | ./clarifai-agent ai "Summarize this file."
+cat README.md | ./ka ai "Summarize this file."
 ```
 
 **Agent Description:**
 ```bash
-./clarifai-agent ai --describe
+./ka --describe
 ```
 
 **Maximum Context Length:**
 ```bash
-./clarifai-agent ai --max_context_length 4096 "Hello, world!"
+./ka --max_context_length 4096 "Hello, world!"
 ```
 
 ## Configuration
@@ -106,7 +106,7 @@ LLM connection details (API key, base URL, model) can be configured via environm
 *   **Code Structure:**
     *   `main.go`: Entrypoint for CLI commands and server startup.
     *   `http.go`: A2A HTTP server setup and agent card definition.
-    *   `ai.go`: Implementation of the `ai` CLI command.
+    *   `ai.go`: Implementation of the `ka` CLI command.
     *   `a2a/`: Package containing A2A protocol types (Task, Message, Part, Artifact), TaskStore interface/implementations, and HTTP handlers.
     *   `llm/`: Package for LLM client abstraction and interaction.
 *   **Building:** `make build`

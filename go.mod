@@ -1,4 +1,4 @@
-module clarifai-agent
+module ka
 
 go 1.22.12
 
