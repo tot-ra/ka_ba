@@ -13,7 +13,8 @@ var agentCard = map[string]interface{}{
 	"name":        "ka AI agent",
 	"description": "A2A-compatible agent runtime in Go with LLM backend (LM Studio or others)",
 	"version": "0.1.0",
-	"url": "http://localhost:8080/",
+	// URL will be updated dynamically in startHTTPServer
+	"url": "",
 	"capabilities": map[string]interface{}{
 		"streaming": true,
 		"pushNotifications": false,
@@ -50,7 +51,11 @@ func agentCardHandler(llmClient *llm.LLMClient) http.HandlerFunc {
 	}
 }
 
-func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore) {
+// Added port parameter
+func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int) {
+	// Update agentCard URL dynamically
+	agentCard["url"] = fmt.Sprintf("http://localhost:%d/", port)
+
 	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore)
 
 	http.HandleFunc("/.well-known/agent.json", agentCardHandler(llmClient))
@@ -61,7 +66,9 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore) {
 	http.HandleFunc("/tasks/pushNotification/set", a2a.TasksPushNotificationSetHandler(taskStore))
 	http.HandleFunc("/tasks/artifact", a2a.TasksArtifactHandler(taskStore))
 
-	fmt.Println("[http] Agent server running at http://localhost:8080/")
+	// Use the port variable
+	listenAddr := fmt.Sprintf(":%d", port)
+	fmt.Printf("[http] Agent server running at http://localhost:%d/\n", port)
 	fmt.Println("[http] Endpoints: /.well-known/agent.json, /tasks/send, /tasks/status, /tasks/sendSubscribe, /tasks/input, ...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }

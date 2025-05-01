@@ -24,6 +24,7 @@ func main() {
 	describeFlag := flag.Bool("describe", false, "Output the agent's self-description (agent.json) and exit")
 	maxContextLengthFlag := flag.Int("max_context_length", defaultMaxContextLength, "Maximum context length for the LLM")
 	modelFlag := flag.String("model", model, "LLM model to use")
+	portFlag := flag.Int("port", 8080, "Port for the A2A HTTP server")
 
 	flag.Parse()
 
@@ -55,7 +56,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error initializing file task store: %v\n", err)
 			os.Exit(1)
 		}
-		startHTTPServer(llmClient, taskStore)
+		// Pass the port to the server start function
+		startHTTPServer(llmClient, taskStore, *portFlag)
 	} else {
 		fmt.Println("[main] Starting in CLI chat mode...")
 		stream := *streamFlag
