@@ -1,6 +1,6 @@
 # ◼️ ka_ba. AI agent runtime and UI control layer bundle.
 
-
+In short, this allows you to spin up AI agents and control them.
 
 
 ## ba - A2A Agent UI, Control, and Orchestration Layer
