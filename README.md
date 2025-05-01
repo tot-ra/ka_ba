@@ -1,5 +1,5 @@
 # ka - AI agent runtime
-> The ka (𓂓) was the Egyptian concept of the soul.
+> The ka (𓂓) was the Egyptian concept of the soul "vital essence".
 
 This project implements a Go-based agent runtime designed to be compatible with the Agent-to-Agent (A2A) communication protocol. It provides both a command-line interface (`ka`) for direct interaction with a configured LLM and an HTTP server exposing A2A-compliant endpoints for task management and interaction.
 

@@ -27,6 +27,14 @@ func main() {
 
 	flag.Parse()
 
+	// Check for "server" as a non-flag argument
+	args := flag.Args()
+	if len(args) > 0 && args[0] == "server" {
+		*serveFlag = true
+		// Remove "server" from args so it's not treated as a prompt in CLI mode
+		flag.Set("args", "") // Clear args to prevent it being used as prompt
+	}
+
 	if *describeFlag {
 		agentCardJSON, err := json.MarshalIndent(agentCard, "", "  ")
 		if err != nil {

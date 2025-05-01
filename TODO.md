@@ -2,6 +2,9 @@
 
 This is the implementation checklist for building the Go-based agent runtime to comply with the A2A protocol and requirements.
 
+## 0. BUGs
+- [x] Running ./ka server does not start the server. It instead treats it as "server" argument that just runs CLI
+
 ## 1. Core Infrastructure
 - [x] Set up Go project structure and module files (modularized, with llm package)
 - [x] Implement CLI entrypoint with interactive and command modes (ai.go)
