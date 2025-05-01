@@ -1,3 +1,0 @@
-Building clarifai-agent...
-go build -o clarifai-agent -v .
-clarifai-agent built successfully.

@@ -1,0 +1,22 @@
+- Use TODO.md to split your task into sub-tasks for better planning and overview. 
+- Mark them [x] as complete when you see fit.
+- When you "execute this command" tool, please always add piping of output to a logs file, so that you can read it. For example "make build &> tmp.log" (notice errors piped to stdout)
+
+## MCPs
+- use git if you need to fetch logs
+- use context7 if you need custom framework docs
+- use perplexity to search internet if you don't know something or need up-to-date info
+
+## Writing code
+- Be concise, write clean code
+- Instead of writing // TODO ..., add your tasks to TODO.md
+- You MUST NOT write any comments
+- When writing code, check similar code around it to be consistent (for example how DB access functions are used)
+- When writing new code, consider moving it to a new file if current file is getting too big (> 500 lines)
+- When writing tests, create new small tests. Do not add multiple cases in one test, do not use parametric tests.
+
+## At the end of th task
+- `make build` and fix issues
+- `make test` and fix tests/code
+- update TODO.md with new sub-tasks you think are needed
+- cleanup comments you added

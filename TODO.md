@@ -1,29 +1,42 @@
+# ba TODO
+ba is a control layer of ai agents (ka)
+
+- [ ] Investigate `ba` backend agent spawning logic (`spawnKaAgent`).
+- [ ] Fix `ka` agent to respect the `PORT` environment variable.
+- [ ] Verify agent spawning works correctly after the fix.
+- [ ] Consider improving frontend error handling for agent spawning failures.
+- [ ] Design the data model and logic for defining and managing orchestration workflows in the `ba` backend.
+- [ ] Implement `ba` backend logic to execute orchestration workflows, using the A2A client to interact with multiple agents.
+- [ ] Implement `ba` backend API endpoints for managing orchestration workflows (create, view, start, stop).
+- [ ] Create frontend UI pages/components for orchestration management and visualization.
+- [ ] Implement frontend UI to define and configure orchestration workflows.
+- [ ] Implement frontend UI to monitor the execution of orchestration workflows across multiple agents.
+- [ ] Implement frontend UI to fetch and display the selected agent's capabilities from `/.well-known/agent.json`.
+- [ ] (Future) Implement `ba` backend API endpoint and frontend UI for managing push notification registrations (`tasks/pushNotification/set`, `tasks/pushNotification/get`).
+- [ ] Add `description` field to agent creation UI in `ba/src/pages/AgentManagement.tsx`.
+- [ ] Update `ba` backend GraphQL schema (`ba/backend/src/schema.graphql`) to include `description` for agent creation/update.
+- [ ] Modify `ba` backend (`ba/backend/src/index.ts`) `spawnKaAgent` function to:
+    - [ ] Accept `description` as an argument.
+    - [ ] Retrieve `llm_info.model` associated with the agent.
+    - [ ] Pass `name`, `description`, and `llm_info.model` as command-line arguments to the `ka` process.
+- [ ] Update `ka` agent (`ka/ka.go`) to:
+    - [ ] Parse `name`, `description`, and `llm_info.model` from command-line arguments.
+    - [ ] Store these values.
+    - [ ] Include these values in the response of the `/.well-known/agent.json` endpoint.
+
+## Technical Considerations
+
+- [ ] Define the detailed API contract between the `ba` frontend and its backend.
+- [ ] Implement robust error handling and validation across frontend and backend.
+- [ ] Add comprehensive testing for both frontend and backend components.
+- [ ] Consider and document deployment strategies for `ba` and `ka` agents.
+
+**NOTE:** Encountered persistent TypeScript errors related to `fastify-gql` and `spawn` module resolution during backend setup. Code is written with correct imports based on package names, but local environment may require troubleshooting.
+
+
 # ka AI agent TODO
 
 This is the implementation checklist for building the Go-based agent runtime to comply with the A2A protocol and requirements.
-
-## 0. BUGs
-- [x] Running ./ka server does not start the server. It instead treats it as "server" argument that just runs CLI
-
-## 1. Core Infrastructure
-- [x] Set up Go project structure and module files (modularized, with llm package)
-- [x] Implement CLI entrypoint with interactive and command modes (ai.go)
-- [x] Add Makefile and ability to build the project. Run it to test if we have binary running on mac.
-- [x] Add Dockerfile and container entrypoint scripts
-- [x] Support configuration for LLM provider/model/API key (env/config/CLI)
-  - [x] Add command-line flag for setting custom model (--model)
-- [~] Unit tests covering core and critical functionality (Basic tests for TaskStore added in `a2a/task_test.go`)
-- [x] Update README.md on the whole project vision and implementation
-- [x] Re-run build and unit tests to verify project working
-- [x] Cleanup code from all comments
-- [x] Refactor: Split large files (>500 lines) into smaller ones
-
-## 2. Agent Self-Description
-- [x] Serve `/.well-known/agent.json` with agent metadata, capabilities, endpoint, and auth requirements (http.go)
-- [x] Provide CLI command to output agent self-description (`--describe` flag added to ai.go)
-- [x] (Optional) Expose in agent card which LLM(s) are used for transparency (Model name added dynamically)
-- [x] Monitor current agent context length
-- [x] Add ability to configure max context length after which current task summary should be generated and dumped into a new context
 
 ## 3. HTTP API (A2A Protocol)
 - [x] Implement required HTTP endpoints (per a2a.json spec):
