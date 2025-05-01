@@ -342,7 +342,7 @@ const resolvers = {
 
 
       // Use absolute path to the ka executable
-      const kaPath = '/Users/artjom/work/ka/ka'; // Absolute path
+      const kaPath = './ka/ka'; // Absolute path
 
       let agentPort: number;
       try {
