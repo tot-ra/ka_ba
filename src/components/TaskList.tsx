@@ -9,13 +9,14 @@ interface TaskListProps {
   error: string | null; // Receive error state as a prop
   onDeleteTask: (taskId: string) => void; // Callback to delete a task
   onViewTaskDetails: (task: Task) => void; // New callback to view task details in a modal
+  onDuplicateTask: (agentId: string, taskId: string) => void; // Callback to duplicate a task
   // onRefresh?: () => void; // Optional prop for manual refresh
 }
 
 // Removed Modal component definition
 
-// Destructure props including tasks, loading, error, onDeleteTask, and onViewTaskDetails
-const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onDeleteTask, onViewTaskDetails }) => {
+// Destructure props including tasks, loading, error, onDeleteTask, onViewTaskDetails, and onDuplicateTask
+const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onDeleteTask, onViewTaskDetails, onDuplicateTask }) => {
   // Removed all state related to modal/history view
   // Removed useEffect hook for fetching tasks
   // Removed handleViewHistory and closeModal functions
@@ -114,9 +115,9 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
                 Cancel
               </button>
               <button
-                onClick={() => console.log(`Duplicate clicked for task ${task.id}`)}
+                onClick={() => onDuplicateTask(agentId!, task.id)} // Call the prop with agentId and taskId
                 style={{ padding: '3px 8px', fontSize: '0.8em', cursor: 'pointer' }}
-                title="Duplicate Task (Placeholder)"
+                title="Duplicate Task" // Updated title
               >
                 Duplicate
               </button>

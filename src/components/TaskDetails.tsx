@@ -1,44 +1,7 @@
 import React from 'react';
 
 // Removed local interface definitions - rely on prop types derived from GraphQL schema
-import { MessageRole } from '../types'; // Assuming MessageRole enum is defined here or imported globally
-
-// Define structure for Message parts based on schema comments (adjust if actual data differs)
-interface TextPart {
-  type: 'text';
-  text: string;
-}
-
-interface FilePart {
-  type: 'file';
-  mimeType?: string; // Optional based on schema comment
-  uri?: string; // Optional based on schema comment
-  artifactId?: string; // Optional based on schema comment
-  fileName?: string; // Added for display, might be in metadata or inferred
-}
-
-interface DataPart {
-  type: 'data';
-  mimeType?: string; // Optional based on schema comment
-  data: any;
-}
-
-interface UriPart {
-    type: 'uri';
-    uri: string;
-    mimeType?: string;
-}
-
-// Union type for message parts
-type MessagePart = TextPart | FilePart | DataPart | UriPart | { type: string; [key: string]: any }; // Fallback for unknown types
-
-// Define Message structure based on GraphQL schema
-interface Message {
-  role: MessageRole;
-  parts: MessagePart[];
-  toolCalls?: any; // Placeholder
-  toolCallId?: string;
-}
+import { MessageRole, Message, MessagePart } from '../types'; // Assuming MessageRole enum is defined here or imported globally
 
 interface TaskDetailsProps {
   // Expect currentTask to match GraphQL Task type structure

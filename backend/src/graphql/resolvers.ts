@@ -269,9 +269,9 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             extensions: { code: 'AGENT_COMMUNICATION_ERROR', agentId: agentId },
             originalError: error
           });
-        }
+          }
+        },
       },
-     },
       Subscription: {
         agentLogs: {
           // Define the subscription topic dynamically based on agentId

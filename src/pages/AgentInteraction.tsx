@@ -201,6 +201,61 @@ const AgentInteraction: React.FC = () => {
     }
   };
 
+  // --- Task Duplication Handler ---
+  const handleDuplicateTask = async (agentId: string, taskId: string) => {
+    if (!agentId) {
+      setError('Cannot duplicate task: No agent selected.');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Use the duplicateTask mutation directly
+      const mutation = `
+        mutation DuplicateTask($agentId: ID!, $taskId: ID!) {
+          duplicateTask(agentId: $agentId, taskId: $taskId) {
+            # Request all fields defined in the Task type in schema.graphql
+            id
+            state
+            input { role parts toolCalls toolCallId }
+            output { role parts toolCalls toolCallId }
+            error
+            createdAt
+            updatedAt
+            artifacts
+          }
+        }
+      `;
+      const variables = { agentId, taskId };
+
+      const response = await sendGraphQLRequest<{ duplicateTask: Task }>(mutation, variables);
+
+      if (response.errors) {
+        console.error(`[AgentInteraction] GraphQL errors duplicating task ${taskId}:`, response.errors);
+        throw new Error(response.errors.map((e: any) => e.message).join('; '));
+      } else if (response.data?.duplicateTask) {
+        console.log('Task duplicated:', response.data.duplicateTask);
+        setError(null); // Clear previous errors
+        // Refetch the task list to show the new task
+        await fetchTasks();
+        // Optionally set the new task as the current task for immediate details view
+        // setCurrentTask(response.data.duplicateTask);
+      } else {
+        console.error('[GraphQL duplicateTask] Unexpected response structure:', response);
+        setError('Received an unexpected response structure when duplicating task.');
+      }
+
+    } catch (err: any) {
+      console.error(`[AgentInteraction] Error duplicating task ${taskId}:`, err);
+      setError(`Failed to duplicate task: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
   // Handlers that remain in AgentInteraction
   const handleSendTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -459,6 +514,7 @@ const AgentInteraction: React.FC = () => {
                   error={listError}
                   onDeleteTask={handleDeleteTask} // Pass the delete handler down
                   onViewTaskDetails={handleViewTaskDetails} // Pass the new handler
+                  onDuplicateTask={handleDuplicateTask} // Pass the duplicate handler
                   // Pass fetchTasks down if TaskList needs a manual refresh button (optional)
                   // onRefresh={fetchTasks}
                 />

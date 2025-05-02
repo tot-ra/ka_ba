@@ -3,21 +3,35 @@
 export type TaskState = "SUBMITTED" | "WORKING" | "INPUT_REQUIRED" | "COMPLETED" | "FAILED" | "CANCELED";
 export type MessageRole = "SYSTEM" | "USER" | "ASSISTANT" | "TOOL";
 
-// Using 'any' for parts to match JSONObject scalar for now
-// TODO: Define Part types more specifically if needed
-export interface Message {
-  role: MessageRole;
-  parts: any[]; // Array of parts (simplified)
-  toolCalls?: any; // Placeholder
-  toolCallId?: string;
+// Define structure for Message parts based on schema comments (adjust if actual data differs)
+export interface TextPart {
+  type: 'text';
+  text: string;
 }
 
-export interface Artifact {
-  id: string; // Assuming Artifacts map key is the ID
-  type: string;
-  filename?: string;
-  // Add other fields if needed based on actual usage or GraphQL schema
+export interface FilePart {
+  type: 'file';
+  mimeType?: string; // Optional based on schema comment
+  uri?: string; // Optional based on schema comment
+  artifactId?: string; // Optional based on schema comment
+  fileName?: string; // Added for display, might be in metadata or inferred
 }
+
+export interface DataPart {
+  type: 'data';
+  mimeType?: string; // Optional based on schema comment
+  data: any;
+}
+
+export interface UriPart {
+    type: 'uri';
+    uri: string;
+    mimeType?: string;
+}
+
+// Union type for message parts
+export type MessagePart = TextPart | FilePart | DataPart | UriPart | { type: string; [key: string]: any }; // Fallback for unknown types
+
 
 // This Task interface should align with the data returned by GraphQL queries (listTasks, createTask)
 // and used by both AgentInteraction and TaskList.
@@ -35,6 +49,23 @@ export interface Task {
   metadata?: any;
   // Note: Removed nested 'status' and 'history' if 'state', 'input', 'output' cover the needs
 }
+
+// Define Message structure based on GraphQL schema
+export interface Message {
+  role: MessageRole;
+  parts: MessagePart[]; // Use the new MessagePart union type
+  toolCalls?: any; // Placeholder
+  toolCallId?: string;
+}
+
+
+export interface Artifact {
+  id: string; // Assuming Artifacts map key is the ID
+  type: string;
+  filename?: string;
+  // Add other fields if needed based on actual usage or GraphQL schema
+}
+
 
 // Define TaskHistory separately for the modal view if its structure differs significantly
 export interface TaskHistory {

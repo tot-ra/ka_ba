@@ -108,7 +108,7 @@ type Mutation {
     historyLength: Int # Optional history length
     metadata: JSONObject # Optional metadata
   ): Task! # Returns the initial task state
-  deleteTask(agentId: ID!, taskId: ID!): Boolean! # Added mutation to delete a task
+  deleteTask(agentId: ID!, taskId: ID!): Boolean!
   # Removed startWorkflow
   # Removed stopWorkflow
 }
@@ -128,15 +128,3 @@ input InputMessage {
   parts: [InputPart!]!
   metadata: JSONObject
 }
-
-# --- Orchestration Types Removed ---
-
-# Removed JSONObject scalar
-# Removed OrchestrationStepInput input type
-# Removed OrchestrationWorkflow type
-
-# Removed Query extension for getWorkflowStatus
-
-# Add definition for DateTime scalar if not already present globally
-# (If using a library like graphql-scalars, this might not be needed here)
-# scalar DateTime

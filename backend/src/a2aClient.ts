@@ -19,7 +19,7 @@ interface JSONRPCResponse {
   };
 }
 
-interface TextPart {
+export interface TextPart { // Export TextPart
   type: 'text';
   text: string;
   metadata?: any;
@@ -32,13 +32,13 @@ interface FileContent {
   uri?: string | null;
 }
 
-interface FilePart {
+export interface FilePart { // Export FilePart
   type: 'file';
   file: FileContent;
   metadata?: any;
 }
 
-interface DataPart {
+export interface DataPart { // Export DataPart
   type: 'data';
   data: any; // JSON object
   metadata?: any;
