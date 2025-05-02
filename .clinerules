@@ -1,1 +1,3 @@
 before completing the task, try to build it and fix any errors you encounter
+
+when running commands, pipe them into log file to read the output

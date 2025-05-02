@@ -110,7 +110,8 @@ export class AgentManager {
     if (systemPrompt) env.LLM_SYSTEM_MESSAGE = systemPrompt;
     if (apiBaseUrl) env.LLM_API_BASE = apiBaseUrl;
 
-    const kaExecutablePath = join(__dirname, '..', '..', '..', '..', 'ka', 'ka');
+    // Go up 3 levels from src/services or dist/services to the project root
+    const kaExecutablePath = join(__dirname, '..', '..', '..', 'ka', 'ka');
     console.log(`Calculated absolute path for ka executable: ${kaExecutablePath}`);
 
     let agentPort: number;

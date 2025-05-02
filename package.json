@@ -27,10 +27,7 @@
     "vite": "^6.3.4"
   },
   "scripts": {
-    "build:backend": "tsc --project tsconfig.json && cp backend/src/schema.graphql dist/backend/src/",
-    "start:backend": "node dist/backend/src/index.js",
-    "build:frontend": "vite build --outDir dist/src",
-    "dev:frontend": "vite",
-    "dev:backend": "ts-node-dev --respawn --transpile-only backend/src/index.ts"
+    "build": "vite build --outDir dist/src",
+    "dev": "vite"
   }
 }
