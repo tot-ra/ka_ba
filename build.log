@@ -1,0 +1,13 @@
+
+> build
+> vite build --outDir dist/src
+
+vite v6.3.4 building for production...
+transforming...
+✓ 393 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/src/index.html                   0.40 kB │ gzip:   0.26 kB
+dist/src/assets/index-BaOhpgSS.css    8.53 kB │ gzip:   2.13 kB
+dist/src/assets/index-Bc9Wz6-N.js   497.42 kB │ gzip: 155.59 kB
+✓ built in 1.19s
