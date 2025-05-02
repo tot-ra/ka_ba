@@ -55,9 +55,25 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
       listTasks: async (_parent: any, { agentId }: { agentId: string }, context: ApolloContext, _info: any): Promise<any[]> => {
         // Using any[] for now to match AgentManager method, refine later if needed
         try {
-          return await context.agentManager.getAgentTasks(agentId);
+          const rawTasks = await context.agentManager.getAgentTasks(agentId);
+          console.log(`[Resolver listTasks] Fetched raw tasks for agent ${agentId}:`, rawTasks);
+
+          // Map snake_case fields from agentManager to camelCase fields in GraphQL schema
+          const mappedTasks = rawTasks.map((task: any) => ({
+            id: task.id,
+            state: task.state, // Assuming state matches directly
+            input: task.input, // Assuming input matches directly
+            output: task.output, // Assuming output matches directly (might need mapping if structure differs)
+            error: task.error, // Assuming error matches directly
+            createdAt: task.created_at, // Map snake_case to camelCase
+            updatedAt: task.updated_at, // Map snake_case to camelCase
+            artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
+          }));
+
+          console.log(`[Resolver listTasks] Mapped tasks for agent ${agentId}:`, mappedTasks);
+          return mappedTasks;
         } catch (error: any) {
-          console.error(`[Resolver listTasks] Error fetching tasks for agent ${agentId}:`, error);
+          console.error(`[Resolver listTasks] Error fetching/mapping tasks for agent ${agentId}:`, error);
           // Re-throw the error so GraphQL client receives it
           // Wrap in GraphQLError for consistency
           throw new GraphQLError(`Failed to fetch tasks for agent ${agentId}: ${error.message}`, {
