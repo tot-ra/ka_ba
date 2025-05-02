@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { buildSchema, GraphQLScalarType, Kind, GraphQLSchema } from 'graphql';
 
 export const JSONObjectResolver = new GraphQLScalarType({
@@ -26,6 +27,8 @@ export const JSONObjectResolver = new GraphQLScalarType({
   },
 });
 
-export const schemaString = readFileSync(join(__dirname, '../schema.graphql'), 'utf8');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+export const schemaString = readFileSync(join(__dirname, '../schema.graphql'), 'utf8'); // Adjusted path relative to src/graphql
 
 export const schema: GraphQLSchema = buildSchema(schemaString);

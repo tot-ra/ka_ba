@@ -1,8 +1,14 @@
 import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
+import { join, dirname } from 'path'; // Import dirname
+import { fileURLToPath } from 'url'; // Import fileURLToPath
 import net from 'net';
 import axios from 'axios';
-// Removed Orchestrator import
+import { PubSub } from 'graphql-subscriptions'; // Import PubSub
+import { LogEntryPayload } from '../graphql/resolvers.js'; // Add .js extension
+
+// Get current directory using import.meta.url for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export interface Agent {
   id: string;
@@ -48,11 +54,11 @@ export class AgentManager {
   private agents: Agent[] = [];
   private spawnedProcesses: Map<string, SpawnedProcessInfo> = new Map();
   private agentIdCounter = 1;
-  // Removed orchestrator property
+  private pubsub: PubSub; // Add pubsub property
 
-  // Removed orchestrator from constructor
-  constructor() {
-    // Removed orchestrator.updateAgents call
+  // Inject PubSub via constructor
+  constructor(pubsub: PubSub) {
+    this.pubsub = pubsub;
   }
 
   // Modify Agent type returned by getAgents to potentially include pid
@@ -110,7 +116,7 @@ export class AgentManager {
     if (systemPrompt) env.LLM_SYSTEM_MESSAGE = systemPrompt;
     if (apiBaseUrl) env.LLM_API_BASE = apiBaseUrl;
 
-    // Go up 3 levels from src/services or dist/services to the project root
+    // Use the calculated __dirname for ES Modules
     const kaExecutablePath = join(__dirname, '..', '..', '..', 'ka', 'ka');
     console.log(`Calculated absolute path for ka executable: ${kaExecutablePath}`);
 
@@ -241,30 +247,50 @@ export class AgentManager {
   private _addLog(agentId: string, message: string, stream: 'stdout' | 'stderr'): void {
     const processInfo = this.spawnedProcesses.get(agentId);
     if (processInfo) {
+      const timestamp = new Date().toISOString();
+      const line = message.trim();
       const maxLogLines = 100; // Consistent max log lines
-      const logEntry = `[${new Date().toISOString()}] [${stream}] ${message.trim()}`;
-      processInfo.logs.push(logEntry);
+
+      // Store historical log (optional, could be removed if only real-time is needed)
+      const logEntryForStorage = `[${timestamp}] [${stream}] ${line}`;
+      processInfo.logs.push(logEntryForStorage);
       if (processInfo.logs.length > maxLogLines) {
         processInfo.logs.shift(); // Remove the oldest log line
       }
+
+      // Publish real-time log entry via PubSub
+      const payload: LogEntryPayload = {
+        timestamp,
+        stream,
+        line,
+      };
+      const topic = `AGENT_LOG_${agentId}`;
+      // console.log(`Publishing to topic ${topic}:`, payload); // Debug log
+      this.pubsub.publish(topic, { agentLogs: payload }); // Wrap payload according to subscription name
+
     } else {
-      console.warn(`Attempted to add log for non-existent or cleaned up agent process: ${agentId}`);
+      // Don't warn here as this might be called after cleanup during shutdown
+      // console.warn(`Attempted to add log for non-existent or cleaned up agent process: ${agentId}`);
     }
   }
 
-  private setupOngoingLogCapture(kaProcess: ChildProcess, agentId: string): void {
-    kaProcess.stdout?.on('data', (data: Buffer) => {
-      const output = data.toString();
-      this._addLog(agentId, output, 'stdout');
-      // console.log(`[ka stdout ${agentId}]: ${output}`); // Optional: Keep for backend debugging
-    });
 
-    kaProcess.stderr?.on('data', (data: Buffer) => {
-      const output = data.toString();
-      this._addLog(agentId, output, 'stderr');
-      // console.error(`[ka stderr ${agentId}]: ${output}`); // Optional: Keep for backend debugging
-    });
+  private setupOngoingLogCapture(kaProcess: ChildProcess, agentId: string): void {
+    const handleData = (data: Buffer, stream: 'stdout' | 'stderr') => {
+      // Split potential multi-line output into individual lines
+      const lines = data.toString().split('\n');
+      lines.forEach((line, index) => {
+        // Don't publish empty lines, except possibly the last partial line
+        if (line || (index === lines.length - 1 && lines.length > 1)) {
+           this._addLog(agentId, line, stream);
+        }
+      });
+    };
+
+    kaProcess.stdout?.on('data', (data: Buffer) => handleData(data, 'stdout'));
+    kaProcess.stderr?.on('data', (data: Buffer) => handleData(data, 'stderr'));
   }
+
 
   public getAgentLogs(agentId: string): string[] | null {
     const processInfo = this.spawnedProcesses.get(agentId);
@@ -343,17 +369,29 @@ export class AgentManager {
       let resolved = false;
       let processError: Error | null = null;
       const startupTimeoutDuration = 15000; // 15 seconds
-      const startupLogs: string[] = []; // Temporary log storage during startup
-      const maxLogLines = 100; // Max log lines to keep - Note: This is now also defined in _addLog
+      const startupLogs: string[] = []; // Still store initial logs for historical query if needed
+      const maxLogLines = 100;
 
-      // Function to add log entry *during startup only*
+      // Function to add log entry *during startup only* AND publish
       const addStartupLog = (message: string, stream: 'stdout' | 'stderr') => {
-        const logEntry = `[${new Date().toISOString()}] [${stream}] ${message.trim()}`;
-        startupLogs.push(logEntry);
+        const timestamp = new Date().toISOString();
+        const line = message.trim();
+
+        // Store historical log
+        const logEntryForStorage = `[${timestamp}] [${stream}] ${line}`;
+        startupLogs.push(logEntryForStorage);
         if (startupLogs.length > maxLogLines) {
-          startupLogs.shift(); // Remove the oldest log line
+          startupLogs.shift();
         }
+
+        // Publish real-time log entry via PubSub
+        // Note: Publishing might fail if agent ID isn't assigned yet,
+        // but we'll publish anyway once the agent is created.
+        // This function is called *before* the agent ID exists.
+        // We need to publish *after* the agent is created and ID assigned.
+        // Let's modify the flow: capture logs here, publish *after* agent creation.
       };
+
 
       const cleanupTimeout = (timeoutId: NodeJS.Timeout) => {
           clearTimeout(timeoutId);
@@ -379,17 +417,17 @@ export class AgentManager {
         handleStartupError(`Startup timeout (${startupTimeoutDuration}ms). Agent did not confirm successful start.`, startupTimeout);
       }, startupTimeoutDuration);
 
-      kaProcess.stdout?.on('data', (data: Buffer) => {
+      // Temporary listeners to capture startup output
+      const startupStdoutListener = (data: Buffer) => {
         const output = data.toString();
-        addStartupLog(output, 'stdout'); // Capture stdout during startup
+        // Split potential multi-line output
+        output.split('\n').forEach(line => {
+          if (line) addStartupLog(line, 'stdout');
+        });
         // console.log(`[ka stdout ${agentPort}]: ${output}`); // Keep console log for debugging
         if (output.includes(`Agent server running at http://localhost:${agentPort}/`) && !resolved) {
           resolved = true;
-          // Important: Remove startup listeners before resolving
-          // to avoid duplicate logging after setupOngoingLogCapture is called.
-          kaProcess.stdout?.removeAllListeners('data');
-          kaProcess.stderr?.removeAllListeners('data');
-          cleanupTimeout(startupTimeout);
+          cleanupTimeout(startupTimeout); // Cleanup timeout and listeners
           console.log(`ka agent on port ${agentPort} started successfully.`);
           const newAgent: Agent = {
             id: (this.agentIdCounter++).toString(),
@@ -398,19 +436,26 @@ export class AgentManager {
             description: description || `ka agent spawned with model: ${model || 'default'}`,
             isLocal: true,
           };
-          resolve({ agent: newAgent, logs: startupLogs }); // Resolve with agent and logs
+          // Resolve with agent and captured startup logs (for historical query)
+          resolve({ agent: newAgent, logs: startupLogs });
         }
-      });
+      };
+      const startupStderrListener = (data: Buffer) => {
+         const output = data.toString();
+         // Split potential multi-line output
+         output.split('\n').forEach(line => {
+           if (line) addStartupLog(line, 'stderr');
+         });
+         // console.error(`[ka stderr ${agentPort}]: ${output}`); // Keep console log for debugging
+         if (output.includes('address already in use') && output.includes(`:${agentPort}`)) {
+           handleStartupError(`Port ${agentPort} already in use.`, startupTimeout);
+         }
+         processError = new Error(output.trim()); // Store last stderr line as potential error
+      };
 
-      kaProcess.stderr?.on('data', (data: Buffer) => {
-        const output = data.toString();
-        addStartupLog(output, 'stderr'); // Capture stderr during startup
-        // console.error(`[ka stderr ${agentPort}]: ${output}`); // Keep console log for debugging
-        if (output.includes('address already in use') && output.includes(`:${agentPort}`)) {
-          handleStartupError(`Port ${agentPort} already in use.`, startupTimeout);
-        }
-        processError = new Error(output.trim());
-      });
+      kaProcess.stdout?.on('data', startupStdoutListener);
+      kaProcess.stderr?.on('data', startupStderrListener);
+
 
       kaProcess.on('error', (err: Error) => {
         handleStartupError(`Process spawn error: ${err.message}`, startupTimeout, err);

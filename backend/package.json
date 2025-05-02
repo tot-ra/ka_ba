@@ -1,16 +1,25 @@
 {
   "dependencies": {
-    "axios": "^1.9.0"
+    "@apollo/server": "^4.12.0",
+    "@graphql-tools/schema": "^10.0.23",
+    "axios": "^1.9.0",
+    "graphql": "^16.11.0",
+    "graphql-scalars": "^1.24.2",
+    "graphql-subscriptions": "^3.0.0",
+    "graphql-ws": "^6.0.4",
+    "ws": "^8.18.1"
   },
+  "type": "module",
   "devDependencies": {
     "@types/node": "^22.15.3",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc --project tsconfig.json && cp src/schema.graphql dist/src/",
-    "start": "node dist/src/index.js"
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --project tsconfig.json && cp src/schema.graphql dist/graphql/",
+    "start": "node dist/index.js"
   }
 }

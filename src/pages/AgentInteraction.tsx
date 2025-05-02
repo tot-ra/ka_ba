@@ -1,5 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useRef } from 'react';
+import { gql, useSubscription, useMutation, OnDataOptions, ApolloError } from '@apollo/client'; // Import OnDataOptions instead of SubscriptionResult
+// import axios from 'axios'; // Comment out axios for now
+
+// Define LogEntry type matching the GraphQL schema
+interface LogEntry {
+  timestamp: string;
+  stream: 'stdout' | 'stderr';
+  line: string;
+}
 
 interface Agent {
   id: string;
@@ -54,66 +62,60 @@ const AgentInteraction: React.FC = () => {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentLogEntries, setAgentLogEntries] = useState<LogEntry[]>([]); // State for logs
+  const logContainerRef = useRef<HTMLDivElement>(null); // Ref for scrolling logs
 
-  // Implement SSE connection for streaming updates
-  useEffect(() => {
-    if (!selectedAgentId || !currentTask?.id) return;
+  // --- GraphQL Operations ---
 
-    const eventSource = new EventSource(`/api/tasks/sendSubscribe?agentId=${selectedAgentId}&taskId=${currentTask.id}`);
-
-    eventSource.onmessage = (event) => {
-      const update = JSON.parse(event.data);
-      console.log('SSE update received:', update);
-
-      if (update.result) {
-        if (update.result.status) {
-          // Handle status update
-          setCurrentTask(prevTask => {
-            if (!prevTask) return null;
-            const updatedTask = { ...prevTask, status: update.result.status };
-            // If state is final, fetch artifacts
-            if (['completed', 'failed', 'canceled'].includes(updatedTask.status.state)) {
-               fetchArtifacts(updatedTask.id);
-            }
-            return updatedTask;
-          });
-        }
-        if (update.result.artifact) {
-          // Handle artifact update (assuming artifacts are appended or replace)
-          setArtifacts(prevArtifacts => {
-             // Simple append for now, more complex logic might be needed based on 'append' flag
-             return [...prevArtifacts, update.result.artifact];
-          });
-        }
-        // Handle streaming text output (assuming text parts in status messages or separate events)
-        if (update.result.status?.message?.parts) {
-           const textParts = update.result.status.message.parts.filter((part: any) => part.type === 'text');
-           if (textParts.length > 0) {
-              setStreamingOutput(prevOutput => prevOutput + textParts.map((part: any) => part.text).join(''));
-           }
-        }
-      } else if (update.error) {
-        console.error('SSE error event:', update.error);
-        setError(`Agent Error: ${update.error.message}`);
+  const AGENT_LOGS_SUBSCRIPTION = gql`
+    subscription AgentLogs($agentId: ID!) {
+      agentLogs(agentId: $agentId) {
+        timestamp
+        stream
+        line
       }
-    };
+    }
+  `;
 
-    eventSource.onerror = (err) => {
-      console.error('SSE error:', err);
-      setError('SSE connection error.');
-      eventSource.close();
-    };
+  // TODO: Define CREATE_TASK_MUTATION if replacing axios call
 
-    eventSource.onopen = () => {
-       console.log('SSE connection opened.');
-    };
+  // --- GraphQL Hooks ---
 
-    return () => {
-      console.log('SSE connection closing.');
-      eventSource.close();
-    };
+  // Subscription for Agent Logs
+  // Define the expected data structure for the subscription result
+  interface AgentLogsSubscriptionData {
+    agentLogs: LogEntry;
+  }
 
-  }, [selectedAgentId, currentTask?.id]); // Reconnect if selected agent or task changes
+  useSubscription<AgentLogsSubscriptionData>(AGENT_LOGS_SUBSCRIPTION, {
+    variables: { agentId: selectedAgentId },
+    skip: !selectedAgentId, // Skip if no agent is selected
+    // Correct the onData signature: it receives an options object
+    onData: (options: OnDataOptions<AgentLogsSubscriptionData>) => { // Use OnDataOptions type
+      const newLogEntry = options.data.data?.agentLogs; // Access data via options.data.data
+      if (newLogEntry) {
+        // console.log('Log received:', newLogEntry);
+        setAgentLogEntries((prevLogs) => {
+           // Optional: Limit log history size in frontend state
+           const updatedLogs = [...prevLogs, newLogEntry];
+           const maxLogs = 200; // Example limit
+           if (updatedLogs.length > maxLogs) {
+              return updatedLogs.slice(updatedLogs.length - maxLogs);
+           }
+           return updatedLogs;
+        });
+      }
+    },
+    onError: (err: ApolloError) => { // Add type to err
+       console.error("Subscription error:", err);
+       setError(`Log stream error: ${err.message}`);
+    }
+  });
+
+  // TODO: Add useMutation hook for createTask if replacing axios
+
+  // --- Remove Old SSE/Polling Effects ---
+  // useEffect(() => { ... EventSource logic removed ... }, [selectedAgentId, currentTask?.id]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setTaskInput({ ...taskInput, content: e.target.value });
@@ -129,8 +131,18 @@ const AgentInteraction: React.FC = () => {
      setTaskInput({ type: e.target.value as 'text' | 'file' | 'data', content: '' });
   };
 
+  // Scroll logs to bottom when new entries are added
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [agentLogEntries]);
+
+
   const handleSendTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Clear previous logs when starting a new task
+    setAgentLogEntries([]);
     if (!selectedAgentId) {
       setError('No agent selected.');
       return;
@@ -138,9 +150,13 @@ const AgentInteraction: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
-    setStreamingOutput('');
+    setStreamingOutput(''); // Keep this if task output is separate
     setArtifacts([]);
 
+    // TODO: Replace this with GraphQL mutation call
+    console.log("handleSendTask needs to be reimplemented with GraphQL mutation.");
+    setError("Sending tasks not implemented yet.");
+    /*
     try {
       // Construct message based on input type
       const message: Message = {
@@ -191,11 +207,14 @@ const AgentInteraction: React.FC = () => {
       }
 
     } catch (error: any) {
-      console.error('Error sending task:', error);
+      console.error('Error sending task (axios - commented out):', error);
       setError(`Error sending task: ${error.message}`);
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // Ensure loading state is reset even if commented out
     }
+    */
+    setIsLoading(false); // Reset loading state immediately as the call is commented out
+    // Remove extra closing brace below
   };
 
   const handleInputRequired = async () => {
@@ -204,6 +223,10 @@ const AgentInteraction: React.FC = () => {
      setIsLoading(true);
      setError(null);
 
+     // TODO: Replace this with GraphQL mutation call if applicable, or keep if it's a separate API endpoint
+     console.log("handleInputRequired needs to be reimplemented.");
+     setError("Sending input not implemented yet.");
+     /*
      try {
         // Construct input message based on current taskInput state
         const inputMessage: Message = {
@@ -250,66 +273,28 @@ const AgentInteraction: React.FC = () => {
         }
 
      } catch (error: any) {
-        console.error('Error sending input:', error);
+        console.error('Error sending input (axios - commented out):', error);
         setError(`Error sending input: ${error.message}`);
      } finally {
-        setIsLoading(false);
+       setIsLoading(false); // Ensure loading state is reset even if commented out
      }
+     */
+     setIsLoading(false); // Reset loading state immediately as the call is commented out
+     // Remove extra closing brace below
   };
 
 
-  // Poll for task status if not streaming or for summary views
-  useEffect(() => {
-    // Only poll if there's a current task, an agent ID, and the task is in a non-final state
-    if (!currentTask || !selectedAgentId || ['completed', 'failed', 'canceled'].includes(currentTask.status.state)) {
-      return; // Stop polling or don't start
-    }
-
-    // TODO: Add logic here to determine if polling is actually needed (e.g., if SSE connection failed or agent doesn't support streaming)
-    // For now, we assume polling runs alongside SSE or as a fallback.
-
-    const pollStatus = async () => {
-      console.log(`Polling status for task ${currentTask.id}...`);
-      try {
-        const response = await axios.post('/api/tasks/status', {
-          agentId: selectedAgentId,
-          params: { id: currentTask.id },
-        });
-        const updatedTask: Task = response.data;
-        if (updatedTask) {
-          console.log('Poll update received:', updatedTask);
-          setCurrentTask(prevTask => {
-            // Avoid unnecessary updates if status hasn't changed
-            if (prevTask && prevTask.status.state === updatedTask.status.state) {
-               return prevTask;
-            }
-            // If state becomes final via polling, fetch artifacts (SSE effect also does this)
-            if (['completed', 'failed', 'canceled'].includes(updatedTask.status.state)) {
-               fetchArtifacts(updatedTask.id);
-            }
-            return updatedTask;
-          });
-        }
-      } catch (error) {
-        console.error('Error polling task status:', error);
-        // Optionally set an error state or stop polling on repeated errors
-      }
-    };
-
-    const intervalId = setInterval(pollStatus, 5000); // Poll every 5 seconds
-
-    // Cleanup function to clear the interval when the component unmounts
-    // or when the dependencies change (task ID, status, agent ID)
-    return () => {
-       console.log(`Stopping polling for task ${currentTask.id}`);
-       clearInterval(intervalId);
-    };
-  }, [currentTask?.id, currentTask?.status.state, selectedAgentId]); // Dependencies for the polling effect
+  // --- Remove Polling Effect ---
+  // useEffect(() => { ... polling logic removed ... }, [currentTask?.id, currentTask?.status.state, selectedAgentId]);
 
 
-  // Implement fetching artifacts
+  // Implement fetching artifacts (keep for now, might be triggered differently)
   const fetchArtifacts = async (taskId: string) => {
      if (!selectedAgentId) return;
+     // TODO: Replace with GraphQL query if artifacts are exposed via GraphQL
+     console.log("fetchArtifacts needs to be reimplemented with GraphQL query.");
+     setError("Fetching artifacts not implemented yet.");
+     /*
      try {
         const response = await axios.post('/api/tasks/artifact', {
            agentId: selectedAgentId,
@@ -318,8 +303,9 @@ const AgentInteraction: React.FC = () => {
         const fetchedArtifacts: Artifact[] = response.data;
         setArtifacts(fetchedArtifacts);
      } catch (error) {
-        console.error('Error fetching artifacts:', error);
+        console.error('Error fetching artifacts (axios - commented out):', error);
      }
+     */
    };
 
    const handleDuplicateClick = () => {
@@ -523,16 +509,47 @@ const AgentInteraction: React.FC = () => {
             </div>
           )}
 
-          {/* TODO: Display streaming output */}
+          {/* Display streaming output (keep if separate from logs) */}
           {streamingOutput && (
              <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-                <h3>Streaming Output</h3>
+                <h3>Task Output</h3>
                 <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{streamingOutput}</pre>
              </div>
           )}
 
+          {/* Display Logs */}
+          <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
+             <h3>Agent Logs</h3>
+             <div
+               ref={logContainerRef}
+               style={{
+                 height: '300px',
+                 overflowY: 'scroll',
+                 backgroundColor: '#f8f9fa',
+                 padding: '10px',
+                 fontFamily: 'monospace',
+                 fontSize: '0.9em',
+                 border: '1px solid #e9ecef',
+                 borderRadius: '4px',
+               }}
+             >
+               {agentLogEntries.length === 0 ? (
+                 <p style={{ color: '#6c757d' }}>Waiting for logs...</p>
+               ) : (
+                 agentLogEntries.map((log, index) => (
+                   <div key={index} style={{ color: log.stream === 'stderr' ? '#dc3545' : '#212529', marginBottom: '2px' }}>
+                     <span style={{ color: '#6c757d', marginRight: '10px' }}>
+                       {new Date(log.timestamp).toLocaleTimeString()} [{log.stream.toUpperCase()}]
+                     </span>
+                     {log.line}
+                   </div>
+                 ))
+               )}
+             </div>
+          </div>
 
-          {/* TODO: Display artifacts */}
+
+          {/* Display artifacts (keep for now) */}
            {artifacts.length > 0 && (
              <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
                 <h3>Artifacts</h3>

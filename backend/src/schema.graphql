@@ -72,12 +72,27 @@ type Task {
   artifacts: JSONObject # Simplified to JSONObject mapping artifactId -> Artifact (without data)
 }
 
-# --- Queries and Mutations ---
+# --- Log Streaming Types ---
+
+scalar DateTime # Add scalar for timestamp
+
+type LogEntry {
+  timestamp: DateTime!
+  stream: String! # "stdout" or "stderr"
+  line: String!
+}
+
+# --- Queries, Mutations, and Subscriptions ---
 
 type Query {
   agents: [Agent!]!
   agentLogs(agentId: ID!): [String!]
   listTasks(agentId: ID!): [Task!]! # Added query to list tasks for an agent
+}
+
+type Subscription {
+  agentLogs(agentId: ID!): LogEntry! # Subscription for real-time logs
+  # Add other subscriptions like taskUpdates here if needed
 }
 
 type Mutation {
@@ -120,3 +135,7 @@ input InputMessage {
 # Removed OrchestrationWorkflow type
 
 # Removed Query extension for getWorkflowStatus
+
+# Add definition for DateTime scalar if not already present globally
+# (If using a library like graphql-scalars, this might not be needed here)
+# scalar DateTime

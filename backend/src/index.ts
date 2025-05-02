@@ -1,20 +1,22 @@
-import { createServer } from './server';
-import { AgentManager } from './services/agentManager';
-// Removed Orchestrator import
-import { registerProxyRoutes } from './routes/proxy';
-import { setupApolloServer } from './graphql/server';
+import { createServer } from './server.js'; // Add .js extension
+import { AgentManager } from './services/agentManager.js'; // Add .js extension
+import { PubSub } from 'graphql-subscriptions'; // Import PubSub
+import { registerProxyRoutes } from './routes/proxy.js'; // Add .js extension
+import { setupApolloServer } from './graphql/server.js'; // Add .js extension
 
 const start = async () => {
-  // Removed orchestrator instantiation
-  // Updated AgentManager instantiation (no args)
-  const agentManager = new AgentManager();
+  // Create a single PubSub instance
+  const pubsub = new PubSub(); // Note: We might need to type this later if issues persist
+
+  // Instantiate AgentManager, passing the pubsub instance
+  const agentManager = new AgentManager(pubsub);
 
   const fastify = createServer();
 
   registerProxyRoutes(fastify, agentManager);
 
-  // Updated setupApolloServer call (removed orchestrator)
-  await setupApolloServer(fastify, agentManager);
+  // Pass the pubsub instance to setupApolloServer
+  await setupApolloServer(fastify, agentManager, pubsub);
 
   try {
     await fastify.listen({ port: 3000 });

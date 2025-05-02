@@ -1,8 +1,8 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { Readable } from 'stream';
 import { AxiosResponse } from 'axios';
-import { AgentManager } from '../services/agentManager';
-import { A2AClient } from '../a2aClient';
+import { AgentManager } from '../services/agentManager.js'; // Add .js extension
+import { A2AClient } from '../a2aClient.js'; // Add .js extension
 
 interface TaskRequestBody {
   agentId: string;
@@ -16,7 +16,7 @@ export function registerProxyRoutes(fastify: FastifyInstance, agentManager: Agen
       reply.code(400).send({ error: 'Missing agentId' });
       return null;
     }
-    const agent = agentManager.getAgents().find(a => a.id === agentId);
+    const agent = agentManager.getAgents().find((a: any) => a.id === agentId); // Add type 'any' to 'a' for now
     if (!agent) {
       reply.code(404).send({ error: `Agent with ID ${agentId} not found` });
       return null;

@@ -1,0 +1,4 @@
+
+> build
+> tsc --project tsconfig.json && cp src/schema.graphql dist/graphql/
+
