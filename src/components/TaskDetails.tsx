@@ -93,42 +93,6 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
 
   return (
     <>
-      {currentTask && (
-        <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-          <h3>
-             {/* Use top-level state */}
-             Task Status: <span style={getStatusStyle(currentTask.state)}>{currentTask.state || 'UNKNOWN'}</span>
-           </h3>
-           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-             <p style={{ margin: 0 }}>Task ID: {currentTask.id}</p>
-             <button
-               onClick={onDuplicateClick}
-               disabled={!canDuplicate}
-               title={duplicateTitle}
-               style={{
-                 padding: '5px 10px',
-                 fontSize: '0.8em',
-                 backgroundColor: '#6c757d',
-                 color: 'white',
-                 border: 'none',
-                 borderRadius: '4px',
-                 cursor: 'pointer',
-                 opacity: !canDuplicate ? 0.5 : 1,
-               }}
-             >
-               Duplicate Task
-             </button>
-           </div>
-           {/* Display top-level error field from GraphQL Task type */}
-           {currentTask.error && (
-              <div style={{ marginTop: '10px', padding: '10px', border: '1px dashed #f8d7da', borderRadius: '4px', background: '#f8d7da', color: '#721c24' }}>
-                 <h4>Error:</h4>
-                 <p style={{ whiteSpace: 'pre-wrap', margin: '5px 0' }}>{currentTask.error}</p>
-             </div>
-          )}
-           {/* TODO: Display input/output messages if needed, based on GraphQL Task structure */}
-        </div>
-      )}
 
       {/* Display streaming output */}
       {streamingOutput && (

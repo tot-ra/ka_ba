@@ -239,6 +239,38 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
            });
         }
       },
+      deleteTask: async (_parent: any, { agentId, taskId }: { agentId: string, taskId: string }, context: ApolloContext, _info: any): Promise<boolean> => {
+        const { agentManager } = context;
+        console.log(`[GraphQL deleteTask] Received request for agent ${agentId}, task ${taskId}`);
+
+        // 1. Find the agent
+        const agent = agentManager.getAgents().find((a: Agent) => a.id === agentId);
+        if (!agent) {
+          console.error(`[GraphQL deleteTask] Agent with ID ${agentId} not found.`);
+          throw new GraphQLError(`Agent with ID ${agentId} not found.`, {
+            extensions: { code: 'AGENT_NOT_FOUND' },
+          });
+        }
+        console.log(`[GraphQL deleteTask] Found agent: ${agent.name} at ${agent.url}`);
+
+        // 2. Create A2A Client
+        const a2aClient = new A2AClient(agent.url);
+
+        // 3. Call delete task on the agent
+        try {
+          console.log(`[GraphQL deleteTask] Calling a2aClient.deleteTask for task ${taskId} on agent ${agentId}`);
+          const success = await a2aClient.deleteTask(taskId);
+          console.log(`[GraphQL deleteTask] a2aClient.deleteTask for task ${taskId} returned: ${success}`);
+          return success;
+        } catch (error: any) {
+          console.error(`[GraphQL deleteTask] Error calling a2aClient.deleteTask for task ${taskId} on agent ${agentId}:`, error);
+          // Wrap error in GraphQLError
+          throw new GraphQLError(`Failed to delete task ${taskId} on agent ${agentId}: ${error.message}`, {
+            extensions: { code: 'AGENT_COMMUNICATION_ERROR', agentId: agentId },
+            originalError: error
+          });
+        }
+      },
      },
       Subscription: {
         agentLogs: {

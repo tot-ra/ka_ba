@@ -4,6 +4,7 @@ import { useAgent } from '../contexts/AgentContext';
 import AgentLogs from '../components/AgentLogs';
 import TaskInputForm from '../components/TaskInputForm';
 import TaskDetails from '../components/TaskDetails';
+import { gql } from '@apollo/client'; // Import gql if not already (needed for defining mutation)
 import TaskList from '../components/TaskList';
 import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the utility function
 // Import shared types
@@ -45,6 +46,13 @@ const AgentInteraction: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(false);
   const [listError, setListError] = useState<string | null>(null);
+
+  // --- GraphQL Mutation Definition ---
+  const DELETE_TASK_MUTATION = `
+    mutation DeleteTask($agentId: ID!, $taskId: ID!) {
+      deleteTask(agentId: $agentId, taskId: $taskId)
+    }
+  `;
 
   // Function to fetch tasks
   const fetchTasks = useCallback(async () => {
@@ -103,6 +111,41 @@ const AgentInteraction: React.FC = () => {
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]); // fetchTasks is stable due to useCallback and selectedAgentId dependency
+
+  // --- Delete Task Handler ---
+  const handleDeleteTask = async (taskId: string) => {
+    if (!selectedAgentId) {
+      setError('Cannot delete task: No agent selected.');
+      return;
+    }
+
+    console.log(`[AgentInteraction] Attempting to delete task ${taskId} for agent ${selectedAgentId}`);
+    setIsLoading(true); // Reuse main loading state for simplicity
+    setError(null);
+
+    try {
+      const variables = { agentId: selectedAgentId, taskId };
+      const response = await sendGraphQLRequest<{ deleteTask: boolean }>(DELETE_TASK_MUTATION, variables);
+
+      if (response.errors) {
+        console.error(`[AgentInteraction] GraphQL errors deleting task ${taskId}:`, response.errors);
+        throw new Error(response.errors.map((e: any) => e.message).join(', '));
+      }
+
+      if (response.data?.deleteTask === true) {
+        console.log(`[AgentInteraction] Successfully deleted task ${taskId}. Refetching list...`);
+        await fetchTasks(); // Refetch the task list to update the UI
+      } else {
+        console.warn(`[AgentInteraction] Delete mutation for task ${taskId} did not return true. Response:`, response);
+        setError(`Failed to delete task ${taskId}. Agent might have failed or task already deleted.`);
+      }
+    } catch (err: any) {
+      console.error(`[AgentInteraction] Error deleting task ${taskId}:`, err);
+      setError(`Failed to delete task: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Handlers that remain in AgentInteraction
   const handleSendTask = async (e: React.FormEvent) => {
@@ -348,6 +391,7 @@ const AgentInteraction: React.FC = () => {
                   tasks={tasks}
                   loading={listLoading}
                   error={listError}
+                  onDeleteTask={handleDeleteTask} // Pass the delete handler down
                   // Pass fetchTasks down if TaskList needs a manual refresh button (optional)
                   // onRefresh={fetchTasks}
                 />

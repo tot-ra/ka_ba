@@ -108,6 +108,7 @@ type Mutation {
     historyLength: Int # Optional history length
     metadata: JSONObject # Optional metadata
   ): Task! # Returns the initial task state
+  deleteTask(agentId: ID!, taskId: ID!): Boolean! # Added mutation to delete a task
   # Removed startWorkflow
   # Removed stopWorkflow
 }

@@ -341,6 +341,8 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 					a2a.TasksArtifactHandler(taskStore)(w, handlerReq)
 				case "tasks/list": // Handle the list method
 					a2a.TasksListHandler(taskStore)(w, handlerReq)
+				case "tasks/delete": // Handle the delete method
+					a2a.TasksDeleteHandler(taskStore)(w, handlerReq)
 				default:
 					log.Printf("Method not found: %s", req.Method)
 					writeJSONRPCError(w, req.ID, jsonRPCMethodNotFoundCode, "Method not found", req.Method)

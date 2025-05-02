@@ -254,7 +254,27 @@ export class A2AClient {
       return response.result as Task[];
     } else {
       console.error(`[A2AClient] Invalid result format for listTasks: Expected array, got`, response.result);
-      return null;
-    }
-  }
+			return null;
+		}
+	}
+
+	// Method to delete a task via JSON-RPC
+	async deleteTask(taskId: string): Promise<boolean> {
+		console.log(`[A2AClient] Sending JSON-RPC request for 'tasks/delete' for task ${taskId} to ${this.agentUrl}`);
+		const response = await this.sendRequest('tasks/delete', { id: taskId });
+
+		if (response.error) {
+			console.error(`[A2AClient] Error in deleteTask response for task ${taskId}:`, response.error);
+			return false; // Return false on error
+		}
+
+		// Check if the result is explicitly true
+		if (response.result === true) {
+			console.log(`[A2AClient] Successfully deleted task ${taskId} via agent.`);
+			return true;
+		} else {
+			console.warn(`[A2AClient] deleteTask for task ${taskId} returned unexpected result:`, response.result);
+			return false; // Return false if result is not explicitly true
+		}
+	}
 }

@@ -303,6 +303,63 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 	}
 }
 
+// TaskDeleteParams defines the structure for parameters of "tasks/delete".
+type TaskDeleteParams struct {
+	ID string `json:"id"`
+}
+
+// TasksDeleteHandler handles the "tasks/delete" JSON-RPC method.
+func TasksDeleteHandler(taskStore TaskStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 1. Decode the generic JSON-RPC Request
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Cannot read body"}, "id": null}`, http.StatusOK)
+			return
+		}
+		defer r.Body.Close()
+
+		var rpcReq JSONRPCRequest
+		if err := json.Unmarshal(body, &rpcReq); err != nil {
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Invalid JSON"}, "id": null}`, http.StatusOK)
+			return
+		}
+
+		if rpcReq.Jsonrpc != "2.0" || rpcReq.Method == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32600, Message: "Invalid Request"})
+			return
+		}
+
+		// 2. Decode the specific method parameters (`params`)
+		var params TaskDeleteParams
+		if err := json.Unmarshal(rpcReq.Params, &params); err != nil || params.ID == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: fmt.Sprintf("Invalid Params: %v or missing task ID", err)})
+			return
+		}
+
+		log.Printf("[TaskDelete %v] Received request for task %s.", rpcReq.ID, params.ID)
+
+		// 3. Business Logic
+		err = taskStore.DeleteTask(params.ID)
+		if err != nil {
+			if errors.Is(err, ErrTaskNotFound) {
+				// Task not found is not necessarily an error for delete, return success (true)
+				log.Printf("[TaskDelete %v] Task %s not found, considering deletion successful.", rpcReq.ID, params.ID)
+				sendJSONRPCResponse(w, rpcReq.ID, true, nil)
+			} else {
+				// Other errors (e.g., file system permission issues)
+				log.Printf("[TaskDelete %v] Error deleting task %s: %v", rpcReq.ID, params.ID, err)
+				sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to delete task", Data: err.Error()})
+			}
+			return
+		}
+
+		// 4. Send successful JSON-RPC Response
+		log.Printf("[TaskDelete %v] Successfully deleted task %s.", rpcReq.ID, params.ID)
+		sendJSONRPCResponse(w, rpcReq.ID, true, nil) // Return true for success
+	}
+}
+
 // TasksListHandler handles the "tasks/list" JSON-RPC method.
 func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

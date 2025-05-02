@@ -16,6 +16,7 @@ interface TaskListProps {
   tasks: Task[]; // Receive tasks as a prop
   loading: boolean; // Receive loading state as a prop
   error: string | null; // Receive error state as a prop
+  onDeleteTask: (taskId: string) => void; // Callback to delete a task
   // onRefresh?: () => void; // Optional prop for manual refresh
 }
 
@@ -72,8 +73,8 @@ const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; chi
 };
 
 
-// Destructure props including tasks, loading, error
-const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error }) => {
+// Destructure props including tasks, loading, error, and onDeleteTask
+const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onDeleteTask }) => {
   // Removed internal state for tasks, loading, error
 
   // Keep state related to the modal/history view
@@ -229,6 +230,18 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error }) =
                 title="Duplicate Task (Placeholder)"
               >
                 Duplicate
+              </button>
+              {/* Delete Button */}
+              <button
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to delete task ${task.id}?`)) {
+                    onDeleteTask(task.id); // Use destructured prop directly
+                  }
+                }}
+                style={{ padding: '3px 8px', fontSize: '0.8em', cursor: 'pointer', color: 'red', marginTop: '5px' }}
+                title="Delete Task"
+              >
+                Delete
               </button>
             </div>
           </li>
