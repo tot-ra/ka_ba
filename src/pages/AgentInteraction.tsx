@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Added useEffect, useCallback
 
 import { useAgent } from '../contexts/AgentContext';
 import AgentLogs from '../components/AgentLogs';
@@ -6,70 +6,26 @@ import TaskInputForm from '../components/TaskInputForm';
 import TaskDetails from '../components/TaskDetails';
 import TaskList from '../components/TaskList';
 import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the utility function
+// Import shared types
+import { Task, Artifact, TaskInputState as TaskInput, InputMessage, InputPart } from '../types';
 
-// --- GraphQL Type Definitions (align with TaskSubmitForm and schema) ---
-interface InputPart {
-  type: string; // 'text', 'file', 'data'
-  content: any; // Matches JSONObject in schema
-  metadata?: any;
-}
+// --- Removed local type definitions ---
+// interface InputPart { ... }
+// interface InputMessage { ... }
+// type TaskState = ...
+// interface Agent { ... } // Keep Agent if not defined globally
+// interface Message { ... }
+// interface TaskStatus { ... }
+// interface Artifact { ... }
+// interface Task { ... }
+// interface TaskInput { ... }
 
-interface InputMessage {
-  role: 'USER' | 'AGENT' | 'SYSTEM' | 'TOOL'; // Use uppercase enum values
-  parts: InputPart[];
-  metadata?: any;
-}
-
-// Matches the structure of the Task type returned by the GraphQL mutation
-// Use the existing Task interface below, ensure it aligns
-// interface GraphQLTaskResponse { ... } // Replaced by existing Task interface
-
-// --- End GraphQL Type Definitions ---
-
-
-// Keep necessary interfaces (ensure Task aligns with GraphQL response)
+// Keep Agent definition if it's specific to this component's needs or not in types.ts
 interface Agent {
   id: string;
   url: string;
   name?: string;
   description?: string;
-}
-
-interface Message {
-  role: 'user' | 'agent';
-  parts: any[]; // TODO: Define Part interface
-  metadata?: any;
-}
-
-interface TaskStatus {
-  state: 'submitted' | 'working' | 'input-required' | 'completed' | 'canceled' | 'failed' | 'unknown';
-  message?: Message | null;
-  timestamp: string;
-}
-
-interface Artifact {
-  name?: string | null;
-  description?: string | null;
-  parts: any[]; // TODO: Define Part interface
-  index: number;
-  append?: boolean | null;
-  lastChunk?: boolean | null;
-  metadata?: any;
-}
-
-interface Task {
-  id: string;
-  sessionId?: string | null;
-  status: TaskStatus;
-  artifacts?: Artifact[] | null;
-  history?: Message[] | null;
-  metadata?: any;
-}
-
-// TaskInput interface for the form state
-interface TaskInput {
-  type: 'text' | 'file' | 'data';
-  content: string | File | any; // File object for file type, string for others initially
 }
 
 
@@ -78,15 +34,77 @@ const AgentInteraction: React.FC = () => {
 
   // State managed by AgentInteraction
   const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' }); // State for the form, passed down
-  const [currentTask, setCurrentTask] = useState<Task | null>(null);
+  const [currentTask, setCurrentTask] = useState<Task | null>(null); // Details of the *last created/interacted* task
   const [streamingOutput, setStreamingOutput] = useState(''); // Keep for TaskDetails
   const [artifacts, setArtifacts] = useState<Artifact[]>([]); // Keep for TaskDetails
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false); // Loading state for mutations (create/input)
+  const [error, setError] = useState<string | null>(null); // Error state for mutations
   const [activeTab, setActiveTab] = useState<'logs' | 'tasks'>('tasks'); // State for tabs
 
+  // State for the Task List
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [listLoading, setListLoading] = useState<boolean>(false);
+  const [listError, setListError] = useState<string | null>(null);
 
-  // Handlers that remain in AgentInteraction as they manage its state
+  // Function to fetch tasks
+  const fetchTasks = useCallback(async () => {
+    if (!selectedAgentId) {
+      setTasks([]);
+      setListError(null);
+      return;
+    }
+    setListLoading(true);
+    setListError(null);
+    console.log(`[AgentInteraction] Fetching tasks for agent: ${selectedAgentId}`);
+    try {
+      const graphqlQuery = {
+        query: `
+          query ListTasks($agentId: ID!) {
+            listTasks(agentId: $agentId) {
+              # Match fields needed by TaskList component
+              id
+              state
+              input { role parts } # Simplified parts for list view
+              output { role parts } # Simplified parts for list view
+              error
+              createdAt
+              updatedAt
+              # artifacts # Maybe omit artifacts from list view for performance?
+            }
+          }
+        `,
+        variables: { agentId: selectedAgentId },
+      };
+      const response = await sendGraphQLRequest<{ listTasks: Task[] }>(graphqlQuery.query, graphqlQuery.variables);
+
+      if (response.errors) {
+        console.error("[AgentInteraction] GraphQL errors fetching list:", response.errors);
+        throw new Error(response.errors.map((e: any) => e.message).join(', '));
+      }
+      const data = response.data?.listTasks;
+      if (!data || !Array.isArray(data)) {
+        console.error("[AgentInteraction] Received invalid or missing data from listTasks query:", response);
+        throw new Error('Invalid data format received from server.');
+      }
+      console.log(`[AgentInteraction] Received ${data.length} tasks.`);
+      setTasks(data);
+      // Ensure this log is present
+      console.log('[AgentInteraction fetchTasks] Tasks state updated:', data);
+    } catch (err: any) {
+      console.error("[AgentInteraction] Error fetching tasks:", err);
+      setListError(err.message);
+      setTasks([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, [selectedAgentId]); // Dependency: refetch if agent changes
+
+  // Fetch tasks initially and when agent changes
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]); // fetchTasks is stable due to useCallback and selectedAgentId dependency
+
+  // Handlers that remain in AgentInteraction
   const handleSendTask = async (e: React.FormEvent) => {
     e.preventDefault();
     // Clear previous logs when starting a new task? Maybe not, keep context? Let's keep them for now.
@@ -186,14 +204,16 @@ const AgentInteraction: React.FC = () => {
       } else if (response.data?.createTask) {
         // Success case
         const createdTask = response.data.createTask;
-        setCurrentTask(createdTask); // Update the current task state
+        setCurrentTask(createdTask); // Update the *current* task state (for details view)
         console.log('Task created:', createdTask);
         setError(null); // Clear previous errors
+        // --- ADDED: Refetch the task list ---
+        await fetchTasks();
         // Optionally clear the input form:
         // setTaskInput({ type: 'text', content: '' });
       } else {
         // Handle unexpected response structure
-        console.error('Unexpected GraphQL response structure:', response);
+        console.error('[GraphQL createTask] Unexpected GraphQL response structure:', response);
         setError('Received an unexpected response structure from the server.');
       }
     } catch (error: any) {
@@ -207,7 +227,8 @@ const AgentInteraction: React.FC = () => {
   };
 
   const handleInputRequired = async () => {
-     if (!currentTask || currentTask.status.state !== 'input-required') return;
+     // Use top-level state from the shared Task type
+     if (!currentTask || currentTask.state !== 'INPUT_REQUIRED') return; // Changed 'input-required' to uppercase enum
 
      setIsLoading(true);
      setError(null);
@@ -236,16 +257,19 @@ const AgentInteraction: React.FC = () => {
 
    // This handler needs access to setTaskInput, so it stays here
    const handleDuplicateClick = () => {
-     if (!currentTask || !currentTask.history || currentTask.history.length === 0) {
-       console.warn('Cannot duplicate: Task history not available.');
-       setError('Cannot duplicate: Task history not available.');
+     // Use 'input' field from the shared Task type instead of 'history'
+     if (!currentTask || !currentTask.input || currentTask.input.length === 0) {
+       console.warn('Cannot duplicate: Task input not available.');
+       setError('Cannot duplicate: Task input not available.');
        return;
      }
 
-     const originalMessage = currentTask.history[0];
-     if (originalMessage.role !== 'user' || !originalMessage.parts || originalMessage.parts.length === 0) {
-       console.warn('Cannot duplicate: First history message is not a valid user prompt.');
-       setError('Cannot duplicate: First history message is not a valid user prompt.');
+     // Assuming the first message in 'input' is the one to duplicate
+     const originalMessage = currentTask.input[0];
+     // Use shared MessageRole enum 'USER'
+     if (originalMessage.role !== 'USER' || !originalMessage.parts || originalMessage.parts.length === 0) {
+       console.warn('Cannot duplicate: First input message is not a valid user prompt.');
+       setError('Cannot duplicate: First input message is not a valid user prompt.');
        return;
      }
 
@@ -288,6 +312,9 @@ const AgentInteraction: React.FC = () => {
    };
 
 
+  // Ensure this log is present before the return statement
+  console.log('[AgentInteraction render] Tasks state before passing to TaskList:', tasks);
+
   return (
     <div style={{ fontFamily: 'sans-serif' }}>
 
@@ -315,8 +342,16 @@ const AgentInteraction: React.FC = () => {
 
             {activeTab === 'tasks' && (
               <>
-                <TaskList agentId={selectedAgentId} />
-                  
+                {/* Pass tasks and loading/error state to TaskList */}
+                <TaskList
+                  agentId={selectedAgentId}
+                  tasks={tasks}
+                  loading={listLoading}
+                  error={listError}
+                  // Pass fetchTasks down if TaskList needs a manual refresh button (optional)
+                  // onRefresh={fetchTasks}
+                />
+
                 <TaskInputForm
                   taskInput={taskInput}
                   setTaskInput={setTaskInput}
@@ -331,7 +366,9 @@ const AgentInteraction: React.FC = () => {
                 <TaskDetails
                   currentTask={currentTask}
                   streamingOutput={streamingOutput}
-                  artifacts={artifacts}
+                  // Temporarily cast artifacts to 'any' to resolve type mismatch.
+                  // TODO: Investigate TaskDetails props and fix Artifact type properly.
+                  artifacts={artifacts as any}
                   onDuplicateClick={handleDuplicateClick}
                 />
               </>

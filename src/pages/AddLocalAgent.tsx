@@ -11,7 +11,7 @@ const AddLocalAgent: React.FC = () => {
   const [spawnAgentConfig, setSpawnAgentConfig] = useState({
     model: 'qwen3-30b-a3b',
     systemPrompt: 'You are an expert software engineer.',
-    apiBaseUrl: 'http://localhost:1234',
+    apiBaseUrl: 'http://192.168.1.205:1234',
     port: '',
     name: 'Software Engineer',
     description: 'An AI assistant specialized in software engineering tasks.',

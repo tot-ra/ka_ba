@@ -1,49 +1,26 @@
-import React, { useState, useEffect } from 'react';
-// Removed direct axios import
-import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the utility function
+import React, { useState } from 'react'; // Removed useEffect
+// Import shared types needed by this component
+import { Task, TaskHistory } from '../types';
 
-// --- Interfaces matching GraphQL Schema ---
-type TaskState = "SUBMITTED" | "WORKING" | "INPUT_REQUIRED" | "COMPLETED" | "FAILED" | "CANCELED";
-type MessageRole = "SYSTEM" | "USER" | "ASSISTANT" | "TOOL";
-
-// Using 'any' for parts to match JSONObject scalar for now
-interface Message {
-  role: MessageRole;
-  parts: any[]; // Array of parts (simplified)
-  toolCalls?: any; // Placeholder
-  toolCallId?: string;
-}
-
-interface Artifact {
-  id: string;
-  type: string;
-  filename?: string;
-}
-
-interface Task {
-  id: string;
-  state: TaskState;
-  input?: Message[];
-  output?: Message[];
-  error?: string;
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
-  artifacts?: { [key: string]: Artifact }; // Map of artifact ID to Artifact
-}
-
-// Define a more detailed structure for task history if available
-// Placeholder for now - might reuse Task interface fields
-interface TaskHistory {
-  messages: Array<{ role: string; content: string; parts?: any[]; timestamp: string }>; // Example structure
-  artifacts: Array<{ name: string; type: string; uri: string }>; // Example structure
-}
+// --- Removed local type definitions ---
+// type TaskState = ...
+// type MessageRole = ...
+// interface Message { ... }
+// interface Artifact { ... }
+// interface Task { ... }
+// interface TaskHistory { ... }
 
 
 interface TaskListProps {
-  agentId: string | null; // ID of the agent whose tasks we want to show
+  agentId: string | null; // Still needed to know *which* agent's tasks are shown
+  tasks: Task[]; // Receive tasks as a prop
+  loading: boolean; // Receive loading state as a prop
+  error: string | null; // Receive error state as a prop
+  // onRefresh?: () => void; // Optional prop for manual refresh
 }
 
 // Basic Modal Component (can be moved to a separate file later)
+// ... (Modal component remains the same) ...
 const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
   if (!isOpen) return null;
 
@@ -95,85 +72,18 @@ const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; chi
 };
 
 
-const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+// Destructure props including tasks, loading, error
+const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error }) => {
+  // Removed internal state for tasks, loading, error
+
+  // Keep state related to the modal/history view
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [taskHistory, setTaskHistory] = useState<TaskHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-
-  useEffect(() => {
-    if (!agentId) {
-      setTasks([]); // Clear tasks if no agent is selected
-      return;
-    }
-
-    const fetchTasks = async () => {
-      setLoading(true);
-      setError(null);
-      console.log(`Fetching tasks for agent: ${agentId}`);
-      try {
-        const graphqlQuery = {
-          query: `
-            query ListTasks($agentId: ID!) {
-              listTasks(agentId: $agentId) {
-                id
-                state
-                input {
-                  role
-                  parts # Fetching parts as JSONObject
-                }
-                output {
-                  role
-                  parts
-                }
-                error
-                createdAt
-                updatedAt
-                artifacts # Fetching artifacts map
-              }
-            }
-          `,
-          variables: { agentId },
-        };
-
-        // Use the utility function
-        // Specify the expected shape of the data part of the response
-        const response = await sendGraphQLRequest<{ listTasks: Task[] }>(graphqlQuery.query, graphqlQuery.variables);
-
-        // Check for GraphQL errors returned by the utility
-        if (response.errors) {
-          console.error("GraphQL errors:", response.errors);
-          throw new Error(response.errors.map((e: any) => e.message).join(', '));
-        }
-
-        // Access the data correctly
-        const data = response.data?.listTasks;
-
-        // Basic validation
-        if (!data || !Array.isArray(data)) {
-          console.error("Received invalid or missing data from listTasks query:", response);
-          throw new Error('Invalid data format received from server.');
-        }
-
-        console.log(`Received ${data.length} tasks.`);
-        setTasks(data);
-
-      } catch (err: any) { // Catch errors thrown by the utility
-        console.error("Error fetching tasks via GraphQL utility:", err);
-        setError(err.message); // The utility formats the error message
-        setTasks([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTasks();
-  }, [agentId]); // Re-fetch when agentId changes
+  // Removed useEffect hook for fetching tasks
 
   const handleViewHistory = async (task: Task) => {
     setSelectedTask(task);
@@ -223,9 +133,11 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
 
 
   if (!agentId) {
+    // Use loading/error props passed down from parent
     return <div>Select an agent to view tasks.</div>;
   }
 
+  // Use the loading and error props passed down from AgentInteraction
   if (loading) {
     return <div>Loading tasks...</div>;
   }

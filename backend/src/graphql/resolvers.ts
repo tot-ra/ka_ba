@@ -63,14 +63,24 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
 
           // Map snake_case fields from agentManager to camelCase fields in GraphQL schema
           // AND convert state to uppercase (accessing top-level property)
+          // Helper function to map messages and convert roles
+          const mapMessages = (messages: any[] | undefined | null): any[] => {
+            if (!messages) return [];
+            return messages.map(msg => ({
+              ...msg,
+              role: msg.role?.toUpperCase(), // Convert role to uppercase
+              // Keep parts as is for now, assuming GraphQL handles JSONObject
+            }));
+          };
+
           const mappedTasks = validTasks.map((task: any) => ({
             id: task.id,
-            state: task.state.toUpperCase(), // Access top-level state
-            input: task.input, // Assuming input matches directly
-            output: task.output, // Assuming output matches directly (might need mapping if structure differs)
-            error: task.error, // Assuming error matches directly (Note: Task interface doesn't have top-level error)
-            createdAt: task.created_at, // Map snake_case to camelCase
-            updatedAt: task.updated_at, // Map snake_case to camelCase
+            state: task.state.toUpperCase(), // Convert state to uppercase
+            input: mapMessages(task.input), // Map input messages
+            output: mapMessages(task.output), // Map output messages
+            error: task.error,
+            createdAt: task.created_at,
+            updatedAt: task.updated_at,
             artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
           }));
 
@@ -154,8 +164,9 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
 
         // --- 2. Transform Input Message ---
         // Basic transformation assuming input Part.content structure matches output Part structure
+        // Force the role to 'user' for the initial message sent to the agent.
         const taskMessage: Message = {
-          role: inputMessage.role,
+          role: 'user', // Force role to 'user'
           parts: inputMessage.parts.map(part => ({
             type: part.type, // Pass type through
             // Spread the content object directly; assumes keys match (e.g., { type: 'text', content: { text: 'hello' } })

@@ -1,6 +1,7 @@
 package a2a
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -129,10 +130,16 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: "Invalid Params: Message has empty parts array"})
 			return
 		}
+		// ADDED: Explicitly check if the initial message role is 'user'
+		if params.Message.Role != RoleUser { // Assuming RoleUser is defined in task.go as "user"
+			log.Printf("[TaskSend %v] Invalid role '%s' for initial task message. Expected 'user'.", rpcReq.ID, params.Message.Role)
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: fmt.Sprintf("Invalid Params: Initial task message role must be 'user', but received '%s'", params.Message.Role)})
+			return
+		}
 		// Add more detailed part validation if needed (similar to previous version)
 		// ... (validation logic for parts can be added here) ...
 
-		log.Printf("[TaskSend %v] Received valid JSON-RPC request.", rpcReq.ID)
+		log.Printf("[TaskSend %v] Received valid JSON-RPC request with role '%s'.", rpcReq.ID, params.Message.Role) // Updated log
 
 		// 4. Execute the business logic (create and start task)
 		// We need to wrap the single message in an array for CreateTask if it still expects []Message
@@ -146,10 +153,11 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 			return
 		}
 
-		// Start task execution asynchronously
-		taskExecutor.ExecuteTask(task, r.Context()) // Pass request context
+		// Start task execution asynchronously using a background context
+		// so it's not cancelled when the initial HTTP request closes.
+		go taskExecutor.ExecuteTask(task, context.Background()) // Use background context
 
-		log.Printf("[TaskSend %v] Task %s created successfully.", rpcReq.ID, task.ID)
+		log.Printf("[TaskSend %v] Task %s created and execution started.", rpcReq.ID, task.ID)
 
 		// 5. Construct and send the A2A-compliant JSON-RPC Response
 		// Define the A2A TaskStatus structure for the response
