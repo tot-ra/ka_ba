@@ -25,8 +25,7 @@ const AgentManagement: React.FC = () => {
   const navigate = useNavigate();
   // Use context for agents and selectedAgentId
   const { agents, selectedAgentId, setSelectedAgentId, fetchAgents: fetchAgentsFromContext, loadingAgents, agentError } = useAgent();
-  const [agentLogs, setAgentLogs] = useState<string[]>([]); // Restore state for historical logs
-  const [loadingLogs, setLoadingLogs] = useState<boolean>(false); // Restore state for historical logs
+  // Removed agentLogs and loadingLogs state
 
   useEffect(() => {
     // Fetch agents using context function on mount
@@ -61,36 +60,12 @@ const AgentManagement: React.FC = () => {
     */
   }, [fetchAgentsFromContext]); // Depend on context fetch function
 
-  // Restore function to fetch historical logs for the selected agent
-  const fetchAgentLogs = async (agentId: string) => {
-    setLoadingLogs(true);
-    setAgentLogs([]); // Clear previous logs
-    try {
-      const response = await axios.post('http://localhost:3000/graphql', {
-        query: `
-          query GetAgentLogs($agentId: ID!) {
-            agentLogs(agentId: $agentId)
-          }
-        `,
-        variables: { agentId },
-      });
-      if (response.data.data.agentLogs) {
-        setAgentLogs(response.data.data.agentLogs);
-      } else {
-        setAgentLogs(['No historical logs available or agent not found.']); // Provide feedback
-      }
-    } catch (error) {
-      console.error('Error fetching historical agent logs:', error);
-      setAgentLogs(['Error fetching historical logs.']); // Provide error feedback
-    } finally {
-      setLoadingLogs(false);
-    }
-  };
+  // Removed fetchAgentLogs function
 
   const handleSelectAgent = (agentId: string) => {
     setSelectedAgentId(agentId); // Use context setter
     console.log('[AgentManagement] Selected agent:', agentId);
-    fetchAgentLogs(agentId); // Fetch historical logs when agent is selected
+    // No longer fetching historical logs here
   };
 
   const handleStopAgent = async (agentId: string) => {
@@ -182,20 +157,9 @@ const AgentManagement: React.FC = () => {
               <TaskList agentId={selectedAgentId} />
             </div>
 
-            {/* Historical Logs Section */}
-            <div className={styles.logsSection}>
-              <h3 className={styles.logsTitle}>Historical Logs</h3>
-              {loadingLogs ? (
-                <p>Loading historical logs...</p>
-              ) : (
-                <pre className={styles.logsContent}>
-                  {agentLogs.length > 0 ? agentLogs.join('\n') : 'No historical logs to display.'}
-                </pre>
-              )}
-            </div>
+            {/* Removed Historical Logs Section */}
 
-            {/* Render AgentInteraction component for real-time logs */}
-            {/* AgentInteraction now handles its own display including title */}
+            {/* Render AgentInteraction component - it now handles all logs */}
             <AgentInteraction />
 
           </> /* End of Fragment */
