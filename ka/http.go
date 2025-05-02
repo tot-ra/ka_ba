@@ -198,6 +198,7 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 	http.HandleFunc("/tasks/input", applyAuth(a2a.TasksInputHandler(taskExecutor)))
 	http.HandleFunc("/tasks/pushNotification/set", applyAuth(a2a.TasksPushNotificationSetHandler(taskStore)))
 	http.HandleFunc("/tasks/artifact", applyAuth(a2a.TasksArtifactHandler(taskStore)))
+	http.HandleFunc("/tasks", applyAuth(a2a.TasksListHandler(taskStore))) // Add handler for listing tasks
 
 	// --- Start Server ---
 	listenAddr := fmt.Sprintf(":%d", port)

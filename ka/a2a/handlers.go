@@ -544,3 +544,36 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 	}
 }
+
+// TasksListHandler retrieves all tasks from the store.
+func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		log.Println("[TaskList] Received request to list all tasks.")
+
+		tasks, err := taskStore.ListTasks() // Use the existing ListTasks method
+		if err != nil {
+			log.Printf("[TaskList] Error retrieving tasks: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		if tasks == nil {
+			// Ensure we return an empty array, not null, if no tasks exist
+			tasks = []*Task{}
+		}
+
+		log.Printf("[TaskList] Retrieved %d tasks.", len(tasks))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(tasks); err != nil {
+			// Log error if encoding fails, but headers might already be sent
+			log.Printf("[TaskList] Error encoding tasks response: %v", err)
+		}
+	}
+}

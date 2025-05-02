@@ -97,5 +97,26 @@ class A2AClient {
         }
         return response.result;
     }
+    // Method to list all tasks from the agent
+    async listTasks() {
+        const listUrl = `${this.agentUrl}/tasks`; // Construct the URL for the GET request
+        console.log(`[A2AClient] Sending GET request to ${listUrl}`);
+        try {
+            // Make a GET request directly, not using JSON-RPC helper
+            const response = await axios_1.default.get(listUrl); // Expecting an array of Task objects
+            return response.data;
+        }
+        catch (error) {
+            console.error(`Error sending GET request to ${listUrl}:`, error);
+            // Handle potential errors (network, non-200 status, etc.)
+            if (axios_1.default.isAxiosError(error)) {
+                console.error(`[A2AClient] Axios error listing tasks: ${error.message}`, error.response?.status, error.response?.data);
+            }
+            else {
+                console.error(`[A2AClient] Non-Axios error listing tasks:`, error);
+            }
+            return null; // Return null on error
+        }
+    }
 }
 exports.A2AClient = A2AClient;

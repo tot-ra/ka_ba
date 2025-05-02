@@ -15,4 +15,14 @@ type Mutation {
   removeAgent(id: ID!): Boolean!
   spawnKaAgent(model: String, systemPrompt: String, apiBaseUrl: String, port: Int, name: String, description: String): Agent!
   stopKaAgent(id: ID!): Boolean!
+  # Removed startWorkflow
+  # Removed stopWorkflow
 }
+
+# --- Orchestration Types Removed ---
+
+# Removed JSONObject scalar
+# Removed OrchestrationStepInput input type
+# Removed OrchestrationWorkflow type
+
+# Removed Query extension for getWorkflowStatus

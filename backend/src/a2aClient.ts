@@ -44,15 +44,15 @@ interface DataPart {
   metadata?: any;
 }
 
-type Part = TextPart | FilePart | DataPart;
+export type Part = TextPart | FilePart | DataPart; // Export Part
 
-interface Message {
+export interface Message { // Export Message
   role: 'user' | 'agent';
   parts: Part[];
   metadata?: any;
 }
 
-interface TaskStatus {
+export interface TaskStatus { // Export TaskStatus
   state: 'submitted' | 'working' | 'input-required' | 'completed' | 'canceled' | 'failed' | 'unknown';
   message?: Message | null;
   timestamp: string; // date-time format
@@ -68,7 +68,7 @@ interface Artifact {
   metadata?: any;
 }
 
-interface Task {
+export interface Task { // Export Task
   id: string;
   sessionId?: string | null;
   status: TaskStatus;
@@ -104,8 +104,12 @@ interface JSONRPCStreamingResponse {
 }
 
 
-interface TaskSendParams {
-  id: string;
+export interface TaskSendParams { // Export TaskSendParams
+  // Note: The 'id' field here seems incorrect for *sending* a new task,
+  // as the agent usually generates the ID. The agent's /tasks/send
+  // endpoint likely expects the message and other params, not a pre-defined ID.
+  // Adjusting the client or the usage might be needed later.
+  id?: string; // Making ID optional for now, assuming agent generates it if missing.
   sessionId?: string;
   message: Message;
   pushNotification?: any; // TODO: Define PushNotificationConfig interface
@@ -231,5 +235,25 @@ export class A2AClient {
       return null;
     }
     return response.result as Artifact[];
+  }
+
+  // Method to list all tasks from the agent
+  async listTasks(): Promise<Task[] | null> {
+    const listUrl = `${this.agentUrl}/tasks`; // Construct the URL for the GET request
+    console.log(`[A2AClient] Sending GET request to ${listUrl}`);
+    try {
+      // Make a GET request directly, not using JSON-RPC helper
+      const response = await axios.get<Task[]>(listUrl); // Expecting an array of Task objects
+      return response.data;
+    } catch (error) {
+      console.error(`Error sending GET request to ${listUrl}:`, error);
+      // Handle potential errors (network, non-200 status, etc.)
+      if (axios.isAxiosError(error)) {
+        console.error(`[A2AClient] Axios error listing tasks: ${error.message}`, error.response?.status, error.response?.data);
+      } else {
+        console.error(`[A2AClient] Non-Axios error listing tasks:`, error);
+      }
+      return null; // Return null on error
+    }
   }
 }

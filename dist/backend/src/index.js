@@ -190,6 +190,34 @@ fastify.post('/api/tasks/artifact', async (request, reply) => {
         reply.code(500).send({ error: { code: -32603, message: 'Internal server error during artifact proxy', data: error.message } });
     }
 });
+// Add a route for listing tasks for a specific agent
+fastify.get('/api/agents/:agentId/tasks', async (request, reply) => {
+    const { agentId } = request.params;
+    if (!agentId) {
+        reply.code(400).send({ error: 'Missing agentId parameter' });
+        return;
+    }
+    const selectedAgent = agents.find(agent => agent.id === agentId);
+    if (!selectedAgent) {
+        reply.code(404).send({ error: `Agent with ID ${agentId} not found` });
+        return;
+    }
+    const a2aClient = new a2aClient_1.A2AClient(selectedAgent.url);
+    try {
+        const tasks = await a2aClient.listTasks(); // Use the new client method
+        if (tasks !== null) { // Check for null explicitly, as an empty array is valid
+            reply.send(tasks);
+        }
+        else {
+            // listTasks returns null on error
+            reply.code(500).send({ error: `Failed to list tasks from agent ${agentId}` });
+        }
+    }
+    catch (error) {
+        console.error(`Error proxying listTasks for agent ${agentId}:`, error);
+        reply.code(500).send({ error: { code: -32603, message: `Internal server error during listTasks proxy for agent ${agentId}`, data: error.message } });
+    }
+});
 const agents = [];
 let agentIdCounter = 1;
 // Function to notify other agents about changes in the agent list

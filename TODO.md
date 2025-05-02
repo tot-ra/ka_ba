@@ -1,17 +1,5 @@
-# TODO
-- [x] Fix agent spawning relative path issue (ENOENT error for `./ka/ka`) (Attempt 2: Used absolute path)
-
 # Kaba Project README Fix
-- [ ] Implement Task management of the agent on the frontend
-    - [x] Create UI component to display the list of tasks for a selected agent (`src/components/TaskList.tsx`).
-    - [ ] Implement API call to fetch tasks for a selected agent from the `ba` backend (Placeholder in `TaskList.tsx`).
-    - [x] Implement UI to display task details (ID, status, timestamps, latest message) (Basic implementation in `TaskList.tsx`).
-    - [ ] Implement UI to view full task history (messages, parts, artifacts) - potentially in a modal or separate view (Placeholder comment in `TaskList.tsx`).
-    - [x] Integrate the task list component into the agent details/management page (`src/pages/AgentManagement.tsx`).
-- [ ] Implement `ba` backend logic to execute orchestration workflows, using the A2A client to interact with multiple agents.
-- [ ] Implement `ba` backend API endpoints for managing orchestration workflows (create, view, start, stop).
-- [ ] Create frontend UI pages/components for orchestration management and visualization.
-- [ ] Implement frontend UI to define and configure orchestration workflows.
+
 - [ ] Implement frontend UI to monitor the execution of orchestration workflows across multiple agents.
 - [ ] Implement frontend UI to fetch and display the selected agent's capabilities from `/.well-known/agent.json`.
 - [ ] (Future) Implement `ba` backend API endpoint and frontend UI for managing push notification registrations (`tasks/pushNotification/set`, `tasks/pushNotification/get`).
@@ -32,6 +20,7 @@
 - [ ] Implement robust error handling and validation across frontend and backend.
 - [ ] Add comprehensive testing for both frontend and backend components.
 - [ ] Consider and document deployment strategies for `ba` and `ka` agents.
+
 
 
 # ka AI agent TODO
@@ -158,13 +147,10 @@ This is the implementation checklist for building the Go-based agent runtime to 
     - [ ] Implement proper error propagation
     - [ ] Add detailed error context for debugging
 - [ ] Write unit and integration tests for all components
-    - [ ] Increase test coverage for core components
-    - [ ] Add integration tests for HTTP endpoints
-    - [ ] Create mocks for external dependencies
-- [ ] Add conformance tests for A2A protocol compliance
-    - [ ] Implement test suite for A2A endpoints
-    - [ ] Add validation for request/response formats
-    - [ ] Create automated compliance checking
+- [ ] Increase test coverage for core components
+- [ ] Add integration tests for HTTP endpoints
+- [ ] Create mocks for external dependencies
+
 
 ## 11. Documentation
 - [ ] Document all public APIs and CLI commands
