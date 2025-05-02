@@ -85,8 +85,32 @@ type Mutation {
   removeAgent(id: ID!): Boolean!
   spawnKaAgent(model: String, systemPrompt: String, apiBaseUrl: String, port: Int, name: String, description: String): Agent!
   stopKaAgent(id: ID!): Boolean!
+  createTask(
+    agentId: ID # Optional: Specify agent directly
+    sessionId: String # Optional session ID
+    message: InputMessage! # The task message content
+    pushNotification: JSONObject # Optional push notification config
+    historyLength: Int # Optional history length
+    metadata: JSONObject # Optional metadata
+  ): Task! # Returns the initial task state
   # Removed startWorkflow
   # Removed stopWorkflow
+}
+
+# --- Input Types ---
+
+input InputPart {
+  type: String! # e.g., 'text', 'file', 'data'
+  # Use JSONObject for flexibility, mirroring the output types
+  # Specific fields like 'text', 'file', 'data' would be inside this object
+  content: JSONObject!
+  metadata: JSONObject
+}
+
+input InputMessage {
+  role: MessageRole!
+  parts: [InputPart!]!
+  metadata: JSONObject
 }
 
 # --- Orchestration Types Removed ---
