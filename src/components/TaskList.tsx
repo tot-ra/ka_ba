@@ -48,18 +48,47 @@ const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; chi
   if (!isOpen) return null;
 
   return (
+    // Modal backdrop
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
       backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
-      alignItems: 'center', justifyContent: 'center', zIndex: 1000
+      justifyContent: 'flex-end', // Align modal to the right
+      zIndex: 1000
     }}>
+      {/* Modal content */}
       <div style={{
-        backgroundColor: 'white', padding: '20px', borderRadius: '5px',
-        minWidth: '300px', maxWidth: '80%', maxHeight: '80%', overflowY: 'auto'
+        backgroundColor: 'white',
+        width: '70vw', // 70% of viewport width
+        height: '100vh', // Full viewport height
+        overflowY: 'auto', // Allow scrolling within the modal
+        display: 'flex',
+        flexDirection: 'column', // Stack elements vertically
+        padding: '20px', // Add padding inside
+        boxSizing: 'border-box', // Include padding in width/height calculation
       }}>
         <h2>{title}</h2>
-        <button onClick={onClose} style={{ position: 'absolute', top: '10px', right: '10px' }}>Close</button>
-        <div>{children}</div>
+        {/* Ensure children container allows scrolling if needed */}
+        <div style={{ flexGrow: 1, overflowY: 'auto' }}> {/* Allow this div to grow and scroll */}
+          {children}
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            alignSelf: 'flex-start', // Position button at the start (top-left within flex container)
+            marginBottom: '15px', // Space below the button
+            padding: '8px 15px',
+            backgroundColor: 'black',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.9em',
+            fontWeight: 'bold',
+          }}
+        >
+          Back
+        </button>
       </div>
     </div>
   );
@@ -220,22 +249,76 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
     return 'N/A';
   };
 
+  // Helper to calculate duration
+  const getDurationInSeconds = (start: string, end: string): string => {
+    try {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return 'N/A';
+      }
+      const durationMs = endDate.getTime() - startDate.getTime();
+      return (durationMs / 1000).toFixed(2); // Duration in seconds with 2 decimal places
+    } catch (e) {
+      console.error("Error calculating duration:", e);
+      return 'N/A';
+    }
+  };
+
   return (
     <div>
       <h3>Tasks</h3>
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {tasks.map(task => (
-          <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', borderRadius: '4px' }}>
-            <div><strong>ID:</strong> <code style={{ fontSize: '0.9em' }}>{task.id}</code></div>
-            <div><strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span></div>
-            <div><strong>Created:</strong> {new Date(task.createdAt).toLocaleString()}</div>
-            <div><strong>Updated:</strong> {new Date(task.updatedAt).toLocaleString()}</div>
-            <div><strong>Input:</strong> <i style={{ color: '#555' }}>{getFirstInputText(task)}</i></div>
-            {task.error && <div style={{ color: 'red' }}><strong>Error:</strong> {task.error}</div>}
-            {/* History button remains, but its functionality is still placeholder */}
-            <button onClick={() => handleViewHistory(task)} style={{ marginTop: '5px' }}>
-              View History (Placeholder)
-            </button>
+          <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            {/* Left Section */}
+            <div style={{ flexGrow: 1, marginRight: '15px' }}>
+              {/* Input Text Link */}
+              <a
+                href="#"
+                onClick={(e) => { e.preventDefault(); handleViewHistory(task); }}
+                style={{ marginTop: '5px', display: 'block', cursor: 'pointer', textDecoration: 'underline', color: '#007bff', wordBreak: 'break-word' }}
+                title="View History" // Add a title for accessibility/hover
+              >
+                {getFirstInputText(task)}
+              </a>
+              {/* Duration */}
+              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>
+                Duration: {getDurationInSeconds(task.createdAt, task.updatedAt)}s
+              </div>
+              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>ID: <code style={{ fontSize: '1em' }}>{task.id}</code></div>
+            </div>
+
+            {/* Middle Section (Buttons) */}
+
+            <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '150px' }}> {/* Added minWidth for better alignment */}
+              <div>
+                {task.error && <div style={{ color: 'red', marginTop: '5px' }}><strong>Error:</strong> {task.error}</div>}
+                <strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span>
+              </div>
+              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>Updated: {new Date(task.updatedAt).toLocaleString()}</div>
+
+              
+            </div>
+
+
+            {/* Right Section */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '10px', marginRight: '10px' }}>
+              <button
+                onClick={() => console.log(`Cancel clicked for task ${task.id}`)}
+                style={{ padding: '3px 8px', fontSize: '0.8em', marginBottom: '5px', cursor: 'pointer' }}
+                title="Cancel Task (Placeholder)"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => console.log(`Duplicate clicked for task ${task.id}`)}
+                style={{ padding: '3px 8px', fontSize: '0.8em', cursor: 'pointer' }}
+                title="Duplicate Task (Placeholder)"
+              >
+                Duplicate
+              </button>
+            </div>
           </li>
         ))}
       </ul>
