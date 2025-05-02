@@ -1,4 +1,4 @@
-# ◼️ ka_ba
+# 🙌🏻 ka_ba 🦚
 
 AI Agent Runtime (`ka`) and UI (`ba`).
 
