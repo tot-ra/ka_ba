@@ -56,15 +56,16 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
         // Using any[] for now to match AgentManager method, refine later if needed
         try {
           const rawTasks = await context.agentManager.getAgentTasks(agentId);
-          console.log(`[Resolver listTasks] Fetched raw tasks for agent ${agentId}:`, rawTasks);
+          // console.log(`[Resolver listTasks] Fetched raw tasks for agent ${agentId}:`, rawTasks); // Original log
 
           // Map snake_case fields from agentManager to camelCase fields in GraphQL schema
+          // AND convert state to uppercase (accessing nested property)
           const mappedTasks = rawTasks.map((task: any) => ({
             id: task.id,
-            state: task.state, // Assuming state matches directly
+            state: task.status?.state?.toUpperCase(), // Access nested state and convert
             input: task.input, // Assuming input matches directly
             output: task.output, // Assuming output matches directly (might need mapping if structure differs)
-            error: task.error, // Assuming error matches directly
+            error: task.error, // Assuming error matches directly (Note: Task interface doesn't have top-level error)
             createdAt: task.created_at, // Map snake_case to camelCase
             updatedAt: task.updated_at, // Map snake_case to camelCase
             artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
@@ -179,8 +180,27 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
 
           if (initialTask) {
             // The schema expects a Task, which initialTask should be.
+            // Convert nested state to uppercase before returning to match schema
+            if (initialTask.status) { // Check if status exists
+                 initialTask.status.state = initialTask.status.state?.toUpperCase() as any; // Convert nested state, cast needed due to literal type vs string
+            }
             // We don't add assignedAgentId here as it's not in the GraphQL Task type.
-            return initialTask;
+            // The GraphQL Task type expects state at the top level, but the A2A Task has it nested.
+            // We need to map the structure here before returning.
+            const mappedInitialTask = {
+              id: initialTask.id,
+              state: initialTask.status?.state, // Map nested state to top level
+              input: initialTask.history, // Map history to input? Check schema/logic
+              output: [], // Output likely comes from updates, not initial response
+              // Safely access text part for error message
+              error: initialTask.status?.state === 'failed' && initialTask.status?.message?.parts?.[0]?.type === 'text'
+                     ? (initialTask.status.message.parts[0] as any).text // Cast needed after type check
+                     : undefined,
+              createdAt: initialTask.status?.timestamp, // Map timestamp
+              updatedAt: initialTask.status?.timestamp, // Map timestamp
+              artifacts: initialTask.artifacts ? JSON.stringify(initialTask.artifacts) : undefined, // Map artifacts (needs proper mapping)
+            };
+            return mappedInitialTask as any; // Cast needed due to structural differences
           } else {
             // Agent responded, but didn't return a valid task object (or returned error in JSON-RPC)
              throw new GraphQLError(`Agent ${selectedAgent.id} accepted the task request but did not return valid initial task info.`, {

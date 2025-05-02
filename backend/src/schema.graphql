@@ -12,12 +12,12 @@ type Agent {
 scalar JSONObject
 
 enum TaskState {
-  submitted
-  working
-  input_required
-  completed
-  failed
-  canceled
+  SUBMITTED
+  WORKING
+  INPUT_REQUIRED
+  COMPLETED
+  FAILED
+  CANCELED
 }
 
 enum MessageRole {
