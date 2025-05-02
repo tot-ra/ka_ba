@@ -3,6 +3,7 @@ package a2a
 import (
 	"encoding/json"
 	"fmt"
+	"log" // Import log package
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,14 +39,19 @@ func (fts *FileTaskStore) taskFilePath(taskID string) string {
 
 func (fts *FileTaskStore) saveTask(task *Task) error {
 	filePath := fts.taskFilePath(task.ID)
+	log.Printf("[FileTaskStore saveTask %s] Marshalling task data...", task.ID) // Added log
 	data, err := json.MarshalIndent(task, "", "  ")
 	if err != nil {
+		log.Printf("[FileTaskStore saveTask %s] Error marshalling task: %v", task.ID, err) // Added log
 		return fmt.Errorf("failed to marshal task %s: %w", task.ID, err)
 	}
+	log.Printf("[FileTaskStore saveTask %s] Writing task data to %s...", task.ID, filePath) // Added log
 	err = os.WriteFile(filePath, data, 0644)
 	if err != nil {
+		log.Printf("[FileTaskStore saveTask %s] Error writing task file %s: %v", task.ID, filePath, err) // Added log
 		return fmt.Errorf("failed to write task file %s: %w", filePath, err)
 	}
+	log.Printf("[FileTaskStore saveTask %s] Successfully wrote task file %s", task.ID, filePath) // Added log
 	return nil
 }
 
@@ -83,13 +89,16 @@ func (fts *FileTaskStore) CreateTask(initialMessages []Message) (*Task, error) {
 		Output:    []Message{},
 		Artifacts: make(map[string]*Artifact),
 		CreatedAt: now,
-		UpdatedAt: now,
-	}
+		UpdatedAt: now, // Added missing comma here
+	} // Close the struct literal here
 
+	log.Printf("[FileTaskStore CreateTask] Attempting to save task %s...", taskID) // Added log
 	err := fts.saveTask(task)
 	if err != nil {
+		log.Printf("[FileTaskStore CreateTask] Error saving task %s: %v", taskID, err) // Added log
 		return nil, fmt.Errorf("failed to save new task %s: %w", taskID, err)
 	}
+	log.Printf("[FileTaskStore CreateTask] Successfully saved task %s.", taskID) // Added log
 
 	return task, nil
 }

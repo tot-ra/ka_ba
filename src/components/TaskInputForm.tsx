@@ -6,14 +6,7 @@ interface TaskInput {
   content: string | File | any;
 }
 
-// Define Task interface partially for status check
-interface Task {
-  id: string;
-  status: {
-    state: 'submitted' | 'working' | 'input-required' | 'completed' | 'canceled' | 'failed' | 'unknown';
-  };
-  // other fields omitted for brevity
-}
+// Removed local Task interface definition - rely on prop type
 
 interface TaskInputFormProps {
   taskInput: TaskInput;
@@ -21,7 +14,8 @@ interface TaskInputFormProps {
   onSendTask: (e: React.FormEvent) => Promise<void>; // Function to call when sending a new task
   onSendInput: () => Promise<void>; // Function to call when submitting required input
   isLoading: boolean;
-  currentTask: Task | null; // Needed to show/hide the 'Submit Input' button
+  // Assuming parent passes correct Task type based on GraphQL schema
+  currentTask: { id: string; state: string; [key: string]: any } | null;
 }
 
 const TaskInputForm: React.FC<TaskInputFormProps> = ({
@@ -32,7 +26,8 @@ const TaskInputForm: React.FC<TaskInputFormProps> = ({
   isLoading,
   currentTask,
 }) => {
-  const isInputRequired = currentTask?.status.state === 'input-required';
+  // Access top-level state property based on GraphQL schema
+  const isInputRequired = currentTask?.state === 'INPUT_REQUIRED'; // Use uppercase enum value
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setTaskInput({ ...taskInput, content: e.target.value });

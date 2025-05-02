@@ -1,0 +1,270 @@
+package a2a
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+)
+
+// processTaskIteration handles a single iteration of the main loop for ExecuteTask.
+// It returns true if the loop should continue (due to INPUT_REQUIRED), false otherwise.
+// It also returns any error encountered during the iteration that should stop the process.
+func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resumeCh chan struct{}) (continueLoop bool, err error) {
+	currentTask, err := te.taskStore.GetTask(t.ID)
+	if err != nil {
+		log.Printf("[Task %s] Error getting task from store during execution: %v", t.ID, err)
+		return false, err // Stop processing if we can't get the task
+	}
+	if currentTask.State == TaskStateCanceled {
+		log.Printf("[Task %s] Task was cancelled externally. Stopping.", t.ID)
+		return false, nil // Not an error, but stop processing
+	}
+
+	// Build prompt using the helper function
+	prompt, promptFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input)
+	if extractErr != nil {
+		te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Error = extractErr.Error()
+			return nil
+		})
+		te.taskStore.SetState(t.ID, TaskStateFailed)
+		fmt.Printf("[Task %s] Failed during prompt building: %v\n", t.ID, extractErr)
+		return false, extractErr // Stop processing on prompt error
+	}
+	if !promptFound {
+		errMsg := "could not extract suitable prompt content from messages"
+		te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Error = errMsg
+			return nil
+		})
+		te.taskStore.SetState(t.ID, TaskStateFailed)
+		fmt.Printf("[Task %s] Failed: %s\n", t.ID, errMsg)
+		return false, fmt.Errorf(errMsg) // Stop processing
+	}
+
+	logPrompt := prompt
+	if len(logPrompt) > 200 {
+		logPrompt = logPrompt[:200] + "..."
+	}
+	fmt.Printf("[Task %s] Combined prompt for LLM:\n---\n%s\n---\n", t.ID, logPrompt)
+
+	// Call the extracted LLM execution handler
+	fullResultString, _, _, requiresInput, llmErr := handleLLMExecution(ctx, t.ID, te.llmClient, te.taskStore, prompt)
+
+	// Handle LLM error returned by the handler
+	if llmErr != nil {
+		// Error logging and state setting is handled within handleLLMExecution
+		return false, llmErr // Stop processing on LLM error
+	}
+
+	// Process the result based on whether input is required
+	if requiresInput {
+		log.Printf("[Task %s] Input Required detected in full response.", t.ID)
+		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+
+		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Output = append(task.Output, outputMessage)
+			task.Error = "" // Clear any previous error
+			return nil
+		})
+		if updateErr != nil {
+			log.Printf("[Task %s] Failed to update task with input required output: %v", t.ID, updateErr)
+			// Consider setting state to failed here? For now, just log.
+		}
+
+		// Revert state to InputRequired
+		setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
+		if setStateErr != nil {
+			log.Printf("[Task %s] Failed to revert task state to InputRequired: %v", t.ID, setStateErr)
+			// If we can't set InputRequired, the task is stuck. Maybe set to Failed?
+			te.taskStore.SetState(t.ID, TaskStateFailed) // Attempt to set failed state
+			return false, setStateErr                   // Stop processing
+		}
+		fmt.Printf("[Task %s] State set to InputRequired. Waiting for resume signal...\n", t.ID)
+
+		// Wait for the resume signal or context cancellation
+		select {
+		case <-resumeCh:
+			fmt.Printf("[Task %s] Resume signal received. Continuing loop.\n", t.ID)
+			// Set state back to Working before the next iteration
+			if err := te.taskStore.SetState(t.ID, TaskStateWorking); err != nil {
+				log.Printf("[Task %s] Failed to set state back to Working after resume: %v", t.ID, err)
+				// Consider setting state to failed here?
+				return false, err // Stop processing if we can't reset state
+			}
+			return true, nil // Continue the loop
+		case <-ctx.Done():
+			fmt.Printf("[Task %s] Context cancelled while waiting for input. Exiting.\n", t.ID)
+			te.taskStore.SetState(t.ID, TaskStateCanceled) // Set final state
+			return false, ctx.Err()                        // Stop processing due to cancellation
+		}
+
+	} else {
+		// Task Completed Successfully (No Input Required)
+		log.Printf("[Task %s] Task completed normally (no input required).", t.ID)
+		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+
+		// Update task output
+		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Output = append(task.Output, outputMessage)
+			task.Error = "" // Clear any previous error
+			return nil
+		})
+		if updateErr != nil {
+			log.Printf("[Task %s] Failed to update task with completed output: %v", t.ID, updateErr)
+			// State might already be COMPLETED, but log the error.
+		}
+
+		// Add artifact
+		artifactErr := te.taskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_response.txt", Data: []byte(fullResultString)})
+		if artifactErr != nil {
+			fmt.Printf("[Task %s] Warning: Failed to save result as artifact: %v\n", t.ID, artifactErr)
+		}
+
+		// State should have been set to COMPLETED by the first-write goroutine in handleLLMExecution.
+		// We can optionally log the current state or ensure it's COMPLETED again.
+		finalTask, _ := te.taskStore.GetTask(t.ID)
+		if finalTask != nil && finalTask.State != TaskStateCompleted {
+			log.Printf("[Task %s] Warning: Final state was %s, attempting to set COMPLETED again.", t.ID, finalTask.State)
+			setStateErr := te.taskStore.SetState(t.ID, TaskStateCompleted)
+			if setStateErr != nil {
+				log.Printf("[Task %s] Failed to ensure final task state is Completed: %v", t.ID, setStateErr)
+			}
+		}
+
+		fmt.Printf("[Task %s] Processing finished.\n", t.ID)
+		return false, nil // Stop the loop, task is complete
+	}
+}
+
+// processTaskStreamIteration handles a single iteration of the main loop for ExecuteTaskStream.
+// It returns true if the loop should continue (due to INPUT_REQUIRED), false otherwise.
+// It also returns any error encountered during the iteration that should stop the process.
+func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task, sseWriter *SSEWriter, resumeCh chan struct{}) (continueLoop bool, err error) {
+	currentTask, err := te.taskStore.GetTask(t.ID)
+	if err != nil {
+		log.Printf("[Task %s Stream] Error getting task from store: %v", t.ID, err)
+		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to get task: %v", err)})
+		sseWriter.SendEvent("state", string(failedStateData))
+		return false, err // Stop processing
+	}
+	if currentTask.State == TaskStateCanceled {
+		log.Printf("[Task %s Stream] Task cancelled externally. Stopping.", t.ID)
+		// Optionally send a final SSE event for cancellation
+		return false, nil // Stop processing
+	}
+
+	// Build prompt using the helper function
+	prompt, promptFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input)
+	if extractErr != nil {
+		te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
+		te.taskStore.SetState(t.ID, TaskStateFailed)
+		fmt.Printf("[Task %s Stream] Failed during prompt building: %v\n", t.ID, extractErr)
+		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": extractErr.Error()})
+		sseWriter.SendEvent("state", string(failedStateData))
+		return false, extractErr // Stop processing
+	}
+	if !promptFound {
+		errMsg := "could not extract suitable prompt content"
+		te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = errMsg; return nil })
+		te.taskStore.SetState(t.ID, TaskStateFailed)
+		fmt.Printf("[Task %s Stream] Failed: %s\n", t.ID, errMsg)
+		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": errMsg})
+		sseWriter.SendEvent("state", string(failedStateData))
+		return false, fmt.Errorf(errMsg) // Stop processing
+	}
+
+	logPrompt := prompt
+	if len(logPrompt) > 200 {
+		logPrompt = logPrompt[:200] + "..."
+	}
+	fmt.Printf("[Task %s Stream] Combined prompt for LLM:\n---\n%s\n---\n", t.ID, logPrompt)
+
+	// Call the extracted LLM stream execution handler
+	fullResultString, _, _, requiresInput, llmErr := handleLLMExecutionStream(ctx, t.ID, te.llmClient, te.taskStore, prompt, sseWriter)
+
+	// Handle LLM error returned by the handler
+	if llmErr != nil {
+		// Error logging and state/SSE updates are handled within handleLLMExecutionStream
+		return false, llmErr // Stop processing
+	}
+
+	// Process the result based on whether input is required
+	if requiresInput {
+		log.Printf("[Task %s Stream] LLM streaming completed, input required.\n", t.ID)
+
+		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Output = append(task.Output, outputMessage)
+			task.Error = ""
+			return nil
+		})
+		if updateErr != nil {
+			log.Printf("[Task %s Stream] Failed to update task with input required output: %v\n", t.ID, updateErr)
+		}
+
+		setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
+		if setStateErr == nil {
+			inputRequiredStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateInputRequired)})
+			sseWriter.SendEvent("state", string(inputRequiredStateData))
+		} else {
+			log.Printf("[Task %s Stream] Failed to set task state to InputRequired: %v\n", t.ID, setStateErr)
+			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": "Failed to transition to input-required state"})
+			sseWriter.SendEvent("state", string(failedStateData))
+			return false, setStateErr // Stop processing
+		}
+		fmt.Printf("[Task %s Stream] Input Required. Waiting for signal...\n", t.ID)
+
+		select {
+		case <-resumeCh:
+			fmt.Printf("[Task %s Stream] Resume signal received. Continuing loop.\n", t.ID)
+			workingStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateWorking)})
+			sseWriter.SendEvent("state", string(workingStateData))
+			// Need to set state back to working in the store as well
+			if err := te.taskStore.SetState(t.ID, TaskStateWorking); err != nil {
+				log.Printf("[Task %s Stream] Failed to set state back to Working after resume: %v", t.ID, err)
+				// Send error state via SSE?
+				return false, err // Stop processing
+			}
+			return true, nil // Continue loop
+		case <-ctx.Done():
+			fmt.Printf("[Task %s Stream] Context cancelled while waiting for input. Exiting.\n", t.ID)
+			te.taskStore.SetState(t.ID, TaskStateCanceled)
+			// Optionally send final SSE event
+			return false, ctx.Err() // Stop processing
+		}
+	} else {
+		// Task Completed Successfully (No Input Required)
+		log.Printf("[Task %s Stream] LLM streaming completed successfully.\n", t.ID)
+
+		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Output = append(task.Output, outputMessage)
+			task.Error = ""
+			return nil
+		})
+		if updateErr != nil {
+			log.Printf("[Task %s Stream] Failed to update task with completed output: %v\n", t.ID, updateErr)
+		}
+
+		artifactErr := te.taskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_streamed_response.txt", Data: []byte(fullResultString)})
+		if artifactErr != nil {
+			fmt.Printf("[Task %s Stream] Warning: Failed to save streamed result as artifact: %v\n", t.ID, artifactErr)
+		}
+
+		setStateErr := te.taskStore.SetState(t.ID, TaskStateCompleted)
+		if setStateErr == nil {
+			completedStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateCompleted)})
+			sseWriter.SendEvent("state", string(completedStateData))
+		} else {
+			log.Printf("[Task %s Stream] Failed to set task state to Completed: %v\n", t.ID, setStateErr)
+			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": "Failed to finalize task state"})
+			sseWriter.SendEvent("state", string(failedStateData))
+			// Even if setting state fails, the LLM part succeeded, so don't return error? Or return setStateErr?
+			// Let's return nil for now, as the core task finished.
+		}
+		fmt.Printf("[Task %s Stream] Completed.\n", t.ID)
+		return false, nil // Stop the loop, task is complete
+	}
+}

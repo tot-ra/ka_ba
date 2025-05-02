@@ -1,69 +1,61 @@
 import React from 'react';
 
-// Re-define necessary interfaces locally or import if shared
-interface Message {
-  role: 'user' | 'agent';
-  parts: any[];
-  metadata?: any;
-}
+// Removed local interface definitions - rely on prop types derived from GraphQL schema
 
-interface TaskStatus {
-  state: 'submitted' | 'working' | 'input-required' | 'completed' | 'canceled' | 'failed' | 'unknown';
-  message?: Message | null;
-  timestamp: string;
-}
-
-interface Artifact {
+// Define a simplified Artifact type for props if not imported
+interface DisplayArtifact {
   name?: string | null;
   description?: string | null;
-  parts: any[];
-  index: number;
-  append?: boolean | null;
-  lastChunk?: boolean | null;
-  metadata?: any;
-}
-
-interface Task {
-  id: string;
-  sessionId?: string | null;
-  status: TaskStatus;
-  artifacts?: Artifact[] | null;
-  history?: Message[] | null;
-  metadata?: any;
+  parts: any[]; // Keep parts flexible for now
+  // Other fields like index, append, lastChunk might not be needed for display
 }
 
 interface TaskDetailsProps {
-  currentTask: Task | null;
+  // Expect currentTask to match GraphQL Task type structure
+  currentTask: {
+    id: string;
+    state: string; // Top-level state
+    input?: any[] | null; // Map history to input?
+    output?: any[] | null;
+    error?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+    artifacts?: any | null; // Adjust type as needed
+    // Add other fields from GraphQL Task type if used
+  } | null;
   streamingOutput: string;
-  artifacts: Artifact[];
+  artifacts: DisplayArtifact[]; // Use simplified artifact type for display
   onDuplicateClick: () => void; // Function to handle duplicating the task
 }
 
-// Helper function to get status style (can be moved to a utils file later if needed)
-const getStatusStyle = (state: TaskStatus['state']): React.CSSProperties => {
-  let backgroundColor = '#eee';
+// Helper function to get status style (accepts string state now)
+const getStatusStyle = (state: string | undefined | null): React.CSSProperties => {
+  let backgroundColor = '#eee'; // Default style
   let color = '#333';
-  switch (state) {
-     case 'submitted':
-     case 'unknown':
+  switch (state?.toUpperCase()) { // Convert to uppercase for comparison
+     case 'SUBMITTED':
+     case 'UNKNOWN': // Assuming UNKNOWN might be possible
         backgroundColor = '#d3d3d3'; // Light Gray
         break;
-     case 'working':
+     case 'WORKING':
         backgroundColor = '#cfe2ff'; // Light Blue
         color = '#004085';
         break;
-     case 'input-required':
+     case 'INPUT_REQUIRED':
         backgroundColor = '#fff3cd'; // Light Yellow
         color = '#856404';
         break;
-     case 'completed':
+     case 'COMPLETED':
         backgroundColor = '#d4edda'; // Light Green
         color = '#155724';
         break;
-     case 'canceled':
-     case 'failed':
+     case 'CANCELED':
+     case 'FAILED':
         backgroundColor = '#f8d7da'; // Light Red
         color = '#721c24';
+        break;
+     default:
+        // Keep default style for unrecognized states
         break;
   }
   return {
@@ -93,15 +85,19 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
     return null; // Don't render anything if there's no task data to show
   }
 
-  const canDuplicate = currentTask?.history && currentTask.history.length > 0 && currentTask.history[0].role === 'user' && ['text', 'data'].includes(currentTask.history[0].parts?.[0]?.type);
-  const duplicateTitle = !canDuplicate ? 'Duplication only supported for tasks initiated with text or data' : 'Duplicate Task (copies prompt to input)';
+  // TODO: Update duplication logic based on actual GraphQL Task structure (e.g., currentTask.input)
+  // Placeholder logic for now:
+  const canDuplicate = !!currentTask?.input; // Simple check if input exists
+  const duplicateTitle = !canDuplicate ? 'Duplication logic needs update based on GraphQL schema' : 'Duplicate Task (copies prompt to input)';
+
 
   return (
     <>
       {currentTask && (
         <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
           <h3>
-             Task Status: <span style={getStatusStyle(currentTask.status.state)}>{currentTask.status.state}</span>
+             {/* Use top-level state */}
+             Task Status: <span style={getStatusStyle(currentTask.state)}>{currentTask.state || 'UNKNOWN'}</span>
            </h3>
            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
              <p style={{ margin: 0 }}>Task ID: {currentTask.id}</p>
@@ -123,20 +119,14 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
                Duplicate Task
              </button>
            </div>
-           {currentTask.status.message && (
-              <div style={{ marginTop: '10px', padding: '10px', border: '1px dashed #ccc', borderRadius: '4px', background: '#f9f9f9' }}>
-                 <h4>Agent Message:</h4>
-                {currentTask.status.message.parts?.map((part, index) => {
-                   if (part.type === 'text') {
-                      return <p key={index} style={{ whiteSpace: 'pre-wrap', margin: '5px 0' }}>{part.text}</p>;
-                   }
-                   return <pre key={index} style={{ fontSize: '0.9em' }}>{JSON.stringify(part, null, 2)}</pre>;
-                })}
-                {(!currentTask.status.message.parts || currentTask.status.message.parts.length === 0) && (
-                   <pre style={{ fontSize: '0.9em' }}>{JSON.stringify(currentTask.status.message, null, 2)}</pre>
-                )}
+           {/* Display top-level error field from GraphQL Task type */}
+           {currentTask.error && (
+              <div style={{ marginTop: '10px', padding: '10px', border: '1px dashed #f8d7da', borderRadius: '4px', background: '#f8d7da', color: '#721c24' }}>
+                 <h4>Error:</h4>
+                 <p style={{ whiteSpace: 'pre-wrap', margin: '5px 0' }}>{currentTask.error}</p>
              </div>
           )}
+           {/* TODO: Display input/output messages if needed, based on GraphQL Task structure */}
         </div>
       )}
 

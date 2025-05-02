@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 // --- JSON-RPC Structures ---
@@ -43,10 +44,10 @@ type SendTaskParams struct {
 	// Input   []Message `json:"input"` // Original field
 	Message Message `json:"message"` // Aligning with a2aClient.ts TaskSendParams
 	// Add other fields from TaskSendParams in a2aClient.ts if needed
-	SessionID      *string     `json:"sessionId,omitempty"`
+	SessionID        *string     `json:"sessionId,omitempty"`
 	PushNotification interface{} `json:"pushNotification,omitempty"`
-	HistoryLength  *int        `json:"historyLength,omitempty"`
-	Metadata       interface{} `json:"metadata,omitempty"`
+	HistoryLength    *int        `json:"historyLength,omitempty"`
+	Metadata         interface{} `json:"metadata,omitempty"`
 	// SkillID string    `json:"skill_id,omitempty"` // Keep if needed
 	// Context string    `json:"context,omitempty"` // Keep if needed
 }
@@ -54,14 +55,14 @@ type SendTaskParams struct {
 // ProvideInputParams defines the structure for the parameters of the "tasks/input" method.
 // Note: Renamed from ProvideInputRequest.
 type ProvideInputParams struct {
-	TaskID string  `json:"id"` // Aligning with a2aClient.ts TaskInputParams
-	Input  Message `json:"message"` // Aligning with a2aClient.ts TaskInputParams
+	TaskID   string      `json:"id"`      // Aligning with a2aClient.ts TaskInputParams
+	Input    Message     `json:"message"` // Aligning with a2aClient.ts TaskInputParams
 	Metadata interface{} `json:"metadata,omitempty"`
 }
 
 // TaskStatusParams defines the structure for parameters of "tasks/status", "tasks/artifact" etc.
 type TaskStatusParams struct {
-	ID string `json:"id"`
+	ID       string      `json:"id"`
 	Metadata interface{} `json:"metadata,omitempty"`
 }
 
@@ -150,11 +151,34 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		log.Printf("[TaskSend %v] Task %s created successfully.", rpcReq.ID, task.ID)
 
-		// 5. Send the successful JSON-RPC Response containing the task
-		sendJSONRPCResponse(w, rpcReq.ID, task, nil)
+		// 5. Construct and send the A2A-compliant JSON-RPC Response
+		// Define the A2A TaskStatus structure for the response
+		type A2ATaskStatus struct {
+			State     TaskState `json:"state"`
+			Timestamp string    `json:"timestamp"` // ISO 8601 format
+			// Message field omitted for initial response as per some interpretations
+		}
+		// Define the A2A Task structure for the response
+		type A2ATaskResponse struct {
+			ID        string        `json:"id"`
+			Status    A2ATaskStatus `json:"status"`
+			SessionID *string       `json:"sessionId,omitempty"` // Include if available from params
+			// History, Artifacts, Metadata omitted for initial response as per spec
+		}
+
+		// Populate the A2A response structure
+		a2aResponse := A2ATaskResponse{
+			ID: task.ID,
+			Status: A2ATaskStatus{
+				State:     task.State,                                // Use the state from the created task
+				Timestamp: task.CreatedAt.UTC().Format(time.RFC3339), // Use creation time for initial status
+			},
+			SessionID: params.SessionID, // Pass through session ID if provided
+		}
+
+		sendJSONRPCResponse(w, rpcReq.ID, a2aResponse, nil)
 	}
 }
-
 
 // TasksStatusHandler handles GET /tasks/status requests to retrieve the status of a specific task.
 // NOTE: This handler seems intended for standard HTTP GET, not JSON-RPC.
@@ -267,10 +291,9 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		// 4. Send successful JSON-RPC Response
 		// A2A spec for tasks/input returns the updated Task object
 		updatedTask, _ := taskExecutor.taskStore.GetTask(params.TaskID) // Fetch again to get latest state
-		sendJSONRPCResponse(w, rpcReq.ID, updatedTask, nil) // Return updated task
+		sendJSONRPCResponse(w, rpcReq.ID, updatedTask, nil)             // Return updated task
 	}
 }
-
 
 // TasksListHandler handles the "tasks/list" JSON-RPC method.
 func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
@@ -295,24 +318,25 @@ func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
 		}
 
 		// 2. No parameters expected for tasks/list, proceed to business logic
-
-		log.Printf("[TaskList %v] Received request to list all tasks.", rpcReq.ID)
+		log.Printf("[TaskList %v] Received request.", rpcReq.ID) // Log entry
 
 		// 3. Business Logic
+		log.Printf("[TaskList %v] Calling taskStore.ListTasks()...", rpcReq.ID)
 		tasks, err := taskStore.ListTasks()
 		if err != nil {
-			log.Printf("[TaskList %v] Error retrieving tasks: %v", rpcReq.ID, err)
+			log.Printf("[TaskList %v] Error retrieving tasks from store: %v", rpcReq.ID, err) // Log error from store
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to retrieve tasks", Data: err.Error()})
 			return
 		}
+		log.Printf("[TaskList %v] taskStore.ListTasks() returned %d tasks.", rpcReq.ID, len(tasks)) // Log count after successful retrieval
 
 		if tasks == nil {
+			log.Printf("[TaskList %v] Task list was nil, ensuring empty array.", rpcReq.ID)
 			tasks = []*Task{} // Ensure empty array, not null
 		}
 
-		log.Printf("[TaskList %v] Retrieved %d tasks.", rpcReq.ID, len(tasks))
-
 		// 4. Send successful JSON-RPC Response
+		log.Printf("[TaskList %v] Sending response with %d tasks.", rpcReq.ID, len(tasks))
 		sendJSONRPCResponse(w, rpcReq.ID, tasks, nil)
 	}
 }
