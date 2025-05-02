@@ -8,6 +8,7 @@ interface Agent {
   name?: string;
   description?: string;
   isLocal: boolean;
+  pid?: number; // Add optional pid field
 }
 
 interface AgentContextType {

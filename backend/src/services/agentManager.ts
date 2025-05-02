@@ -3,8 +3,8 @@ import { join, dirname } from 'path'; // Import dirname
 import { fileURLToPath } from 'url'; // Import fileURLToPath
 import net from 'net';
 import axios from 'axios';
-import { PubSub } from 'graphql-subscriptions'; // Import PubSub
-import { LogEntryPayload } from '../graphql/resolvers.js'; // Add .js extension
+import { EventEmitter } from 'node:events'; // Import EventEmitter
+import { LogEntryPayload } from '../graphql/resolvers.js';
 
 // Get current directory using import.meta.url for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -54,11 +54,11 @@ export class AgentManager {
   private agents: Agent[] = [];
   private spawnedProcesses: Map<string, SpawnedProcessInfo> = new Map();
   private agentIdCounter = 1;
-  private pubsub: PubSub; // Add pubsub property
+  private eventEmitter: EventEmitter; // Change property name and type
 
-  // Inject PubSub via constructor
-  constructor(pubsub: PubSub) {
-    this.pubsub = pubsub;
+  // Inject EventEmitter via constructor
+  constructor(eventEmitter: EventEmitter) {
+    this.eventEmitter = eventEmitter; // Store EventEmitter
   }
 
   // Modify Agent type returned by getAgents to potentially include pid
@@ -166,6 +166,7 @@ export class AgentManager {
         console.log(`Stored spawned process info for agent ID: ${newAgent.id} with PID: ${kaProcess.pid} on port ${agentPort}`);
 
         // Now setup handlers to capture ongoing logs
+        console.log(`[AgentManager] Setting up ongoing log capture for agent ${newAgent.id}`); // Added log
         this.setupOngoingLogCapture(kaProcess, newAgent.id);
 
       } else {
@@ -265,8 +266,8 @@ export class AgentManager {
         line,
       };
       const topic = `AGENT_LOG_${agentId}`;
-      // console.log(`Publishing to topic ${topic}:`, payload); // Debug log
-      this.pubsub.publish(topic, { agentLogs: payload }); // Wrap payload according to subscription name
+      console.log(`[AgentManager _addLog] Emitting event on topic ${topic}:`, payload); // Log event emission
+      this.eventEmitter.emit(topic, payload); // Emit event using EventEmitter
 
     } else {
       // Don't warn here as this might be called after cleanup during shutdown
@@ -277,8 +278,10 @@ export class AgentManager {
 
   private setupOngoingLogCapture(kaProcess: ChildProcess, agentId: string): void {
     const handleData = (data: Buffer, stream: 'stdout' | 'stderr') => {
+      const rawData = data.toString();
+      console.log(`[AgentManager handleData] Received raw data for agent ${agentId} [${stream}]:`, rawData); // Added log
       // Split potential multi-line output into individual lines
-      const lines = data.toString().split('\n');
+      const lines = rawData.split('\n');
       lines.forEach((line, index) => {
         // Don't publish empty lines, except possibly the last partial line
         if (line || (index === lines.length - 1 && lines.length > 1)) {

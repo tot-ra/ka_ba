@@ -1,22 +1,26 @@
-import { createServer } from './server.js'; // Add .js extension
-import { AgentManager } from './services/agentManager.js'; // Add .js extension
-import { PubSub } from 'graphql-subscriptions'; // Import PubSub
-import { registerProxyRoutes } from './routes/proxy.js'; // Add .js extension
-import { setupApolloServer } from './graphql/server.js'; // Add .js extension
+import { createServer } from './server.js';
+import { AgentManager } from './services/agentManager.js';
+import { EventEmitter } from 'node:events'; // Import EventEmitter
+import { registerProxyRoutes } from './routes/proxy.js';
+import { setupApolloServer } from './graphql/server.js';
+// Removed PubSub import
 
 const start = async () => {
-  // Create a single PubSub instance
-  const pubsub = new PubSub(); // Note: We might need to type this later if issues persist
+  // Create a single EventEmitter instance
+  const eventEmitter = new EventEmitter();
+  // Optional: Increase max listeners if many subscriptions are expected
+  // eventEmitter.setMaxListeners(50);
+  console.log('[Index] Created EventEmitter instance.');
 
-  // Instantiate AgentManager, passing the pubsub instance
-  const agentManager = new AgentManager(pubsub);
+  // Instantiate AgentManager, passing the eventEmitter instance
+  const agentManager = new AgentManager(eventEmitter);
 
   const fastify = createServer();
 
   registerProxyRoutes(fastify, agentManager);
 
-  // Pass the pubsub instance to setupApolloServer
-  await setupApolloServer(fastify, agentManager, pubsub);
+  // Pass the eventEmitter instance to setupApolloServer
+  await setupApolloServer(fastify, agentManager, eventEmitter);
 
   try {
     await fastify.listen({ port: 3000 });

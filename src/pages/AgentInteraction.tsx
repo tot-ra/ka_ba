@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { gql, useSubscription, useMutation, OnDataOptions, ApolloError } from '@apollo/client'; // Import OnDataOptions instead of SubscriptionResult
+import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 // import axios from 'axios'; // Comment out axios for now
 
 // Define LogEntry type matching the GraphQL schema
@@ -53,8 +54,8 @@ interface TaskInput {
 }
 
 const AgentInteraction: React.FC = () => {
-  // TODO: Get selected agent ID from a shared state (context, global state)
-  const selectedAgentId = 'some-agent-id'; // Placeholder
+  // Get selected agent ID from context
+  const { selectedAgentId } = useAgent(); // Use the hook
 
   const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' });
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
@@ -87,6 +88,11 @@ const AgentInteraction: React.FC = () => {
     agentLogs: LogEntry;
   }
 
+  // Log the agent ID being used for the subscription
+  useEffect(() => {
+    console.log(`[AgentInteraction] Subscribing to logs for agent ID: ${selectedAgentId}`);
+  }, [selectedAgentId]);
+
   useSubscription<AgentLogsSubscriptionData>(AGENT_LOGS_SUBSCRIPTION, {
     variables: { agentId: selectedAgentId },
     skip: !selectedAgentId, // Skip if no agent is selected
@@ -94,7 +100,7 @@ const AgentInteraction: React.FC = () => {
     onData: (options: OnDataOptions<AgentLogsSubscriptionData>) => { // Use OnDataOptions type
       const newLogEntry = options.data.data?.agentLogs; // Access data via options.data.data
       if (newLogEntry) {
-        // console.log('Log received:', newLogEntry);
+        console.log('[AgentInteraction onData] Log received:', newLogEntry); // Added log
         setAgentLogEntries((prevLogs) => {
            // Optional: Limit log history size in frontend state
            const updatedLogs = [...prevLogs, newLogEntry];

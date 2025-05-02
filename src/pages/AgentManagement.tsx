@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios'; // Assuming axios is used for HTTP requests
 import TaskList from '../components/TaskList'; // Import the TaskList component
 import TaskSubmitForm from '../components/TaskSubmitForm'; // Import the new TaskSubmitForm component
+import AgentInteraction from './AgentInteraction'; // Import AgentInteraction
+import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import { useNavigate } from 'react-router-dom';
 import styles from './AgentManagement.module.css'; // Import the CSS module
 
@@ -21,16 +23,18 @@ interface Agent {
 
 const AgentManagement: React.FC = () => {
   const navigate = useNavigate();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [agentLogs, setAgentLogs] = useState<string[]>([]); // State for logs
-  const [loadingLogs, setLoadingLogs] = useState<boolean>(false); // State for loading logs indicator
+  // Use context for agents and selectedAgentId
+  const { agents, selectedAgentId, setSelectedAgentId, fetchAgents: fetchAgentsFromContext, loadingAgents, agentError } = useAgent();
+  const [agentLogs, setAgentLogs] = useState<string[]>([]); // Restore state for historical logs
+  const [loadingLogs, setLoadingLogs] = useState<boolean>(false); // Restore state for historical logs
 
   useEffect(() => {
-    // Fetch agents from backend on component mount
+    // Fetch agents using context function on mount
+    fetchAgentsFromContext();
+    /* // Keep original fetch logic commented out for reference if needed
     const fetchAgents = async () => {
+      setLoadingAgents(true); // Use context loading state if preferred
       try {
-        // Assuming a GraphQL endpoint at /graphql
         const response = await axios.post('http://localhost:3000/graphql', {
           query: `
             query {
@@ -40,21 +44,24 @@ const AgentManagement: React.FC = () => {
                 name
                 description
                 isLocal
-                pid # Fetch pid
+                pid
               }
             }
           `,
         });
-        setAgents(response.data.data.agents);
+        setAgents(response.data.data.agents); // Use context setAgents if preferred
       } catch (error) {
         console.error('Error fetching agents:', error);
+        // Use context setAgentError if preferred
+      } finally {
+        // Use context setLoadingAgents if preferred
       }
     };
-
     fetchAgents();
-  }, []);
+    */
+  }, [fetchAgentsFromContext]); // Depend on context fetch function
 
-  // Function to fetch logs for the selected agent
+  // Restore function to fetch historical logs for the selected agent
   const fetchAgentLogs = async (agentId: string) => {
     setLoadingLogs(true);
     setAgentLogs([]); // Clear previous logs
@@ -70,22 +77,20 @@ const AgentManagement: React.FC = () => {
       if (response.data.data.agentLogs) {
         setAgentLogs(response.data.data.agentLogs);
       } else {
-        setAgentLogs(['No logs available or agent not found.']); // Provide feedback
+        setAgentLogs(['No historical logs available or agent not found.']); // Provide feedback
       }
     } catch (error) {
-      console.error('Error fetching agent logs:', error);
-      setAgentLogs(['Error fetching logs.']); // Provide error feedback
+      console.error('Error fetching historical agent logs:', error);
+      setAgentLogs(['Error fetching historical logs.']); // Provide error feedback
     } finally {
       setLoadingLogs(false);
     }
   };
 
-
   const handleSelectAgent = (agentId: string) => {
-    setSelectedAgentId(agentId);
-    console.log('Selected agent:', agentId);
-    // Fetch logs when an agent is selected
-    fetchAgentLogs(agentId);
+    setSelectedAgentId(agentId); // Use context setter
+    console.log('[AgentManagement] Selected agent:', agentId);
+    fetchAgentLogs(agentId); // Fetch historical logs when agent is selected
   };
 
   const handleStopAgent = async (agentId: string) => {
@@ -103,10 +108,9 @@ const AgentManagement: React.FC = () => {
       });
       if (response.data.data.stopKaAgent) {
         console.log('Agent stopped successfully:', agentId);
-        // Refresh the agent list after stopping
-        const updatedAgents = agents.filter(agent => agent.id !== agentId);
-        setAgents(updatedAgents);
-        // If the stopped agent was selected, deselect it
+        // Refresh the agent list via context after stopping
+        fetchAgentsFromContext();
+        // If the stopped agent was selected, deselect it via context
         if (selectedAgentId === agentId) {
           setSelectedAgentId(null);
         }
@@ -178,17 +182,22 @@ const AgentManagement: React.FC = () => {
               <TaskList agentId={selectedAgentId} />
             </div>
 
-            {/* Agent Logs Section */}
+            {/* Historical Logs Section */}
             <div className={styles.logsSection}>
-              <h3 className={styles.logsTitle}>Agent Logs</h3>
+              <h3 className={styles.logsTitle}>Historical Logs</h3>
               {loadingLogs ? (
-                <p>Loading logs...</p>
+                <p>Loading historical logs...</p>
               ) : (
                 <pre className={styles.logsContent}>
-                  {agentLogs.length > 0 ? agentLogs.join('\n') : 'No logs to display.'}
+                  {agentLogs.length > 0 ? agentLogs.join('\n') : 'No historical logs to display.'}
                 </pre>
               )}
             </div>
+
+            {/* Render AgentInteraction component for real-time logs */}
+            {/* AgentInteraction now handles its own display including title */}
+            <AgentInteraction />
+
           </> /* End of Fragment */
         )}
       </div>

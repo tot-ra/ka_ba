@@ -1,10 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { PubSub } from 'graphql-subscriptions'; // Import PubSub
-import { AgentManager, Agent } from '../services/agentManager.js'; // Add .js extension
-import { A2AClient, TaskSendParams, Task, Message, Part } from '../a2aClient.js'; // Add .js extension
-import { JSONObjectResolver, DateTimeResolver } from 'graphql-scalars'; // Import DateTimeResolver
-import { GraphQLError } from 'graphql'; // Import GraphQLError for better error handling
-import { ApolloContext } from './server.js'; // Add .js extension
+import { EventEmitter } from 'node:events'; // Import EventEmitter
+import { AgentManager, Agent } from '../services/agentManager.js';
+import { A2AClient, TaskSendParams, Task, Message, Part } from '../a2aClient.js';
+import { JSONObjectResolver, DateTimeResolver } from 'graphql-scalars';
+import { GraphQLError } from 'graphql';
+import { ApolloContext } from './server.js';
+import { Repeater } from '@repeaterjs/repeater'; // Import Repeater for AsyncIterator creation
 
 // Define the payload structure for the agentLogs subscription
 export interface LogEntryPayload {
@@ -32,11 +33,11 @@ interface CreateTaskArgs {
 }
 
 
-// Update function signature to accept pubsub
-export function createResolvers(agentManager: AgentManager, pubsub: PubSub) {
+// Update function signature to accept eventEmitter
+export function createResolvers(agentManager: AgentManager, eventEmitter: EventEmitter) {
   return {
-    JSONObject: JSONObjectResolver, // Re-add JSONObject resolver
-    DateTime: DateTimeResolver, // Add DateTime scalar resolver
+    JSONObject: JSONObjectResolver,
+    DateTime: DateTimeResolver,
     Query: {
       agents: (_parent: any, _args: any, context: ApolloContext, _info: any): Agent[] => {
         return context.agentManager.getAgents();
@@ -82,7 +83,7 @@ export function createResolvers(agentManager: AgentManager, pubsub: PubSub) {
       createTask: async (_parent: any, args: CreateTaskArgs, context: ApolloContext, _info: any): Promise<Task> => {
         // Destructure context as well
         const { agentId, sessionId, message: inputMessage, pushNotification, historyLength, metadata } = args;
-        const { agentManager, pubsub } = context; // Get pubsub from context
+        const { agentManager, eventEmitter } = context; // Get eventEmitter from context
 
         // --- 1. Determine Target Agent ---
         let selectedAgent: Agent | null = null;
@@ -185,11 +186,11 @@ export function createResolvers(agentManager: AgentManager, pubsub: PubSub) {
         }
       },
      },
-     Subscription: {
+      Subscription: {
         agentLogs: {
           // Define the subscription topic dynamically based on agentId
           subscribe: (_parent: any, { agentId }: { agentId: string }, context: ApolloContext, _info: any) => {
-            console.log(`[Resolver agentLogs] Client subscribing to logs for agent: ${agentId}`);
+            console.log(`[Resolver agentLogs subscribe] Client attempting to subscribe to logs for agent: ${agentId}`); // Added log
             // Check if agent exists and is local? Optional, agentManager handles logs only for local agents.
             const agent = context.agentManager.getAgents().find((a: Agent) => a.id === agentId); // Add type to a
             if (!agent) {
@@ -201,16 +202,31 @@ export function createResolvers(agentManager: AgentManager, pubsub: PubSub) {
               // Alternatively, throw new GraphQLError(`Agent with ID ${agentId} is not a local agent and does not support log streaming.`, { extensions: { code: 'AGENT_NOT_LOCAL' } });
             }
 
-            // Subscribe to the specific agent's log topic
-            // The payload published to this topic should be LogEntryPayload
-            // Cast to 'any' as a last resort to bypass type checking for this method call
-            return (context.pubsub as any).asyncIterator(`AGENT_LOG_${agentId}`);
+            const topic = `AGENT_LOG_${agentId}`;
+            console.log(`[Resolver agentLogs subscribe] Client subscribing to event topic: ${topic}`);
+
+            // Use Repeater to create an AsyncIterator from EventEmitter events
+            return new Repeater<LogEntryPayload>(async (push, stop) => {
+              const listener = (payload: LogEntryPayload) => {
+                console.log(`[Resolver agentLogs listener] Event received on topic ${topic}:`, payload);
+                push(payload); // Push the received payload to the iterator
+              };
+
+              context.eventEmitter.on(topic, listener); // Start listening
+              console.log(`[Resolver agentLogs subscribe] Attached listener to topic ${topic}`);
+
+              // stop.then is called when the client disconnects
+              await stop;
+
+              context.eventEmitter.off(topic, listener); // Clean up listener
+              console.log(`[Resolver agentLogs subscribe] Removed listener from topic ${topic} on disconnect`);
+            });
           },
-          // The resolve function maps the published payload to the GraphQL type
+          // Resolve function is simpler now, just returns the payload pushed by the Repeater
           resolve: (payload: LogEntryPayload) => {
-             // The payload *is* the LogEntry structure defined in the schema
-             return payload;
-          }
+            // console.log("[Resolver agentLogs resolve] Forwarding payload:", payload); // Log can be less verbose now
+            return payload; // The payload is already the correct LogEntry type
+          },
         },
         // Add other subscriptions here if needed (e.g., taskUpdates)
      },

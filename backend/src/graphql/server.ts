@@ -4,12 +4,12 @@ import fastifyApollo, { fastifyApolloDrainPlugin } from '@as-integrations/fastif
 import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer'; // Import drain plugin
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/use/ws'; // Correct import path for useServer with 'ws'
-import { Context as WsContext, SubscribeMessage } from 'graphql-ws'; // Keep other imports from root
-import { PubSub } from 'graphql-subscriptions';
+import { useServer } from 'graphql-ws/use/ws';
+import { Context as WsContext, SubscribeMessage } from 'graphql-ws';
+import { EventEmitter } from 'node:events'; // Import EventEmitter
 
-import { schemaString } from './schema.js'; // Add .js extension
-import { createResolvers, LogEntryPayload } from './resolvers.js'; // Add .js extension
+import { schemaString } from './schema.js';
+import { createResolvers, LogEntryPayload } from './resolvers.js';
 import { AgentManager } from '../services/agentManager.js'; // Add .js extension
 
 // Define the payload type for the PubSub (still useful for context typing)
@@ -20,20 +20,20 @@ interface PubSubPayloads {
 
 
 export interface ApolloContext {
-  request?: FastifyRequest; // Make request/reply optional for subscription context
+  request?: FastifyRequest;
   reply?: FastifyReply;
   agentManager: AgentManager;
-  pubsub: PubSub<PubSubPayloads>; // Use the specifically typed PubSub
+  eventEmitter: EventEmitter; // Change pubsub to eventEmitter
 }
 
-// Update function signature to accept pubsub instance
+// Update function signature to accept eventEmitter instance
 export async function setupApolloServer(
   fastify: FastifyInstance,
   agentManager: AgentManager,
-  pubsub: PubSub<PubSubPayloads> // Accept pubsub instance
+  eventEmitter: EventEmitter // Accept eventEmitter instance
 ) {
-  // Create resolvers, passing the received pubsub instance
-  const resolvers = createResolvers(agentManager, pubsub);
+  // Create resolvers, passing the received eventEmitter instance
+  const resolvers = createResolvers(agentManager, eventEmitter);
 
   // Create executable schema
   const schema = makeExecutableSchema({ typeDefs: schemaString, resolvers });
@@ -53,11 +53,11 @@ export async function setupApolloServer(
       schema,
       // Provide context for WebSocket operations (subscriptions)
       context: async (ctx: WsContext, msg: SubscribeMessage /* args removed */): Promise<Omit<ApolloContext, 'request' | 'reply'>> => { // Context for subscriptions
-        // console.log('Subscription context creation:', ctx, msg);
+        console.log('[GraphQL Server] Creating subscription context with EventEmitter.'); // Updated log
         // You can add authentication/authorization logic here based on ctx.connectionParams
-        return { agentManager, pubsub }; // Return context needed for subscriptions
+        return { agentManager, eventEmitter }; // Return context needed for subscriptions
       },
-      onConnect: (ctx: WsContext) => { // Keep onConnect
+      onConnect: (ctx: WsContext) => {
         console.log('WebSocket client connected', ctx.connectionParams);
         return true; // Accept connection
       },
@@ -101,7 +101,7 @@ export async function setupApolloServer(
         request,
         reply,
         agentManager,
-        pubsub, // Add pubsub here too
+        eventEmitter, // Add eventEmitter here too
       };
     },
   });
