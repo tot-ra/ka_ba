@@ -9,31 +9,31 @@ import (
 	"net/http"
 	"strings" // Added for string manipulation
 
-	"ka/a2a"
-	"ka/llm"
+	"ka/a2a" // Keep one a2a import
+	"ka/llm" // Keep one llm import
 
-	"github.com/golang-jwt/jwt/v5" // Added for JWT handling
+	"github.com/golang-jwt/jwt/v5" // Keep one jwt import
 )
 
-// --- JSON-RPC Structures ---
+// --- JSON-RPC Structures (Using definitions from a2a package) ---
+// Note: We will use the types defined in the a2a package directly
+// where possible, or ensure consistency.
+
+// Local alias for clarity in this file, matching a2a.JSONRPCError
+type jsonRPCError = a2a.JSONRPCError
+
+// Local alias for clarity, matching a2a.JSONRPCResponse
+type jsonRPCResponse = a2a.JSONRPCResponse
+
+// Local alias for clarity, matching a2a.JSONRPCRequest
+// We need this specific definition here because the root handler
+// needs to parse the raw JSON before knowing the specific params type.
+// We keep json.RawMessage for Params.
 type jsonRPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params"`
-	ID      interface{} `json:"id"`
-}
-
-type jsonRPCResponse struct {
-	JSONRPC string        `json:"jsonrpc"`
-	Result  interface{}   `json:"result,omitempty"`
-	Error   *jsonRPCError `json:"error,omitempty"`
-	ID      interface{}   `json:"id"`
-}
-
-type jsonRPCError struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Jsonrpc string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"` // Use RawMessage like in a2a
+	ID      interface{}     `json:"id"`
 }
 
 const (
@@ -131,10 +131,10 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 	// Note: Auth errors are typically handled by middleware directly with 401/403
 
 	w.WriteHeader(httpStatusCode) // Set appropriate HTTP status
-	resp := jsonRPCResponse{
-		JSONRPC: "2.0",
+	resp := a2a.JSONRPCResponse{  // Use the type from a2a package
+		Jsonrpc: "2.0", // Field name is lowercase 'j'
 		ID:      id,
-		Error: &jsonRPCError{
+		Error: &a2a.JSONRPCError{ // Use the type from a2a package
 			Code:    code,
 			Message: message,
 			Data:    data,
@@ -294,21 +294,27 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 				}
 				r.Body.Close() // Close the potentially replaced body
 
+				// ADDED: Log the raw body before attempting to unmarshal
+				log.Printf("[Core Logic] Raw request body received: %s", string(finalBodyBytes))
+
 				// Decode the JSON-RPC request
 				var req jsonRPCRequest
 				if err := json.Unmarshal(finalBodyBytes, &req); err != nil {
-					log.Printf("Error decoding JSON-RPC request: %v", err)
-					writeJSONRPCError(w, nil, jsonRPCParseErrorCode, "Parse error", err.Error())
+					// ADDED: More specific log for unmarshal failure
+					log.Printf("[Core Logic] Error decoding JSON-RPC request body: %v. Body was: %s", err, string(finalBodyBytes))
+					writeJSONRPCError(w, nil, jsonRPCParseErrorCode, "Parse error: Invalid JSON received", err.Error()) // Modified error message slightly
 					return
 				}
 
 				// Basic validation
-				if req.JSONRPC != "2.0" || req.Method == "" {
+				// Use lowercase 'j' for Jsonrpc field access
+				if req.Jsonrpc != "2.0" || req.Method == "" {
 					writeJSONRPCError(w, req.ID, jsonRPCInvalidRequestCode, "Invalid Request", "Missing jsonrpc version or method")
 					return
 				}
 
-				log.Printf("Received JSON-RPC request: Method=%s, ID=%v", req.Method, req.ID)
+				// Use lowercase 'j' for Jsonrpc field access
+				log.Printf("Received JSON-RPC request: Method=%s, ID=%v, Version=%s", req.Method, req.ID, req.Jsonrpc)
 
 				// --- Dispatch based on method ---
 				// We need to simulate the http.HandlerFunc signature for the existing handlers

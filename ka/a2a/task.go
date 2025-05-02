@@ -69,6 +69,31 @@ type Message struct {
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
+// MarshalJSON implements the json.Marshaler interface for Message.
+// This handles the serialization of the Part interface slice correctly.
+func (m Message) MarshalJSON() ([]byte, error) {
+	// Use an alias type to avoid recursion
+	type MessageAlias Message
+	// Define a temporary struct for marshalling, replacing Parts with []interface{}
+	// or handling each part type explicitly. Let's use []interface{} for simplicity,
+	// as json.Marshal can handle concrete types within an interface{} slice.
+	tmp := struct {
+		MessageAlias
+		Parts []interface{} `json:"parts"` // Use interface{} slice
+	}{
+		MessageAlias: MessageAlias(m),
+		Parts:        make([]interface{}, len(m.Parts)),
+	}
+
+	// Copy concrete parts into the interface{} slice
+	for i, part := range m.Parts {
+		tmp.Parts[i] = part // json.Marshal will handle the concrete types
+	}
+
+	return json.Marshal(tmp)
+}
+
+
 func (m *Message) UnmarshalJSON(data []byte) error {
 
 	type MessageAlias Message
