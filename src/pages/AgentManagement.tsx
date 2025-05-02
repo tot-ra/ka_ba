@@ -6,11 +6,6 @@ import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import { useNavigate } from 'react-router-dom';
 import styles from './AgentManagement.module.css'; // Import the CSS module
 
-// Removed MUI imports: Button, Box
-
-type Tab = 'manage' | 'add'; // This type seems unused now, consider removing if not needed elsewhere
-type SpawnMessageType = 'success' | 'error' | null; // This type seems unused now, consider removing if not needed elsewhere
-
 interface Agent {
   id: string;
   url: string;
@@ -27,39 +22,8 @@ const AgentManagement: React.FC = () => {
   // Removed agentLogs and loadingLogs state
 
   useEffect(() => {
-    // Fetch agents using context function on mount
     fetchAgentsFromContext();
-    /* // Keep original fetch logic commented out for reference if needed
-    const fetchAgents = async () => {
-      setLoadingAgents(true); // Use context loading state if preferred
-      try {
-        const response = await axios.post('http://localhost:3000/graphql', {
-          query: `
-            query {
-              agents {
-                id
-                url
-                name
-                description
-                isLocal
-                pid
-              }
-            }
-          `,
-        });
-        setAgents(response.data.data.agents); // Use context setAgents if preferred
-      } catch (error) {
-        console.error('Error fetching agents:', error);
-        // Use context setAgentError if preferred
-      } finally {
-        // Use context setLoadingAgents if preferred
-      }
-    };
-    fetchAgents();
-    */
-  }, [fetchAgentsFromContext]); // Depend on context fetch function
-
-  // Removed fetchAgentLogs function
+  }, [fetchAgentsFromContext]);
 
   const handleSelectAgent = (agentId: string) => {
     setSelectedAgentId(agentId); // Use context setter
@@ -148,18 +112,8 @@ const AgentManagement: React.FC = () => {
                   </li>
                 ))}
               </ul>
-        {/* Display TaskList and Logs when an agent is selected */}
-        {selectedAgentId && (
-          <>
-            <AgentInteraction />
-
-          </> /* End of Fragment */
-        )}
+        {selectedAgentId && (<AgentInteraction />)}
       </div>
-
-      {/* Removed the separate rendering of TaskSubmitForm */}
-
-      {/* Removed agent creation forms and tabs */}
     </div>
   );
 };

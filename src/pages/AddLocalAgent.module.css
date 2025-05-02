@@ -183,10 +183,10 @@
 
 .logPre {
   background-color: #282c34; /* Dark background for code */
-  color: #abb2bf; /* Light text for dark background */
+  color: #ffffff; /* Light text for dark background */
   padding: 12px;
   border-radius: 4px;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: 'Hack', 'Consolas', 'Courier New', Courier, monospace;
   font-size: 0.875rem;
   white-space: pre-wrap; /* Wrap long lines */
   word-wrap: break-word; /* Break words if necessary */

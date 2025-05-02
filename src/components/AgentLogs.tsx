@@ -112,14 +112,12 @@ const AgentLogs: React.FC<AgentLogsProps> = ({ agentId }) => {
   }
 
   return (
-    <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-       <h3>Agent Logs</h3>
        <div
          ref={logContainerRef}
          style={{
-           height: '300px',
+           height: '500px',
            overflowY: 'scroll',
-           padding: '10px',
+           padding: '0',
            fontFamily: 'monospace',
            fontSize: '0.9em',
            borderRadius: '4px',
@@ -144,7 +142,6 @@ const AgentLogs: React.FC<AgentLogsProps> = ({ agentId }) => {
            ))
          )}
        </div>
-    </div>
   );
 };
 

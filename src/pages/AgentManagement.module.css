@@ -3,7 +3,7 @@
 .container {
   padding: 20px;
   font-family: sans-serif;
-  max-width: 900px; /* Slightly wider */
+  max-width: 1200px; /* Slightly wider */
   margin: 0 auto;
 }
 
@@ -172,7 +172,7 @@
 }
 
 .logsContent {
-  background-color: #1e1e1e; /* Dark background */
+  background-color: #0d0d0d; /* Dark background */
   color: #d4d4d4; /* Light grey text */
   border: 1px solid #333; /* Darker border */
   padding: 15px; /* Increased padding */

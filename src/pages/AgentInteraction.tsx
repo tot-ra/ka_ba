@@ -85,10 +85,6 @@ const AgentInteraction: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'logs' | 'tasks'>('tasks'); // State for tabs
 
-  // TODO: Define CREATE_TASK_MUTATION if replacing axios call
-
-  // Removed handlers now inside TaskInputForm: handleInputChange, handleFileChange, handleDataTypeChange
-  // Removed getStatusStyle, now inside TaskDetails
 
   // Handlers that remain in AgentInteraction as they manage its state
   const handleSendTask = async (e: React.FormEvent) => {
@@ -215,73 +211,10 @@ const AgentInteraction: React.FC = () => {
 
      setIsLoading(true);
      setError(null);
-
-     // TODO: Replace this with GraphQL mutation call if applicable, or keep if it's a separate API endpoint
-     console.log("handleInputRequired needs to be reimplemented.");
      setError("Sending input not implemented yet.");
-     /*
-     try {
-        // Construct input message based on current taskInput state
-        const inputMessage: Message = {
-           role: 'user',
-           parts: [],
-        };
-
-        if (taskInput.type === 'text') {
-           inputMessage.parts.push({ type: 'text', text: taskInput.content as string });
-        } else if (taskInput.type === 'file') {
-           const file = taskInput.content as File;
-           // TODO: Implement file reading and base64 encoding or URI handling for input
-           console.warn('File upload for input not fully implemented.');
-            inputMessage.parts.push({ type: 'text', text: `Input File: ${file.name} (upload not supported yet)` });
-        } else if (taskInput.type === 'data') {
-           try {
-              const data = JSON.parse(taskInput.content as string);
-              inputMessage.parts.push({ type: 'data', data });
-           } catch (jsonError) {
-              setError('Invalid JSON data for input.');
-              setIsLoading(false);
-              return;
-           }
-        }
-
-        // Assuming a backend proxy endpoint for input tasks
-        const response = await axios.post('/api/tasks/input', {
-           agentId: selectedAgentId,
-           params: {
-              id: currentTask.id,
-              message: inputMessage,
-              // TODO: Add metadata if needed
-           },
-        });
-
-        const updatedTask: Task = response.data; // Assuming backend returns the updated Task object
-
-        if (updatedTask) {
-           setCurrentTask(updatedTask);
-           console.log('Input sent, task updated:', updatedTask);
-           // Task state should change from input-required
-        } else {
-           setError('Failed to send input to agent.');
-        }
-
-     } catch (error: any) {
-        console.error('Error sending input (axios - commented out):', error);
-        setError(`Error sending input: ${error.message}`);
-     } finally {
-       setIsLoading(false); // Ensure loading state is reset even if commented out
-     }
-     */
-     setIsLoading(false); // Reset loading state immediately as the call is commented out
-     // Remove extra closing brace below
+     setIsLoading(false);
   };
 
-
-  // --- Remove Polling Effect ---
-  // useEffect(() => { ... polling logic removed ... }, [currentTask?.id, currentTask?.status.state, selectedAgentId]);
-
-
-  // Implement fetching artifacts (keep for now, might be triggered differently)
   const fetchArtifacts = async (taskId: string) => {
      if (!selectedAgentId) return;
      // TODO: Replace with GraphQL query if artifacts are exposed via GraphQL
@@ -356,14 +289,10 @@ const AgentInteraction: React.FC = () => {
 
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+    <div style={{ fontFamily: 'sans-serif' }}>
 
       {selectedAgentId ? (
         <div>
-          <p>Interacting with Agent ID: <strong>{selectedAgentId}</strong></p>
-          {/* TODO: Display selected agent details (name, description, capabilities) */}
-
-          {/* Tabs */}
           <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
             <button
               style={activeTab === 'tasks' ? activeTabStyle : tabStyle}
@@ -379,8 +308,7 @@ const AgentInteraction: React.FC = () => {
             </button>
           </div>
 
-          {/* Tab Content */}
-          <div style={{ paddingTop: '20px' }}>
+          <div>
             {activeTab === 'logs' && (
               <AgentLogs agentId={selectedAgentId} />
             )}
