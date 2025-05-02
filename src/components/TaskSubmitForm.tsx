@@ -1,47 +1,44 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-// Removed invalid import of backend type
+// Removed direct axios import, now handled by utility
+import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the utility function
 
-// --- Frontend Type Definitions (Simplified from a2aClient) ---
-// Define necessary types locally for the frontend component
-interface TextPart {
-  type: 'text';
-  text: string;
+// --- Frontend Type Definitions for GraphQL ---
+// Matches InputPart structure (simplified content)
+interface InputPart {
+  type: 'text'; // Assuming only text for now
+  content: { text: string }; // Content is an object containing the text
   metadata?: any;
 }
 
-// Add other Part types (FilePart, DataPart) here if needed by the form
-type Part = TextPart; // Simplified for now
-
-interface Message {
-  role: 'user' | 'agent';
-  parts: Part[];
+// Matches InputMessage structure
+interface InputMessage {
+  role: 'USER' | 'AGENT' | 'SYSTEM' | 'TOOL'; // Align with GraphQL MessageRole enum
+  parts: InputPart[];
   metadata?: any;
+}
+
+// Matches the structure of the Task type returned by the GraphQL mutation
+interface GraphQLTaskResponse {
+  id: string;
+  state: string; // Assuming TaskState enum maps to string
+  // Add other fields from the Task type if needed (e.g., createdAt)
+}
+
+// Matches the overall GraphQL response structure for the createTask mutation
+interface GraphQLCreateTaskResponse {
+  data?: {
+    createTask: GraphQLTaskResponse;
+  };
+  errors?: Array<{ message: string; extensions?: { code?: string } }>; // Standard GraphQL error structure
 }
 // --- End Frontend Type Definitions ---
-
-
-// Define the expected structure for the API request body
-interface CreateTaskPayload {
-  message: Message;
-  agentId?: string; // Add optional agentId
-  // Add other optional fields like sessionId, metadata if needed
-}
-
-// Define the expected structure for the API response
-interface CreateTaskResponse {
-  id: string;
-  status: { state: string };
-  assignedAgentId: string;
-  // Add other fields returned by the API if necessary
-}
 
 // Define props for the component
 interface TaskSubmitFormProps {
   agentId: string; // Require agentId
 }
 
-const TaskSubmitForm: React.FC<TaskSubmitFormProps> = ({ agentId }) => { // Destructure agentId from props
+const TaskSubmitForm: React.FC<TaskSubmitFormProps> = ({ agentId }) => {
   const [prompt, setPrompt] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -56,33 +53,59 @@ const TaskSubmitForm: React.FC<TaskSubmitFormProps> = ({ agentId }) => { // Dest
     setIsSubmitting(true);
     setSubmitStatus(null);
 
-    const payload: CreateTaskPayload = {
+    // Construct the GraphQL mutation query string
+    const mutation = `
+      mutation CreateTask($agentId: ID, $message: InputMessage!) {
+        createTask(agentId: $agentId, message: $message) {
+          id
+          state
+          # Add other fields you want returned here, e.g., createdAt
+        }
+      }
+    `;
+
+    // Construct the variables object
+    const variables = {
+      agentId: agentId, // Use the agentId passed via props
       message: {
-        role: 'user',
-        parts: [{ type: 'text', text: prompt }],
-      },
-      agentId: agentId, // Include the agentId in the payload
+        role: 'USER', // CORRECTED: Use uppercase enum value
+        parts: [
+          {
+            type: 'text', // Assuming only text parts for now
+            content: { text: prompt }, // Structure matches InputPart
+          },
+        ],
+      } as InputMessage, // Type assertion
     };
 
     try {
-      // Assuming the backend endpoint /api/tasks/create can handle the agentId
-      const response = await axios.post<CreateTaskResponse>('/api/tasks/create', payload);
+      // Use the utility function to send the request
+      // Specify the expected shape of the data part of the response
+      const response = await sendGraphQLRequest<{ createTask: GraphQLTaskResponse }>(mutation, variables);
 
-      if (response.status === 200 && response.data && response.data.id) {
+      // Check for GraphQL errors returned in the response body
+      if (response.errors) {
+        console.error('GraphQL errors:', response.errors);
+        const errorMessages = response.errors.map(err => err.message).join('; ');
+        setSubmitStatus({ type: 'error', message: `GraphQL Error: ${errorMessages}` });
+      } else if (response.data?.createTask) {
+        // Success case
+        const createdTask = response.data.createTask;
         setSubmitStatus({
           type: 'success',
-          message: `Task ${response.data.id} created and assigned to agent ${response.data.assignedAgentId}. Status: ${response.data.status.state}`,
+          message: `Task ${createdTask.id} created and submitted to agent ${agentId}. Initial state: ${createdTask.state}`,
         });
         setPrompt(''); // Clear prompt on success
       } else {
-        // Handle cases where API returns 200 but data is unexpected
-        console.error('Unexpected success response:', response);
-        setSubmitStatus({ type: 'error', message: 'Received an unexpected response from the server.' });
+        // Handle unexpected response structure (no errors, no data.data)
+        console.error('Unexpected GraphQL response structure:', response);
+        setSubmitStatus({ type: 'error', message: 'Received an unexpected response structure from the server.' });
       }
     } catch (error: any) {
-      console.error('Error submitting task:', error);
-      const errorMessage = error.response?.data?.error || error.message || 'An unknown error occurred.';
-      setSubmitStatus({ type: 'error', message: `Error: ${errorMessage}` });
+      // Handle errors thrown by sendGraphQLRequest (network, non-2xx status, or extracted GraphQL errors)
+      console.error('Error submitting task via GraphQL utility:', error);
+      // The utility function already formats the error message
+      setSubmitStatus({ type: 'error', message: error.message });
     } finally {
       setIsSubmitting(false);
     }

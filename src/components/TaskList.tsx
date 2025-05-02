@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios'; // Import axios
+// Removed direct axios import
+import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the utility function
 
 // --- Interfaces matching GraphQL Schema ---
 type TaskState = "SUBMITTED" | "WORKING" | "INPUT_REQUIRED" | "COMPLETED" | "FAILED" | "CANCELED";
@@ -111,28 +112,31 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
           variables: { agentId },
         };
 
-        const response = await axios.post('http://localhost:3000/graphql', graphqlQuery);
+        // Use the utility function
+        // Specify the expected shape of the data part of the response
+        const response = await sendGraphQLRequest<{ listTasks: Task[] }>(graphqlQuery.query, graphqlQuery.variables);
 
-        if (response.data.errors) {
-          // Handle GraphQL errors
-          console.error("GraphQL errors:", response.data.errors);
-          throw new Error(response.data.errors.map((e: any) => e.message).join(', '));
+        // Check for GraphQL errors returned by the utility
+        if (response.errors) {
+          console.error("GraphQL errors:", response.errors);
+          throw new Error(response.errors.map((e: any) => e.message).join(', '));
         }
 
-        const data: Task[] = response.data.data.listTasks;
+        // Access the data correctly
+        const data = response.data?.listTasks;
 
         // Basic validation
-        if (!Array.isArray(data)) {
-          console.error("Received non-array data from listTasks query:", data);
+        if (!data || !Array.isArray(data)) {
+          console.error("Received invalid or missing data from listTasks query:", response);
           throw new Error('Invalid data format received from server.');
         }
 
         console.log(`Received ${data.length} tasks.`);
         setTasks(data);
 
-      } catch (err) {
-        console.error("Error fetching tasks:", err);
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      } catch (err: any) { // Catch errors thrown by the utility
+        console.error("Error fetching tasks via GraphQL utility:", err);
+        setError(err.message); // The utility formats the error message
         setTasks([]);
       } finally {
         setLoading(false);
