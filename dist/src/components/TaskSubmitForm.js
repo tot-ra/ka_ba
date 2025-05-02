@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const jsx_runtime_1 = require("react/jsx-runtime");
 const react_1 = require("react");
 const axios_1 = __importDefault(require("axios"));
-const TaskSubmitForm = () => {
+const TaskSubmitForm = ({ agentId }) => {
     const [prompt, setPrompt] = (0, react_1.useState)('');
     const [isSubmitting, setIsSubmitting] = (0, react_1.useState)(false);
     const [submitStatus, setSubmitStatus] = (0, react_1.useState)(null);
@@ -23,8 +23,10 @@ const TaskSubmitForm = () => {
                 role: 'user',
                 parts: [{ type: 'text', text: prompt }],
             },
+            agentId: agentId, // Include the agentId in the payload
         };
         try {
+            // Assuming the backend endpoint /api/tasks/create can handle the agentId
             const response = await axios_1.default.post('/api/tasks/create', payload);
             if (response.status === 200 && response.data && response.data.id) {
                 setSubmitStatus({

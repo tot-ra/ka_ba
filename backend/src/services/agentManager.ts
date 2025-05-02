@@ -55,9 +55,20 @@ export class AgentManager {
     // Removed orchestrator.updateAgents call
   }
 
-  public getAgents(): Agent[] {
-    return [...this.agents];
+  // Modify Agent type returned by getAgents to potentially include pid
+  public getAgents(): (Agent & { pid?: number })[] {
+    return this.agents.map(agent => {
+      if (agent.isLocal) {
+        const processInfo = this.spawnedProcesses.get(agent.id);
+        return {
+          ...agent,
+          pid: processInfo?.pid, // Add pid if process info exists
+        };
+      }
+      return agent; // Return unmodified for remote agents
+    });
   }
+
 
   public addRemoteAgent(url: string, name?: string): Agent {
     const newAgent: Agent = {

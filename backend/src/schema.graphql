@@ -4,6 +4,7 @@ type Agent {
   name: String
   description: String
   isLocal: Boolean!
+  pid: Int # Process ID, only available for local agents
 }
 
 type Query {

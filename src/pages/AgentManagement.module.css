@@ -140,7 +140,48 @@
 
 /* Task List Section */
 .taskListSection {
-  margin-top: 20px;
-  border-top: 1px solid #eee;
-  padding-top: 20px;
+  margin-top: 20px; /* Restore top margin */
+  border-top: 1px solid #eee; /* Restore border */
+  padding-top: 20px; /* Restore padding */
+}
+
+/* Styles for Agent URL and PID */
+.agentNameContainer {
+  display: flex;
+  align-items: baseline; /* Align text nicely */
+  gap: 5px; /* Space between name, url, pid */
+}
+
+.agentUrl,
+.agentPid {
+  font-size: 0.8em;
+  color: #777;
+  margin-left: 5px; /* Space from the name link */
+}
+
+/* Agent Logs Section */
+.logsSection {
+  margin-top: 20px; /* Restore top margin */
+  border-top: 1px solid #eee; /* Restore border */
+  padding-top: 20px; /* Restore padding */
+}
+
+.logsTitle {
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+}
+
+.logsContent {
+  background-color: #1e1e1e; /* Dark background */
+  color: #d4d4d4; /* Light grey text */
+  border: 1px solid #333; /* Darker border */
+  padding: 15px; /* Increased padding */
+  border-radius: 4px;
+  max-height: 500px; /* Increased max height */
+  overflow-y: auto;
+  white-space: pre-wrap; /* Wrap long lines */
+  word-break: break-all; /* Break long words/lines */
+  font-family: monospace; /* Use monospace font for logs */
+  font-size: 0.9em; /* Slightly larger font */
+  text-align: left;
 }

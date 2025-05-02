@@ -11,8 +11,8 @@ const AddExternalAgent: React.FC = () => {
   const [newAgentUrl, setNewAgentUrl] = useState('');
   const [newAgentName, setNewAgentName] = useState('');
   const [isAddingExternal, setIsAddingExternal] = useState(false);
-  const [addExternalStatusMessage, setAddExternalStatusMessage] = useState<string | null>(null);
-  const [addExternalMessageType, setAddExternalMessageType] = useState<AddExternalMessageType>(null);
+  const [addExternalStatusMessage, setAddExternalStatusMessage] = useState<string | null>(null); // Keep for errors
+  const [addExternalMessageType, setAddExternalMessageType] = useState<AddExternalMessageType>(null); // Keep for errors
 
   const handleAddAgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,10 +41,8 @@ const AddExternalAgent: React.FC = () => {
       const newAgent = response.data.data.addAgent;
       if (newAgent && newAgent.id) {
         console.log('Agent added successfully:', newAgent);
-        setAddExternalStatusMessage(`External agent "${newAgent.name || newAgent.id}" added successfully. Redirecting...`);
-        setAddExternalMessageType('success');
-        // Navigate back after a short delay
-        setTimeout(() => navigate('/agents'), 1500);
+        // Navigate back immediately on success
+        navigate('/agents');
       } else {
         const errorMessage = response.data.errors?.[0]?.message || 'Failed to add agent or received invalid data.';
         console.error('Failed to add agent:', newAgentUrl, newAgentName, response.data);
@@ -59,12 +57,12 @@ const AddExternalAgent: React.FC = () => {
       setAddExternalMessageType('error');
       setIsAddingExternal(false); // Stop loading on error
     }
-     // Don't set isAddingExternal to false on success, as we are navigating away
+    // No need to keep isAddingExternal true on success anymore
   };
 
-  // Helper to get alert class based on type
+  // Helper to get alert class based on type (only needed for error now)
   const getAlertClass = (type: AddExternalMessageType): string => {
-    if (type === 'success') return styles.alertSuccess;
+    // if (type === 'success') return styles.alertSuccess; // No longer needed
     if (type === 'error') return styles.alertError;
     return styles.alertInfo; // Default or null
   };
@@ -118,8 +116,8 @@ const AddExternalAgent: React.FC = () => {
                  {isAddingExternal ? 'Adding...' : 'Add Agent'}
                 </button>
              </div>
-             {/* Status Message */}
-             {addExternalStatusMessage && (
+             {/* Status Message - Only show for errors */}
+             {addExternalStatusMessage && addExternalMessageType === 'error' && (
                <div className={`${styles.formField} ${styles.formFieldFull}`}>
                  <div className={`${styles.alert} ${getAlertClass(addExternalMessageType)}`}>
                    {addExternalStatusMessage}

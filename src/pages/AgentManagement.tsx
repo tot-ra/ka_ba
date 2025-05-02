@@ -15,13 +15,16 @@ interface Agent {
   url: string;
   name?: string;
   description?: string;
-  isLocal: boolean; // Add isLocal flag
+  isLocal: boolean;
+  pid?: number; // Add optional pid
 }
 
 const AgentManagement: React.FC = () => {
-  const navigate = useNavigate(); // Add useNavigate hook
+  const navigate = useNavigate();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [agentLogs, setAgentLogs] = useState<string[]>([]); // State for logs
+  const [loadingLogs, setLoadingLogs] = useState<boolean>(false); // State for loading logs indicator
 
   useEffect(() => {
     // Fetch agents from backend on component mount
@@ -36,7 +39,8 @@ const AgentManagement: React.FC = () => {
                 url
                 name
                 description
-                isLocal # Fetch isLocal flag
+                isLocal
+                pid # Fetch pid
               }
             }
           `,
@@ -50,10 +54,38 @@ const AgentManagement: React.FC = () => {
     fetchAgents();
   }, []);
 
+  // Function to fetch logs for the selected agent
+  const fetchAgentLogs = async (agentId: string) => {
+    setLoadingLogs(true);
+    setAgentLogs([]); // Clear previous logs
+    try {
+      const response = await axios.post('http://localhost:3000/graphql', {
+        query: `
+          query GetAgentLogs($agentId: ID!) {
+            agentLogs(agentId: $agentId)
+          }
+        `,
+        variables: { agentId },
+      });
+      if (response.data.data.agentLogs) {
+        setAgentLogs(response.data.data.agentLogs);
+      } else {
+        setAgentLogs(['No logs available or agent not found.']); // Provide feedback
+      }
+    } catch (error) {
+      console.error('Error fetching agent logs:', error);
+      setAgentLogs(['Error fetching logs.']); // Provide error feedback
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+
   const handleSelectAgent = (agentId: string) => {
     setSelectedAgentId(agentId);
     console.log('Selected agent:', agentId);
-    // TODO: Store selected agent in a more persistent state (e.g., context, global state)
+    // Fetch logs when an agent is selected
+    fetchAgentLogs(agentId);
   };
 
   const handleStopAgent = async (agentId: string) => {
@@ -117,9 +149,13 @@ const AgentManagement: React.FC = () => {
                         className={styles.agentRadio}
                       />
                       <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
-                        <a href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer" className={styles.agentNameLink}>
-                          {agent.name || 'Unnamed Agent'}
-                        </a>
+                        <div className={styles.agentNameContainer}>
+                          <a href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer" className={styles.agentNameLink}>
+                            {agent.name || 'Unnamed Agent'}
+                          </a>
+                          <span className={styles.agentUrl}>({agent.url})</span> {/* Display URL */}
+                          {agent.isLocal && agent.pid && <span className={styles.agentPid}> (PID: {agent.pid})</span>} {/* Display PID */}
+                        </div>
                         {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
                       </label>
                     </div>
@@ -135,16 +171,33 @@ const AgentManagement: React.FC = () => {
                   </li>
                 ))}
               </ul>
-        {/* Display TaskList when an agent is selected */}
+        {/* Display TaskList and Logs when an agent is selected */}
         {selectedAgentId && (
-          <div className={styles.taskListSection}>
-             <TaskList agentId={selectedAgentId} />
-          </div>
+          <> {/* Reverted back to Fragment */}
+            {/* Task List Section */}
+            <div className={styles.taskListSection}>
+              <TaskList agentId={selectedAgentId} />
+            </div>
+
+            {/* Agent Logs Section */}
+            <div className={styles.logsSection}>
+              <h3 className={styles.logsTitle}>Agent Logs</h3>
+              {loadingLogs ? (
+                <p>Loading logs...</p>
+              ) : (
+                <pre className={styles.logsContent}>
+                  {agentLogs.length > 0 ? agentLogs.join('\n') : 'No logs to display.'}
+                </pre>
+              )}
+            </div>
+          </> /* End of Fragment */
         )}
       </div>
 
-      {/* Add the Task Submit Form here */}
-      <TaskSubmitForm />
+      {/* Conditionally render Task Submit Form */}
+      {selectedAgentId && (
+         <TaskSubmitForm agentId={selectedAgentId} />
+      )}
 
       {/* Removed agent creation forms and tabs */}
     </div>

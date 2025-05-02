@@ -24,6 +24,7 @@ interface Message {
 // Define the expected structure for the API request body
 interface CreateTaskPayload {
   message: Message;
+  agentId?: string; // Add optional agentId
   // Add other optional fields like sessionId, metadata if needed
 }
 
@@ -35,7 +36,12 @@ interface CreateTaskResponse {
   // Add other fields returned by the API if necessary
 }
 
-const TaskSubmitForm: React.FC = () => {
+// Define props for the component
+interface TaskSubmitFormProps {
+  agentId: string; // Require agentId
+}
+
+const TaskSubmitForm: React.FC<TaskSubmitFormProps> = ({ agentId }) => { // Destructure agentId from props
   const [prompt, setPrompt] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -55,9 +61,11 @@ const TaskSubmitForm: React.FC = () => {
         role: 'user',
         parts: [{ type: 'text', text: prompt }],
       },
+      agentId: agentId, // Include the agentId in the payload
     };
 
     try {
+      // Assuming the backend endpoint /api/tasks/create can handle the agentId
       const response = await axios.post<CreateTaskResponse>('/api/tasks/create', payload);
 
       if (response.status === 200 && response.data && response.data.id) {
