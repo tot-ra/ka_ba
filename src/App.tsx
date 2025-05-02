@@ -1,7 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
 import AgentManagement from './pages/AgentManagement';
-import AddAgent from './pages/AddAgent'; // Import the new AddAgent component
+import AddLocalAgent from './pages/AddLocalAgent'; // Import the new local agent component
+import AddExternalAgent from './pages/AddExternalAgent'; // Import the new external agent component
 // Removed OrchestrationManagement import
 // Removed WorkflowDefinition import
 import './App.css'; // Assuming a basic App.css might be needed
@@ -27,7 +28,8 @@ function App() {
 
           <Routes>
             <Route path="/agents" element={<AgentManagement />} />
-            <Route path="/add-agent" element={<AddAgent />} /> {/* Add route for AddAgent */}
+            <Route path="/add-local-agent" element={<AddLocalAgent />} /> {/* Route for adding local agent */}
+            <Route path="/add-external-agent" element={<AddExternalAgent />} /> {/* Route for adding external agent */}
             {/* Removed Orchestration route */}
             {/* Removed Define Workflow route */}
             {/* Add other routes here */}

@@ -1,0 +1,166 @@
+/* Container and Paper */
+.container {
+  max-width: 800px; /* Equivalent to MUI's maxWidth="md" roughly */
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.paper {
+  background-color: #fff;
+  padding: 24px;
+  margin-top: 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 1px -1px rgba(0,0,0,0.2), 0 1px 1px 0 rgba(0,0,0,0.14), 0 1px 3px 0 rgba(0,0,0,0.12); /* MUI Paper elevation 1 */
+}
+
+/* Typography */
+.title {
+  font-size: 1.75rem; /* Approximating h4 */
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+
+.captionText {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 4px;
+  display: block;
+}
+
+/* Form */
+.form {
+  border: 1px solid #e0e0e0;
+  padding: 24px;
+  border-radius: 4px;
+}
+
+.formGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* Spacing between items */
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* Space between label and input */
+}
+
+.formLabel {
+  font-size: 0.875rem;
+  color: #333;
+  margin-bottom: 4px; /* Space below label */
+}
+
+.formInput,
+.formTextarea {
+  width: 100%;
+  padding: 10px 14px; /* Approximating MUI small size */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+}
+
+.formTextarea {
+  resize: vertical; /* Allow vertical resizing */
+  min-height: 60px; /* Default min height */
+}
+
+/* Checkbox */
+.checkboxGroup {
+  margin-top: 8px;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.checkboxInput {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+/* Button */
+.button {
+  padding: 6px 16px;
+  font-size: 0.875rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: inline-flex; /* For spinner alignment */
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* Space between icon/spinner and text */
+}
+
+.buttonBack {
+  background-color: transparent;
+  color: #1976d2; /* MUI primary color */
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+.buttonBack:hover {
+  background-color: rgba(25, 118, 210, 0.04);
+}
+
+.buttonPrimary {
+  background-color: #1976d2; /* MUI primary color */
+  color: white;
+  min-width: 64px;
+  box-shadow: 0 3px 1px -2px rgba(0,0,0,0.2), 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12);
+}
+.buttonPrimary:hover {
+  background-color: #1565c0; /* Darker shade for hover */
+}
+.button:disabled {
+  background-color: rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.26);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Spinner */
+.spinner {
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 3px solid #fff;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Alert */
+.alert {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-top: 16px;
+  font-size: 0.875rem;
+}
+
+.alertInfo {
+  background-color: #e3f2fd; /* Light blue */
+  color: #0d47a1; /* Dark blue */
+  border: 1px solid #bbdefb;
+}
+
+.alertSuccess {
+  background-color: #e8f5e9; /* Light green */
+  color: #1b5e20; /* Dark green */
+  border: 1px solid #c8e6c9;
+}
+
+.alertError {
+  background-color: #ffebee; /* Light red */
+  color: #b71c1c; /* Dark red */
+  border: 1px solid #ffcdd2;
+}

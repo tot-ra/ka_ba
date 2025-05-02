@@ -1,27 +1,3 @@
-# Kaba Project README Fix
-
-- [ ] Implement frontend UI to monitor the execution of orchestration workflows across multiple agents.
-- [ ] Implement frontend UI to fetch and display the selected agent's capabilities from `/.well-known/agent.json`.
-- [ ] (Future) Implement `ba` backend API endpoint and frontend UI for managing push notification registrations (`tasks/pushNotification/set`, `tasks/pushNotification/get`).
-- [ ] Add `description` field to agent creation UI in `ba/src/pages/AgentManagement.tsx`.
-- [ ] Update `ba` backend GraphQL schema (`ba/backend/src/schema.graphql`) to include `description` for agent creation/update.
-- [ ] Modify `ba` backend (`ba/backend/src/index.ts`) `spawnKaAgent` function to:
-    - [ ] Accept `description` as an argument.
-    - [ ] Retrieve `llm_info.model` associated with the agent.
-    - [ ] Pass `name`, `description`, and `llm_info.model` as command-line arguments to the `ka` process.
-- [ ] Update `ka` agent (`ka/ka.go`) to:
-    - [ ] Parse `name`, `description`, and `llm_info.model` from command-line arguments.
-    - [ ] Store these values.
-    - [ ] Include these values in the response of the `/.well-known/agent.json` endpoint.
-
-## Technical Considerations
-
-- [ ] Define the detailed API contract between the `ba` frontend and its backend.
-- [ ] Implement robust error handling and validation across frontend and backend.
-- [ ] Add comprehensive testing for both frontend and backend components.
-- [ ] Consider and document deployment strategies for `ba` and `ka` agents.
-
-
 
 # ka AI agent TODO
 

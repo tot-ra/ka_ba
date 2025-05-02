@@ -90,10 +90,10 @@ const AgentManagement: React.FC = () => {
 
       {/* Add Agent Buttons */}
       <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
-        <Button variant="contained" color="primary" onClick={() => navigate('/add-agent')}>
+        <Button variant="contained" color="primary" onClick={() => navigate('/add-local-agent')}>
           Spawn Local Agent
         </Button>
-        <Button variant="contained" color="secondary" onClick={() => navigate('/add-agent')}>
+        <Button variant="contained" color="secondary" onClick={() => navigate('/add-external-agent')}>
           Add External Agent
         </Button>
       </Box>
