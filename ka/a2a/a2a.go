@@ -17,13 +17,6 @@ import (
 	"ka/llm"
 )
 
-// SetPushNotificationRequest represents the request body for setting push notifications.
-// Define based on A2A spec - likely includes TaskID pattern and URL
-type SetPushNotificationRequest struct {
-	TaskID string `json:"task_id"`
-	URL    string `json:"url"`
-}
-
 type TaskExecutor struct {
 	llmClient                     *llm.LLMClient
 	taskStore                     TaskStore
@@ -661,22 +654,6 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 			}
 		}
 	}(task, requestContext)
-}
-
-func (te *TaskExecutor) handleSetPushNotification(w http.ResponseWriter, r *http.Request) {
-	var req SetPushNotificationRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	te.mu.Lock()
-	te.pushNotificationRegistrations[req.TaskID] = req.URL
-	te.mu.Unlock()
-	log.Printf("Stored push notification registration for TaskID: %s, URL: %s", req.TaskID, req.URL)
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "registered"})
 }
 
 // decodeDataURI parses a data URI and decodes its base64 content.
