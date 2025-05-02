@@ -108,13 +108,6 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
             {/* Right Section */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '10px', marginRight: '10px' }}>
               <button
-                onClick={() => console.log(`Cancel clicked for task ${task.id}`)}
-                style={{ padding: '3px 8px', fontSize: '0.8em', marginBottom: '5px', cursor: 'pointer' }}
-                title="Cancel Task (Placeholder)"
-              >
-                Cancel
-              </button>
-              <button
                 onClick={() => onDuplicateTask(agentId!, task.id)} // Call the prop with agentId and taskId
                 style={{ padding: '3px 8px', fontSize: '0.8em', cursor: 'pointer' }}
                 title="Duplicate Task" // Updated title
