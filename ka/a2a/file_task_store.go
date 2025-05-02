@@ -55,9 +55,10 @@ func (fts *FileTaskStore) saveTask(task *Task) error {
 	return nil
 }
 
+// loadTask reads and unmarshals a task file.
+// IMPORTANT: Locking must be handled by the caller.
 func (fts *FileTaskStore) loadTask(taskID string) (*Task, error) {
-	fts.mu.RLock()
-	defer fts.mu.RUnlock()
+	// Removed RLock/RUnlock - caller must handle locking
 
 	filePath := fts.taskFilePath(taskID)
 	data, err := os.ReadFile(filePath)

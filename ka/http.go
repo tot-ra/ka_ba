@@ -254,6 +254,9 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 		// Map method names to their respective handlers (done inside the handler)
 
 		return func(w http.ResponseWriter, r *http.Request) {
+			// ADDED IMMEDIATE ENTRY LOGGING
+			log.Printf("[Root Handler Entry] Received request: Method=%s, Path=%s, RemoteAddr=%s", r.Method, r.URL.Path, r.RemoteAddr)
+
 			// ADD EXTRA LOGGING HERE
 			log.Printf("[Root Handler Entry] Method=%s, Path=%s, URL=%s, Proto=%s, Header=%v",
 				r.Method, r.URL.Path, r.URL.String(), r.Proto, r.Header)

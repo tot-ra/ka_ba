@@ -321,22 +321,24 @@ func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
 		log.Printf("[TaskList %v] Received request.", rpcReq.ID) // Log entry
 
 		// 3. Business Logic
-		log.Printf("[TaskList %v] Calling taskStore.ListTasks()...", rpcReq.ID)
+		logPrefix := fmt.Sprintf("[TaskList %v]", rpcReq.ID) // Use consistent prefix
+		log.Printf("%s Calling taskStore.ListTasks()...", logPrefix)
 		tasks, err := taskStore.ListTasks()
 		if err != nil {
-			log.Printf("[TaskList %v] Error retrieving tasks from store: %v", rpcReq.ID, err) // Log error from store
+			log.Printf("%s Error retrieving tasks from store: %v", logPrefix, err) // Log error from store
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to retrieve tasks", Data: err.Error()})
 			return
 		}
-		log.Printf("[TaskList %v] taskStore.ListTasks() returned %d tasks.", rpcReq.ID, len(tasks)) // Log count after successful retrieval
+		log.Printf("%s taskStore.ListTasks() returned %d tasks.", logPrefix, len(tasks)) // Log count after successful retrieval
 
 		if tasks == nil {
-			log.Printf("[TaskList %v] Task list was nil, ensuring empty array.", rpcReq.ID)
+			log.Printf("%s Task list was nil, ensuring empty array.", logPrefix)
 			tasks = []*Task{} // Ensure empty array, not null
 		}
 
 		// 4. Send successful JSON-RPC Response
-		log.Printf("[TaskList %v] Sending response with %d tasks.", rpcReq.ID, len(tasks))
+		log.Printf("%s Sending response with %d tasks.", logPrefix, len(tasks))
 		sendJSONRPCResponse(w, rpcReq.ID, tasks, nil)
+		log.Printf("%s Response sent.", logPrefix) // Log after sending
 	}
 }
