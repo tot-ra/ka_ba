@@ -2,7 +2,6 @@ import { createServer } from './server';
 import { AgentManager } from './services/agentManager';
 // Removed Orchestrator import
 import { registerProxyRoutes } from './routes/proxy';
-import { registerTasksRoutes } from './routes/tasks';
 import { setupApolloServer } from './graphql/server';
 
 const start = async () => {
@@ -13,7 +12,6 @@ const start = async () => {
   const fastify = createServer();
 
   registerProxyRoutes(fastify, agentManager);
-  registerTasksRoutes(fastify, agentManager);
 
   // Updated setupApolloServer call (removed orchestrator)
   await setupApolloServer(fastify, agentManager);
