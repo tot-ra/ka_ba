@@ -9,166 +9,157 @@ import (
 	"net/http"
 )
 
-// SendTaskRequest defines the structure for the /tasks/send endpoint request body.
-type SendTaskRequest struct {
-	Input   []Message `json:"input"`
-	SkillID string    `json:"skill_id,omitempty"`
-	Context string    `json:"context,omitempty"`
-	// Add other fields as needed by A2A spec
+// --- JSON-RPC Structures ---
+
+// JSONRPCRequest represents a generic JSON-RPC request.
+type JSONRPCRequest struct {
+	Jsonrpc string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"` // Use RawMessage to delay parsing
+	ID      interface{}     `json:"id"`               // Can be string, number, or null
 }
 
-// ProvideInputRequest defines the structure for the /tasks/input endpoint request body.
-type ProvideInputRequest struct {
-	TaskID string  `json:"task_id"`
-	Input  Message `json:"input"`
+// JSONRPCError represents the error object in a JSON-RPC response.
+type JSONRPCError struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
-// TasksSendHandler handles the creation of a new task via POST /tasks/send.
-// It validates the input, creates the task, starts execution asynchronously,
-// and returns the initial task object.
+// JSONRPCResponse represents a generic JSON-RPC response.
+type JSONRPCResponse struct {
+	Jsonrpc string        `json:"jsonrpc"`
+	Result  interface{}   `json:"result,omitempty"`
+	Error   *JSONRPCError `json:"error,omitempty"`
+	ID      interface{}   `json:"id"`
+}
+
+// --- Specific Request Parameter Structures ---
+
+// SendTaskParams defines the structure for the parameters of the "tasks/send" method.
+// Note: Renamed from SendTaskRequest to avoid confusion with JSONRPCRequest.
+type SendTaskParams struct {
+	// The original A2AClient sends a 'message' field, not 'input'. Let's align with that.
+	// Input   []Message `json:"input"` // Original field
+	Message Message `json:"message"` // Aligning with a2aClient.ts TaskSendParams
+	// Add other fields from TaskSendParams in a2aClient.ts if needed
+	SessionID      *string     `json:"sessionId,omitempty"`
+	PushNotification interface{} `json:"pushNotification,omitempty"`
+	HistoryLength  *int        `json:"historyLength,omitempty"`
+	Metadata       interface{} `json:"metadata,omitempty"`
+	// SkillID string    `json:"skill_id,omitempty"` // Keep if needed
+	// Context string    `json:"context,omitempty"` // Keep if needed
+}
+
+// ProvideInputParams defines the structure for the parameters of the "tasks/input" method.
+// Note: Renamed from ProvideInputRequest.
+type ProvideInputParams struct {
+	TaskID string  `json:"id"` // Aligning with a2aClient.ts TaskInputParams
+	Input  Message `json:"message"` // Aligning with a2aClient.ts TaskInputParams
+	Metadata interface{} `json:"metadata,omitempty"`
+}
+
+// TaskStatusParams defines the structure for parameters of "tasks/status", "tasks/artifact" etc.
+type TaskStatusParams struct {
+	ID string `json:"id"`
+	Metadata interface{} `json:"metadata,omitempty"`
+}
+
+// --- Helper Function for Sending JSON-RPC Response ---
+
+func sendJSONRPCResponse(w http.ResponseWriter, id interface{}, result interface{}, jsonrpcError *JSONRPCError) {
+	w.Header().Set("Content-Type", "application/json")
+	// JSON-RPC spec usually uses 200 OK even for errors in the response body
+	w.WriteHeader(http.StatusOK)
+
+	response := JSONRPCResponse{
+		Jsonrpc: "2.0",
+		ID:      id, // Use the ID from the original request
+		Result:  result,
+		Error:   jsonrpcError,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		// Log error, but headers are likely already sent
+		log.Printf("[JSONRPC] Error encoding response for ID %v: %v", id, err)
+	}
+}
+
+// --- JSON-RPC Method Handlers ---
+
+// TasksSendHandler handles the "tasks/send" JSON-RPC method.
 func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
+		// 1. Decode the generic JSON-RPC Request
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, "Bad Request: Cannot read body", http.StatusBadRequest)
+			// Cannot construct a proper JSON-RPC error response without the ID
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Cannot read body"}, "id": null}`, http.StatusOK)
 			return
 		}
 		defer r.Body.Close()
 
-		var req SendTaskRequest
-
-		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "Bad Request: Invalid JSON", http.StatusBadRequest)
+		var rpcReq JSONRPCRequest
+		if err := json.Unmarshal(body, &rpcReq); err != nil {
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Invalid JSON"}, "id": null}`, http.StatusOK)
 			return
 		}
 
-		if len(req.Input) == 0 {
-			http.Error(w, "Bad Request: Input messages array is empty", http.StatusBadRequest)
+		// Basic validation of the RPC request itself
+		if rpcReq.Jsonrpc != "2.0" || rpcReq.Method == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32600, Message: "Invalid Request: Missing jsonrpc version or method"})
 			return
 		}
 
-		// Add robust input validation based on A2A spec
-		for i, msg := range req.Input {
-			if msg.Role == "" {
-				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty role", i), http.StatusBadRequest)
-				return
-			}
-			if len(msg.Parts) == 0 {
-				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty parts array", i), http.StatusBadRequest)
-				return
-			}
-			for j, part := range msg.Parts {
-				if part == nil {
-					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d is null", i, j), http.StatusBadRequest)
-					return
-				}
-				// Check concrete part types and their fields
-				switch p := part.(type) {
-				case TextPart:
-					if p.Type == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty type", i, j), http.StatusBadRequest)
-						return
-					}
-					if p.Text == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty text", i, j), http.StatusBadRequest)
-						return
-					}
-				case FilePart:
-					if p.Type == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty type", i, j), http.StatusBadRequest)
-						return
-					}
-					if p.URI == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty URI", i, j), http.StatusBadRequest)
-						return
-					}
-					if p.MimeType == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty mime_type", i, j), http.StatusBadRequest)
-						return
-					}
-				case DataPart:
-					if p.Type == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty type", i, j), http.StatusBadRequest)
-						return
-					}
-					// Validate Data field (which is 'any')
-					if p.Data == nil {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has null data", i, j), http.StatusBadRequest)
-						return
-					}
-					// Check if the underlying data has content.
-					hasContent := false
-					switch dataVal := p.Data.(type) {
-					case string:
-						if dataVal != "" {
-							hasContent = true
-						}
-					case []byte: // This is the most likely intended type for raw data
-						if len(dataVal) > 0 {
-							hasContent = true
-						}
-					case []any: // For JSON arrays
-						if len(dataVal) > 0 {
-							hasContent = true
-						}
-					case map[string]any: // For JSON objects
-						if len(dataVal) > 0 {
-							hasContent = true
-						}
-					default:
-						// If it's a different type, consider it an error for strict validation.
-						log.Printf("[TaskSend] Warning: DataPart data field has unexpected type %T for message %d, part %d", dataVal, i, j)
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has unexpected data type %T", i, j, dataVal), http.StatusBadRequest)
-						return
-					}
-
-					if !hasContent {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty data content", i, j), http.StatusBadRequest)
-						return
-					}
-
-					if p.MimeType == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty mime_type", i, j), http.StatusBadRequest)
-						return
-					}
-				default:
-					// This case should ideally not be hit if UnmarshalJSON for Message/Part works correctly,
-					// but added as a safeguard.
-					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d has unknown type", i, j), http.StatusBadRequest)
-					return
-				}
-			}
+		// 2. Decode the specific method parameters (`params`)
+		var params SendTaskParams
+		if err := json.Unmarshal(rpcReq.Params, &params); err != nil {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: fmt.Sprintf("Invalid Params: %v", err)})
+			return
 		}
 
-		log.Printf("[TaskSend] Received %d input messages. Validation successful.", len(req.Input))
+		// 3. Validate the parameters (SendTaskParams)
+		// Use the 'Message' field now instead of 'Input' array
+		if params.Message.Role == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: "Invalid Params: Message has empty role"})
+			return
+		}
+		if len(params.Message.Parts) == 0 {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: "Invalid Params: Message has empty parts array"})
+			return
+		}
+		// Add more detailed part validation if needed (similar to previous version)
+		// ... (validation logic for parts can be added here) ...
 
-		task, err := taskExecutor.taskStore.CreateTask(req.Input)
+		log.Printf("[TaskSend %v] Received valid JSON-RPC request.", rpcReq.ID)
+
+		// 4. Execute the business logic (create and start task)
+		// We need to wrap the single message in an array for CreateTask if it still expects []Message
+		// TODO: Refactor CreateTask to accept a single Message or adjust here.
+		// Assuming CreateTask needs []Message for now:
+		inputMessages := []Message{params.Message}
+		task, err := taskExecutor.taskStore.CreateTask(inputMessages)
 		if err != nil {
-			log.Printf("[TaskSend] Error creating task: %v", err)
-			http.Error(w, "Internal Server Error: Failed to create task", http.StatusInternalServerError)
+			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})
 			return
 		}
 
 		// Start task execution asynchronously
-		taskExecutor.ExecuteTask(task, r.Context())
+		taskExecutor.ExecuteTask(task, r.Context()) // Pass request context
 
-		// FIXED: Return the full initial task object as the response
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK) // Use 200 OK as we are returning the created resource representation
-		if err := json.NewEncoder(w).Encode(task); err != nil {
-			// Log error if encoding fails, headers might already be sent
-			log.Printf("[TaskSend %s] Error encoding task response: %v", task.ID, err)
-			// Avoid writing http.Error here as headers are likely sent
-		}
+		log.Printf("[TaskSend %v] Task %s created successfully.", rpcReq.ID, task.ID)
+
+		// 5. Send the successful JSON-RPC Response containing the task
+		sendJSONRPCResponse(w, rpcReq.ID, task, nil)
 	}
 }
 
+
 // TasksStatusHandler handles GET /tasks/status requests to retrieve the status of a specific task.
+// NOTE: This handler seems intended for standard HTTP GET, not JSON-RPC.
+// If it needs to be JSON-RPC, it should follow the pattern of TasksSendHandler.
+// Assuming it remains HTTP GET for now.
 func TasksStatusHandler(taskStore TaskStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -198,100 +189,130 @@ func TasksStatusHandler(taskStore TaskStore) http.HandlerFunc {
 	}
 }
 
-// TasksInputHandler handles POST /tasks/input requests to provide additional input
-// to a task that is in the TaskStateInputRequired state.
+// TasksInputHandler handles the "tasks/input" JSON-RPC method.
 func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
+		// 1. Decode the generic JSON-RPC Request
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, "Bad Request: Cannot read body", http.StatusBadRequest)
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Cannot read body"}, "id": null}`, http.StatusOK)
 			return
 		}
 		defer r.Body.Close()
 
-		var req ProvideInputRequest
-		if err := json.Unmarshal(body, &req); err != nil || req.TaskID == "" {
-			http.Error(w, "Bad Request: Invalid JSON or missing task_id", http.StatusBadRequest)
+		var rpcReq JSONRPCRequest
+		if err := json.Unmarshal(body, &rpcReq); err != nil {
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Invalid JSON"}, "id": null}`, http.StatusOK)
 			return
 		}
 
-		log.Printf("[TaskInput %s] Received input request.", req.TaskID)
+		if rpcReq.Jsonrpc != "2.0" || rpcReq.Method == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32600, Message: "Invalid Request"})
+			return
+		}
 
-		task, err := taskExecutor.taskStore.GetTask(req.TaskID)
+		// 2. Decode the specific method parameters (`params`)
+		var params ProvideInputParams
+		if err := json.Unmarshal(rpcReq.Params, &params); err != nil || params.TaskID == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32602, Message: fmt.Sprintf("Invalid Params: %v or missing task ID", err)})
+			return
+		}
+
+		log.Printf("[TaskInput %v] Received input request for task %s.", rpcReq.ID, params.TaskID)
+
+		// 3. Business Logic
+		task, err := taskExecutor.taskStore.GetTask(params.TaskID)
 		if err != nil {
+			errCode := -32000 // Internal server error default
+			errMsg := "Internal Server Error"
 			if errors.Is(err, ErrTaskNotFound) {
-				http.Error(w, "Not Found: Task not found", http.StatusNotFound)
+				errCode = -32001 // Application-specific error code
+				errMsg = "Not Found: Task not found"
 			} else {
-				log.Printf("[TaskInput %s] Error retrieving task: %v", req.TaskID, err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				log.Printf("[TaskInput %v] Error retrieving task %s: %v", rpcReq.ID, params.TaskID, err)
 			}
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: errCode, Message: errMsg, Data: err.Error()})
 			return
 		}
 
 		if task.State != TaskStateInputRequired {
-			log.Printf("[TaskInput %s] Task is not in input-required state (current: %s)", req.TaskID, task.State)
-			http.Error(w, "Conflict: Task is not waiting for input", http.StatusConflict)
+			log.Printf("[TaskInput %v] Task %s is not in input-required state (current: %s)", rpcReq.ID, params.TaskID, task.State)
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32002, Message: "Conflict: Task is not waiting for input"})
 			return
 		}
 
-		_, updateErr := taskExecutor.taskStore.UpdateTask(req.TaskID, func(task *Task) error {
-			task.Input = append(task.Input, req.Input)
-			task.Error = ""
+		// Update task with new input
+		_, updateErr := taskExecutor.taskStore.UpdateTask(params.TaskID, func(task *Task) error {
+			// Assuming task.Input is []Message, append the new message
+			task.Input = append(task.Input, params.Input)
+			task.Error = "" // Clear previous error if any
 			return nil
 		})
 		if updateErr != nil {
-			log.Printf("[TaskInput %s] Failed to update task with new input: %v", req.TaskID, updateErr)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Printf("[TaskInput %v] Failed to update task %s with new input: %v", rpcReq.ID, params.TaskID, updateErr)
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to store input", Data: updateErr.Error()})
 			return
 		}
 
-		resumeErr := taskExecutor.ResumeTask(req.TaskID)
+		// Resume task processing
+		resumeErr := taskExecutor.ResumeTask(params.TaskID)
 		if resumeErr != nil {
-			log.Printf("[TaskInput %s] Failed to resume task: %v", req.TaskID, resumeErr)
-			http.Error(w, fmt.Sprintf("Internal Server Error: Failed to resume task processing: %v", resumeErr), http.StatusInternalServerError)
+			log.Printf("[TaskInput %v] Failed to resume task %s: %v", rpcReq.ID, params.TaskID, resumeErr)
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to resume task processing", Data: resumeErr.Error()})
 			return
 		}
 
-		log.Printf("[TaskInput %s] Input received and task %s signaled to resume.", req.TaskID, req.TaskID)
+		log.Printf("[TaskInput %v] Input received for task %s and task signaled to resume.", rpcReq.ID, params.TaskID)
 
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"message": "Input received, task processing resumed."}`)
-		w.Header().Set("Content-Type", "application/json")
+		// 4. Send successful JSON-RPC Response
+		// A2A spec for tasks/input returns the updated Task object
+		updatedTask, _ := taskExecutor.taskStore.GetTask(params.TaskID) // Fetch again to get latest state
+		sendJSONRPCResponse(w, rpcReq.ID, updatedTask, nil) // Return updated task
 	}
 }
 
-// TasksListHandler retrieves all tasks from the store.
-// It's called via the JSON-RPC dispatcher which uses POST, so the method check is removed.
+
+// TasksListHandler handles the "tasks/list" JSON-RPC method.
 func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Removed: if r.Method != http.MethodGet check
-
-		log.Println("[TaskList] Received request to list all tasks (via JSON-RPC dispatcher).")
-
-		tasks, err := taskStore.ListTasks() // Use the existing ListTasks method
+		// 1. Decode the generic JSON-RPC Request
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("[TaskList] Error retrieving tasks: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Cannot read body"}, "id": null}`, http.StatusOK)
+			return
+		}
+		defer r.Body.Close()
+
+		var rpcReq JSONRPCRequest
+		if err := json.Unmarshal(body, &rpcReq); err != nil {
+			http.Error(w, `{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error: Invalid JSON"}, "id": null}`, http.StatusOK)
+			return
+		}
+
+		if rpcReq.Jsonrpc != "2.0" || rpcReq.Method == "" {
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32600, Message: "Invalid Request"})
+			return
+		}
+
+		// 2. No parameters expected for tasks/list, proceed to business logic
+
+		log.Printf("[TaskList %v] Received request to list all tasks.", rpcReq.ID)
+
+		// 3. Business Logic
+		tasks, err := taskStore.ListTasks()
+		if err != nil {
+			log.Printf("[TaskList %v] Error retrieving tasks: %v", rpcReq.ID, err)
+			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to retrieve tasks", Data: err.Error()})
 			return
 		}
 
 		if tasks == nil {
-			// Ensure we return an empty array, not null, if no tasks exist
-			tasks = []*Task{}
+			tasks = []*Task{} // Ensure empty array, not null
 		}
 
-		log.Printf("[TaskList] Retrieved %d tasks.", len(tasks))
+		log.Printf("[TaskList %v] Retrieved %d tasks.", rpcReq.ID, len(tasks))
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(tasks); err != nil {
-			// Log error if encoding fails, but headers might already be sent
-			log.Printf("[TaskList] Error encoding tasks response: %v", err)
-		}
+		// 4. Send successful JSON-RPC Response
+		sendJSONRPCResponse(w, rpcReq.ID, tasks, nil)
 	}
 }

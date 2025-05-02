@@ -14,12 +14,12 @@ var ErrTaskNotFound = errors.New("task not found")
 type TaskState string
 
 const (
-	TaskStateSubmitted     TaskState = "submitted"
-	TaskStateWorking       TaskState = "working"
-	TaskStateInputRequired TaskState = "input-required"
-	TaskStateCompleted     TaskState = "completed"
-	TaskStateFailed        TaskState = "failed"
-	TaskStateCanceled      TaskState = "canceled"
+	TaskStateSubmitted     TaskState = "SUBMITTED"      // Changed to uppercase
+	TaskStateWorking       TaskState = "WORKING"        // Changed to uppercase
+	TaskStateInputRequired TaskState = "INPUT_REQUIRED" // Changed to uppercase
+	TaskStateCompleted     TaskState = "COMPLETED"      // Changed to uppercase
+	TaskStateFailed        TaskState = "FAILED"         // Changed to uppercase
+	TaskStateCanceled      TaskState = "CANCELED"       // Changed to uppercase
 )
 
 type MessageRole string

@@ -105,109 +105,115 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 
-		var req SendTaskRequest // Uses SendTaskRequest from handlers_task.go
+		// NOTE: This handler assumes a direct HTTP POST, not JSON-RPC like the others were changed to.
+		// If this endpoint *should* be JSON-RPC, it needs the full JSONRPCRequest/Response handling.
+		// Assuming direct POST for now, matching the original structure but using the renamed type.
+		var params SendTaskParams // Use the renamed struct from handlers_task.go
 
-		if err := json.Unmarshal(body, &req); err != nil || len(req.Input) == 0 {
-			http.Error(w, "Bad Request: Invalid JSON or missing/empty input messages", http.StatusBadRequest)
+		// Unmarshal the body directly into the params struct (assuming non-JSON-RPC)
+		if err := json.Unmarshal(body, &params); err != nil {
+			http.Error(w, "Bad Request: Invalid JSON", http.StatusBadRequest)
 			return
 		}
 
-		// Add robust input validation based on A2A spec (copied from TasksSendHandler)
-		for i, msg := range req.Input {
-			if msg.Role == "" {
-				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty role", i), http.StatusBadRequest)
+		// Validate the Message field within the params
+		if params.Message.Role == "" {
+			http.Error(w, "Bad Request: Message has empty role", http.StatusBadRequest)
+			return
+		}
+		if len(params.Message.Parts) == 0 {
+			http.Error(w, "Bad Request: Message has empty parts array", http.StatusBadRequest)
+			return
+		}
+
+		// Add robust input validation based on A2A spec (adapted for single message)
+		msg := params.Message // Use the single message
+		for j, part := range msg.Parts {
+			if part == nil {
+				http.Error(w, fmt.Sprintf("Bad Request: Message part %d is null", j), http.StatusBadRequest)
 				return
 			}
-			if len(msg.Parts) == 0 {
-				http.Error(w, fmt.Sprintf("Bad Request: Message %d has empty parts array", i), http.StatusBadRequest)
-				return
-			}
-			for j, part := range msg.Parts {
-				if part == nil {
-					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d is null", i, j), http.StatusBadRequest)
+			// Check concrete part types and their fields
+			switch p := part.(type) {
+			case TextPart:
+				if p.Type == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: TextPart %d has empty type", j), http.StatusBadRequest)
 					return
 				}
-				// Check concrete part types and their fields
-				switch p := part.(type) {
-				case TextPart:
-					if p.Type == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty type", i, j), http.StatusBadRequest)
-						return
+				if p.Text == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: TextPart %d has empty text", j), http.StatusBadRequest)
+					return
+				}
+			case FilePart:
+				if p.Type == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: FilePart %d has empty type", j), http.StatusBadRequest)
+					return
+				}
+				if p.URI == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: FilePart %d has empty URI", j), http.StatusBadRequest)
+					return
+				}
+				if p.MimeType == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: FilePart %d has empty mime_type", j), http.StatusBadRequest)
+					return
+				}
+			case DataPart:
+				if p.Type == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: DataPart %d has empty type", j), http.StatusBadRequest)
+					return
+				}
+				// Validate Data field (which is 'any')
+				if p.Data == nil {
+					http.Error(w, fmt.Sprintf("Bad Request: DataPart %d has null data", j), http.StatusBadRequest)
+					return
+				}
+				// Check if the underlying data has content.
+				hasContent := false
+				switch dataVal := p.Data.(type) {
+				case string:
+					if dataVal != "" {
+						hasContent = true
 					}
-					if p.Text == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, TextPart %d has empty text", i, j), http.StatusBadRequest)
-						return
+				case []byte: // This is the most likely intended type for raw data
+					if len(dataVal) > 0 {
+						hasContent = true
 					}
-				case FilePart:
-					if p.Type == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty type", i, j), http.StatusBadRequest)
-						return
+				case []any: // For JSON arrays
+					if len(dataVal) > 0 {
+						hasContent = true
 					}
-					if p.URI == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty URI", i, j), http.StatusBadRequest)
-						return
-					}
-					if p.MimeType == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, FilePart %d has empty mime_type", i, j), http.StatusBadRequest)
-						return
-					}
-				case DataPart:
-					if p.Type == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty type", i, j), http.StatusBadRequest)
-						return
-					}
-					// Validate Data field (which is 'any')
-					if p.Data == nil {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has null data", i, j), http.StatusBadRequest)
-						return
-					}
-					// Check if the underlying data has content.
-					hasContent := false
-					switch dataVal := p.Data.(type) {
-					case string:
-						if dataVal != "" {
-							hasContent = true
-						}
-					case []byte: // This is the most likely intended type for raw data
-						if len(dataVal) > 0 {
-							hasContent = true
-						}
-					case []any: // For JSON arrays
-						if len(dataVal) > 0 {
-							hasContent = true
-						}
-					case map[string]any: // For JSON objects
-						if len(dataVal) > 0 {
-							hasContent = true
-						}
-					default:
-						// If it's a different type, consider it an error for strict validation.
-						log.Printf("[TaskSendSubscribe] Warning: DataPart data field has unexpected type %T for message %d, part %d", dataVal, i, j)
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has unexpected data type %T", i, j, dataVal), http.StatusBadRequest)
-						return
-					}
-
-					if !hasContent {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty data content", i, j), http.StatusBadRequest)
-						return
-					}
-
-					if p.MimeType == "" {
-						http.Error(w, fmt.Sprintf("Bad Request: Message %d, DataPart %d has empty mime_type", i, j), http.StatusBadRequest)
-						return
+				case map[string]any: // For JSON objects
+					if len(dataVal) > 0 {
+						hasContent = true
 					}
 				default:
-					// This case should ideally not be hit if UnmarshalJSON for Message/Part works correctly,
-					// but added as a safeguard.
-					http.Error(w, fmt.Sprintf("Bad Request: Message %d, part %d has unknown type", i, j), http.StatusBadRequest)
+					// If it's a different type, consider it an error for strict validation.
+					log.Printf("[TaskSendSubscribe] Warning: DataPart data field has unexpected type %T for part %d", dataVal, j)
+					http.Error(w, fmt.Sprintf("Bad Request: DataPart %d has unexpected data type %T", j, dataVal), http.StatusBadRequest)
 					return
 				}
+
+				if !hasContent {
+					http.Error(w, fmt.Sprintf("Bad Request: DataPart %d has empty data content", j), http.StatusBadRequest)
+					return
+				}
+
+				if p.MimeType == "" {
+					http.Error(w, fmt.Sprintf("Bad Request: DataPart %d has empty mime_type", j), http.StatusBadRequest)
+					return
+				}
+			default:
+				// This case should ideally not be hit if UnmarshalJSON for Message/Part works correctly,
+				// but added as a safeguard.
+				http.Error(w, fmt.Sprintf("Bad Request: part %d has unknown type", j), http.StatusBadRequest)
+				return
 			}
 		}
 
-		log.Printf("[TaskSendSubscribe] Received %d input messages. Validation successful.", len(req.Input))
+		log.Printf("[TaskSendSubscribe] Received valid input message. Validation successful.")
 
-		task, err := taskExecutor.taskStore.CreateTask(req.Input)
+		// Create task using the single message, wrapped in a slice for CreateTask
+		task, err := taskExecutor.taskStore.CreateTask([]Message{params.Message})
 		if err != nil {
 			log.Printf("[TaskSendSubscribe] Error creating task: %v", err)
 			http.Error(w, "Internal Server Error: Failed to create task", http.StatusInternalServerError)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios'; // Assuming axios is used for HTTP requests
-import TaskSubmitForm from '../components/TaskSubmitForm'; // Import the new TaskSubmitForm component
+// Removed: import TaskSubmitForm from '../components/TaskSubmitForm';
 import AgentInteraction from './AgentInteraction'; // Import AgentInteraction
 import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import { useNavigate } from 'react-router-dom';
@@ -157,10 +157,7 @@ const AgentManagement: React.FC = () => {
         )}
       </div>
 
-      {/* Conditionally render Task Submit Form */}
-      {selectedAgentId && (
-         <TaskSubmitForm agentId={selectedAgentId} />
-      )}
+      {/* Removed the separate rendering of TaskSubmitForm */}
 
       {/* Removed agent creation forms and tabs */}
     </div>

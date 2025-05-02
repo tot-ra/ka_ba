@@ -32,6 +32,7 @@ const TaskInputForm: React.FC<TaskInputFormProps> = ({
   isLoading,
   currentTask,
 }) => {
+  const isInputRequired = currentTask?.status.state === 'input-required';
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setTaskInput({ ...taskInput, content: e.target.value });
@@ -52,7 +53,7 @@ const TaskInputForm: React.FC<TaskInputFormProps> = ({
 
   return (
     <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-      <h3 style={{ marginTop: 0 }}>Task Input</h3>
+      <h3 style={{ marginTop: 0 }}>Submit Task / Provide Input</h3>
       <div style={{ marginBottom: '10px' }}>
         <label htmlFor="inputType" style={{ marginRight: '10px' }}>Input Type:</label>
         <select id="inputType" value={taskInput.type} onChange={handleDataTypeChange}>
@@ -82,41 +83,24 @@ const TaskInputForm: React.FC<TaskInputFormProps> = ({
           style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd', boxSizing: 'border-box' }}
         ></textarea>
       )}
+      {/* Unified Button */}
       <button
-        onClick={onSendTask} // Use the passed-in handler
+        onClick={isInputRequired ? onSendInput : onSendTask} // Dynamically choose handler
         disabled={isLoading || !taskInput.content}
         style={{
           marginTop: '10px',
           padding: '10px 15px',
-          backgroundColor: '#007bff',
-          color: 'white',
+          backgroundColor: isInputRequired ? '#ffc107' : '#007bff', // Yellow for input, blue for new task
+          color: isInputRequired ? 'black' : 'white',
           border: 'none',
           borderRadius: '4px',
           cursor: 'pointer',
           opacity: isLoading || !taskInput.content ? 0.6 : 1,
         }}
       >
-        {isLoading ? 'Sending...' : 'Send Task'}
+        {isLoading ? 'Sending...' : (isInputRequired ? 'Submit Input' : 'Submit New Task')} {/* Dynamic label */}
       </button>
-      {currentTask?.status.state === 'input-required' && (
-        <button
-          onClick={onSendInput} // Use the passed-in handler
-          disabled={isLoading || !taskInput.content}
-          style={{
-            marginTop: '10px',
-            marginLeft: '10px',
-            padding: '10px 15px',
-            backgroundColor: '#ffc107',
-            color: 'black',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            opacity: isLoading || !taskInput.content ? 0.6 : 1,
-          }}
-        >
-          Submit Input
-        </button>
-      )}
+      {/* Removed the separate conditional button */}
     </div>
   );
 };

@@ -1,12 +1,33 @@
-import React, { useState } from 'react'; // Removed useEffect for now, might be needed later
+import React, { useState } from 'react';
 
 import { useAgent } from '../contexts/AgentContext';
 import AgentLogs from '../components/AgentLogs';
-import TaskInputForm from '../components/TaskInputForm'; // Import TaskInputForm
-import TaskDetails from '../components/TaskDetails'; // Import TaskDetails
-import TaskList from '../components/TaskList'; // Import the TaskList component
+import TaskInputForm from '../components/TaskInputForm';
+import TaskDetails from '../components/TaskDetails';
+import TaskList from '../components/TaskList';
+import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the utility function
 
-// Keep necessary interfaces
+// --- GraphQL Type Definitions (align with TaskSubmitForm and schema) ---
+interface InputPart {
+  type: string; // 'text', 'file', 'data'
+  content: any; // Matches JSONObject in schema
+  metadata?: any;
+}
+
+interface InputMessage {
+  role: 'USER' | 'AGENT' | 'SYSTEM' | 'TOOL'; // Use uppercase enum values
+  parts: InputPart[];
+  metadata?: any;
+}
+
+// Matches the structure of the Task type returned by the GraphQL mutation
+// Use the existing Task interface below, ensure it aligns
+// interface GraphQLTaskResponse { ... } // Replaced by existing Task interface
+
+// --- End GraphQL Type Definitions ---
+
+
+// Keep necessary interfaces (ensure Task aligns with GraphQL response)
 interface Agent {
   id: string;
   url: string;
@@ -45,10 +66,10 @@ interface Task {
   metadata?: any;
 }
 
-// TaskInput interface is now managed within TaskInputForm, but needed for state definition
+// TaskInput interface for the form state
 interface TaskInput {
   type: 'text' | 'file' | 'data';
-  content: string | File | any;
+  content: string | File | any; // File object for file type, string for others initially
 }
 
 
@@ -81,71 +102,112 @@ const AgentInteraction: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
-    setStreamingOutput(''); // Keep this if task output is separate
+    setStreamingOutput('');
     setArtifacts([]);
+    setCurrentTask(null); // Clear previous task details
 
-    // TODO: Replace this with GraphQL mutation call
-    console.log("handleSendTask needs to be reimplemented with GraphQL mutation.");
-    setError("Sending tasks not implemented yet.");
-    /*
+    // --- Start GraphQL Mutation Logic ---
+    const mutation = `
+      mutation CreateTask($agentId: ID, $message: InputMessage!) {
+        createTask(agentId: $agentId, message: $message) {
+          # Request all fields defined in the Task type in schema.graphql
+          id
+          state
+          input { role parts toolCalls toolCallId }
+          output { role parts toolCalls toolCallId }
+          error
+          createdAt
+          updatedAt
+          artifacts
+        }
+      }
+    `;
+
+    // Construct the message parts based on taskInput state
+    let parts: InputPart[] = [];
     try {
-      // Construct message based on input type
-      const message: Message = {
-        role: 'user',
-        parts: [],
-      };
-
       if (taskInput.type === 'text') {
-        message.parts.push({ type: 'text', text: taskInput.content as string });
+        if (!taskInput.content || typeof taskInput.content !== 'string' || !taskInput.content.trim()) {
+           setError('Text input cannot be empty.');
+           setIsLoading(false);
+           return;
+        }
+        parts.push({ type: 'text', content: { text: taskInput.content } });
       } else if (taskInput.type === 'file') {
+        // TODO: File handling needs proper implementation (upload/URI)
         const file = taskInput.content as File;
-        // TODO: Implement file reading and base64 encoding or URI handling
-        console.warn('File upload not fully implemented.');
-        // For now, just add a placeholder part
-         message.parts.push({ type: 'text', text: `File: ${file.name} (upload not supported yet)` });
+        if (!file) {
+           setError('No file selected.');
+           setIsLoading(false);
+           return;
+        }
+        console.warn('File part creation not fully implemented. Sending placeholder.');
+        parts.push({ type: 'text', content: { text: `File: ${file.name} (upload not implemented)` } });
+        // Example for future file handling (replace placeholder):
+        // const fileData = await readFileAsBase64(file); // Need utility function
+        // parts.push({ type: 'file', content: { name: file.name, mimeType: file.type, bytes: fileData } });
       } else if (taskInput.type === 'data') {
-         try {
-            const data = JSON.parse(taskInput.content as string);
-            message.parts.push({ type: 'data', data });
-         } catch (jsonError) {
-            setError('Invalid JSON data.');
-            setIsLoading(false);
-            return;
-         }
+        if (!taskInput.content || typeof taskInput.content !== 'string' || !taskInput.content.trim()) {
+           setError('JSON data cannot be empty.');
+           setIsLoading(false);
+           return;
+        }
+        try {
+          const jsonData = JSON.parse(taskInput.content);
+          parts.push({ type: 'data', content: jsonData }); // Send parsed JSON object
+        } catch (jsonError: any) {
+          setError(`Invalid JSON data: ${jsonError.message}`);
+          setIsLoading(false);
+          return;
+        }
       }
-
-
-      // Assuming a backend proxy endpoint for sending tasks
-      const response = await axios.post('/api/tasks/send', {
-        agentId: selectedAgentId,
-        params: {
-          id: `task-${Date.now()}`, // Simple task ID
-          message,
-          // TODO: Add sessionId, pushNotification, historyLength, metadata if needed
-        },
-      });
-
-      const task: Task = response.data; // Assuming backend returns the Task object
-
-      if (task) {
-        setCurrentTask(task);
-        console.log('Task sent:', task);
-        // TODO: Handle streaming response if agent supports it
-        // If streaming, the SSE useEffect will handle updates.
-        // If not streaming, might need to poll for status/artifacts.
-      } else {
-        setError('Failed to send task.');
-      }
-
-    } catch (error: any) {
-      console.error('Error sending task (axios - commented out):', error);
-      setError(`Error sending task: ${error.message}`);
-    } finally {
-      setIsLoading(false); // Ensure loading state is reset even if commented out
+    } catch (prepError: any) {
+       setError(`Error preparing task input: ${prepError.message}`);
+       setIsLoading(false);
+       return;
     }
-    */
-    setIsLoading(false); // Reset loading state immediately as the call is commented out
-    // Remove extra closing brace below
+
+
+    // Construct the variables object
+    const variables = {
+      agentId: selectedAgentId,
+      message: {
+        role: 'USER', // Assuming tasks always start with USER role
+        parts: parts,
+      } as InputMessage,
+    };
+
+    try {
+      // Use the utility function to send the request
+      // Specify the expected shape of the data part of the response (Task)
+      const response = await sendGraphQLRequest<{ createTask: Task }>(mutation, variables);
+
+      // Check for GraphQL errors returned in the response body
+      if (response.errors) {
+        console.error('GraphQL errors:', response.errors);
+        const errorMessages = response.errors.map(err => err.message).join('; ');
+        setError(`GraphQL Error: ${errorMessages}`);
+      } else if (response.data?.createTask) {
+        // Success case
+        const createdTask = response.data.createTask;
+        setCurrentTask(createdTask); // Update the current task state
+        console.log('Task created:', createdTask);
+        setError(null); // Clear previous errors
+        // Optionally clear the input form:
+        // setTaskInput({ type: 'text', content: '' });
+      } else {
+        // Handle unexpected response structure
+        console.error('Unexpected GraphQL response structure:', response);
+        setError('Received an unexpected response structure from the server.');
+      }
+    } catch (error: any) {
+      // Handle errors thrown by sendGraphQLRequest (network, non-2xx status, etc.)
+      console.error('Error submitting task via GraphQL utility:', error);
+      setError(`Network or Server Error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+    // --- End GraphQL Mutation Logic ---
   };
 
   const handleInputRequired = async () => {
