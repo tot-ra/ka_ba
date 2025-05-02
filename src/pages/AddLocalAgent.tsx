@@ -78,10 +78,6 @@ const AddLocalAgent: React.FC = () => {
     <div className={styles.container}>
       {/* Back button removed */}
       <div className={styles.paper}>
-        <h1 className={styles.title}>
-          Spawn Local 'ka' Agent
-        </h1>
-
         <form onSubmit={handleSpawnAgent} className={styles.form}>
           <div className={styles.formGrid}>
             {/* Agent Name */}
@@ -107,7 +103,7 @@ const AddLocalAgent: React.FC = () => {
                  placeholder="Describe the agent's purpose or specialization"
                  value={spawnAgentConfig.description}
                  onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, description: e.target.value })}
-                 rows={16}
+                 rows={3}
                  className={styles.formTextarea}
               />
             </div>
