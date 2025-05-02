@@ -2,6 +2,9 @@
 
 AI Agent Runtime (`ka`) and UI (`ba`).
 
+<img width="1439" alt="Screenshot 2025-05-02 at 20 56 08" src="https://github.com/user-attachments/assets/fa81a0fa-17c8-4313-84c4-cca0053870dd" />
+
+
 ## Naming
 > *ka* (𓂓) - is the ancient Egyptian concept of the soul manifestation, the "vital essence".
 > *ba* (𓅽) - is the ancient Egyptian concept of the soul manifestation, the "personality".
