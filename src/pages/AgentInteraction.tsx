@@ -1,13 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { gql, useSubscription, useQuery, useMutation, OnDataOptions, ApolloError } from '@apollo/client'; // Import useQuery
+import React, { useState, useEffect } from 'react'; // Removed useRef
+import { gql, useMutation } from '@apollo/client'; // Removed useSubscription, useQuery, OnDataOptions, ApolloError
 import { useAgent } from '../contexts/AgentContext';
+import AgentLogs from '../components/AgentLogs'; // Import the new component
 
-// Define LogEntry type matching the GraphQL schema
-interface LogEntry {
-  timestamp: string;
-  stream: 'stdout' | 'stderr';
-  line: string;
-}
+// Removed LogEntry interface
 
 interface Agent {
   id: string;
@@ -62,104 +58,11 @@ const AgentInteraction: React.FC = () => {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // const [agentLogEntries, setAgentLogEntries] = useState<LogEntry[]>([]); // Remove old state
-  const [combinedLogs, setCombinedLogs] = useState<LogEntry[]>([]); // New state for combined logs
-  const [historicalLogsLoading, setHistoricalLogsLoading] = useState<boolean>(false); // Loading state for historical logs
-  const logContainerRef = useRef<HTMLDivElement>(null);
-
-  // --- GraphQL Operations ---
-
-  const GET_AGENT_LOGS_QUERY = gql`
-    query GetAgentLogs($agentId: ID!) {
-      agentLogs(agentId: $agentId) # Assuming this returns String[]
-    }
-  `;
-
-  const AGENT_LOGS_SUBSCRIPTION = gql`
-    subscription AgentLogs($agentId: ID!) {
-      agentLogs(agentId: $agentId) {
-        timestamp
-        stream
-        line
-      }
-    }
-  `;
+  // Removed log-related state and refs
 
   // TODO: Define CREATE_TASK_MUTATION if replacing axios call
 
-  // --- GraphQL Hooks ---
-
-  // Subscription for Agent Logs
-  interface AgentLogsSubscriptionData {
-    agentLogs: LogEntry; // This is the payload from the subscription
-  }
-
-  // --- Fetch Historical Logs ---
-  const { loading: queryLoading, error: queryError, data: historicalData } = useQuery<{ agentLogs: string[] | null }>(GET_AGENT_LOGS_QUERY, {
-    variables: { agentId: selectedAgentId },
-    skip: !selectedAgentId,
-    fetchPolicy: 'network-only', // Ensure it re-fetches when agent changes
-  });
-
-  // Effect to process historical logs once fetched
-  useEffect(() => {
-    setHistoricalLogsLoading(queryLoading);
-    if (queryError) {
-      console.error("Error fetching historical logs:", queryError);
-      // Optionally set an error state specific to historical logs
-      setCombinedLogs([{ timestamp: new Date().toISOString(), stream: 'stderr', line: `Error fetching historical logs: ${queryError.message}` }]);
-    } else if (historicalData?.agentLogs) {
-      console.log("[AgentInteraction] Historical logs received:", historicalData.agentLogs);
-      // Convert String[] from historical query to LogEntry[]
-      // We need to parse the timestamp and stream type from the string format used before
-      const parsedHistoricalLogs: LogEntry[] = historicalData.agentLogs.map(logString => {
-        const match = logString.match(/^\[(.*?)\] \[(stdout|stderr)\] (.*)$/s);
-        if (match) {
-          return { timestamp: match[1], stream: match[2] as 'stdout' | 'stderr', line: match[3] };
-        }
-        // Fallback if parsing fails (e.g., "No historical logs" message)
-        return { timestamp: new Date().toISOString(), stream: 'stderr', line: logString };
-      });
-      setCombinedLogs(parsedHistoricalLogs);
-    } else if (!queryLoading && historicalData) {
-      // Handle case where query finished but returned null/empty logs
-      setCombinedLogs([]);
-    }
-    // Clear logs when agent changes *before* new data arrives
-    return () => {
-      setCombinedLogs([]);
-      setHistoricalLogsLoading(true); // Set loading true immediately on agent change
-    };
-  }, [selectedAgentId, queryLoading, queryError, historicalData]);
-
-
-  // --- Subscribe to Real-time Logs ---
-  useSubscription<AgentLogsSubscriptionData>(AGENT_LOGS_SUBSCRIPTION, {
-    variables: { agentId: selectedAgentId },
-    skip: !selectedAgentId || historicalLogsLoading, // Skip if no agent or historical logs are still loading
-    onData: (options: OnDataOptions<AgentLogsSubscriptionData>) => {
-      const newLogEntry = options.data.data?.agentLogs;
-      if (newLogEntry) {
-        console.log('[AgentInteraction onData] Real-time log received:', newLogEntry);
-        setCombinedLogs((prevLogs) => {
-           const updatedLogs = [...prevLogs, newLogEntry];
-           const maxLogs = 500; // Limit total combined logs
-           if (updatedLogs.length > maxLogs) {
-              return updatedLogs.slice(updatedLogs.length - maxLogs);
-           }
-           return updatedLogs;
-        });
-      }
-    },
-    onError: (err: ApolloError) => {
-       console.error("Subscription error:", err);
-       // Display subscription error in the log feed itself
-       setCombinedLogs(prev => [...prev, { timestamp: new Date().toISOString(), stream: 'stderr', line: `Log stream error: ${err.message}` }]);
-    }
-  });
-
-  // --- Remove Old SSE/Polling Effects ---
-  // useEffect(() => { ... EventSource logic removed ... }, [selectedAgentId, currentTask?.id]);
+  // Removed log-related GraphQL definitions and hooks
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setTaskInput({ ...taskInput, content: e.target.value });
@@ -172,16 +75,10 @@ const AgentInteraction: React.FC = () => {
   };
 
   const handleDataTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-     setTaskInput({ type: e.target.value as 'text' | 'file' | 'data', content: '' });
+      setTaskInput({ type: e.target.value as 'text' | 'file' | 'data', content: '' });
   };
 
-  // Scroll logs to bottom when new entries are added
-  useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-    }
-  }, [combinedLogs]); // Depend on combinedLogs now
-
+  // Removed log scrolling effect
 
   const handleSendTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -439,45 +336,8 @@ const AgentInteraction: React.FC = () => {
           {/* TODO: Display selected agent details (name, description, capabilities) */}
 
 
-          {/* Display Logs */}
-          <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-             <h3>Agent Logs</h3>
-             <div
-               ref={logContainerRef}
-               style={{
-                 height: '300px',
-                 overflowY: 'scroll',
-                 // backgroundColor: '#f8f9fa', // Removed old background
-                 padding: '10px',
-                 fontFamily: 'monospace',
-                 fontSize: '0.9em',
-                 // border: '1px solid #e9ecef', // Removed old border
-                 borderRadius: '4px',
-                 textAlign: 'left',
-                // Apply "black theme" styles from historical logs
-                backgroundColor: '#333', // Dark background
-                color: '#eee', // Light text
-                border: '1px solid #555', // Dark border
-               }}
-             >
-               {historicalLogsLoading ? (
-                 <p style={{ color: '#aaa' }}>Loading historical logs...</p>
-               ) : combinedLogs.length === 0 ? (
-                 <p style={{ color: '#aaa' }}>No logs to display.</p>
-               ) : (
-                 combinedLogs.map((log, index) => (
-                   // Use LogEntry structure directly
-                   <div key={index} style={{ color: log.stream === 'stderr' ? '#ff8a8a' : '#eee', marginBottom: '2px' }}>
-                     <span style={{ color: '#aaa', marginRight: '10px' }}>
-                       {new Date(log.timestamp).toLocaleTimeString([], { hour12: false })} [{log.stream.toUpperCase()}]
-                     </span>
-                     {log.line}
-                   </div>
-                 ))
-               )}
-             </div>
-          </div>
-
+          {/* Use the new AgentLogs component */}
+          <AgentLogs agentId={selectedAgentId} />
 
           <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
             <h3 style={{ marginTop: 0 }}>Task Input</h3>
