@@ -1,0 +1,146 @@
+/* Styles for AgentManagement page */
+
+.container {
+  padding: 20px;
+  font-family: sans-serif;
+  max-width: 900px; /* Slightly wider */
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 500;
+  margin-bottom: 20px;
+}
+
+.buttonContainer {
+  margin-bottom: 24px; /* Equivalent to sx={{ mb: 3 }} */
+  display: flex;
+  gap: 16px; /* Equivalent to gap: 2 */
+}
+
+/* Borrow button styles from AddExternalAgent */
+.button {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.buttonPrimary { /* For Spawn Local */
+  background-color: #1976d2; /* MUI primary */
+  color: white;
+  min-width: 64px;
+  box-shadow: 0 3px 1px -2px rgba(0,0,0,0.2), 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12);
+}
+.buttonPrimary:hover {
+  background-color: #1565c0;
+}
+
+.buttonSecondary { /* For Add External */
+  background-color: #9c27b0; /* MUI secondary */
+  color: white;
+  min-width: 64px;
+  box-shadow: 0 3px 1px -2px rgba(0,0,0,0.2), 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12);
+}
+.buttonSecondary:hover {
+  background-color: #7b1fa2;
+}
+
+.buttonDanger { /* For Stop button */
+  margin-left: 10px;
+  padding: 5px 10px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem; /* Smaller font */
+}
+.buttonDanger:hover {
+  background-color: #c82333;
+}
+
+.button:disabled {
+  background-color: rgba(0, 0, 0, 0.12);
+  color: rgba(0, 0, 0, 0.26);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Agent List */
+.agentListContainer {
+  margin-bottom: 30px;
+}
+
+.agentListTitle {
+  font-size: 1.5rem; /* Like h2 */
+  margin-bottom: 15px;
+}
+
+.agentList {
+  list-style: none;
+  padding: 0;
+}
+
+.agentListItem {
+  border: 1px solid #ddd;
+  padding: 10px 15px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  display: flex;
+  align-items: center; /* Vertically center items */
+  justify-content: space-between;
+}
+
+.agentListItemSelected {
+  background-color: #e9e9e9; /* Highlight selected */
+}
+
+.agentInfo {
+  display: flex;
+  align-items: center; /* Align radio button and label */
+  text-align: left;
+  flex-grow: 1; /* Allow info to take available space */
+  margin-right: 10px; /* Space before stop button */
+}
+
+.agentRadio {
+  margin-right: 10px;
+  cursor: pointer;
+  /* Optional: Style radio button appearance */
+}
+
+.agentLabel {
+  cursor: pointer;
+}
+
+.agentNameLink {
+  font-weight: bold;
+  color: #1976d2;
+  text-decoration: none;
+}
+.agentNameLink:hover {
+  text-decoration: underline;
+}
+
+.agentDescription {
+  font-size: 0.9em;
+  color: #555;
+  margin-top: 2px;
+}
+
+/* Task List Section */
+.taskListSection {
+  margin-top: 20px;
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}

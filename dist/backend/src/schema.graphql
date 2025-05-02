@@ -8,6 +8,7 @@ type Agent {
 
 type Query {
   agents: [Agent!]!
+  agentLogs(agentId: ID!): [String!] # Added query for agent logs
 }
 
 type Mutation {

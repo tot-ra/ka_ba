@@ -237,23 +237,24 @@ export class A2AClient {
     return response.result as Artifact[];
   }
 
-  // Method to list all tasks from the agent
+  // Method to list all tasks from the agent using JSON-RPC
   async listTasks(): Promise<Task[] | null> {
-    const listUrl = `${this.agentUrl}/tasks`; // Construct the URL for the GET request
-    console.log(`[A2AClient] Sending GET request to ${listUrl}`);
-    try {
-      // Make a GET request directly, not using JSON-RPC helper
-      const response = await axios.get<Task[]>(listUrl); // Expecting an array of Task objects
-      return response.data;
-    } catch (error) {
-      console.error(`Error sending GET request to ${listUrl}:`, error);
-      // Handle potential errors (network, non-200 status, etc.)
-      if (axios.isAxiosError(error)) {
-        console.error(`[A2AClient] Axios error listing tasks: ${error.message}`, error.response?.status, error.response?.data);
-      } else {
-        console.error(`[A2AClient] Non-Axios error listing tasks:`, error);
-      }
+    console.log(`[A2AClient] Sending JSON-RPC request for 'tasks/list' to ${this.agentUrl}`);
+    // Use the sendRequest helper to make a JSON-RPC call
+    const response = await this.sendRequest('tasks/list'); // No parameters needed for list
+
+    if (response.error) {
+      console.error(`[A2AClient] Error in listTasks response:`, response.error);
       return null; // Return null on error
+    }
+
+    // Assuming the result is directly the array of tasks
+    // Add validation if necessary
+    if (Array.isArray(response.result)) {
+      return response.result as Task[];
+    } else {
+      console.error(`[A2AClient] Invalid result format for listTasks: Expected array, got`, response.result);
+      return null;
     }
   }
 }

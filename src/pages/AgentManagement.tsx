@@ -3,10 +3,12 @@ import axios from 'axios'; // Assuming axios is used for HTTP requests
 import TaskList from '../components/TaskList'; // Import the TaskList component
 import TaskSubmitForm from '../components/TaskSubmitForm'; // Import the new TaskSubmitForm component
 import { useNavigate } from 'react-router-dom';
-import { Button, Box } from '@mui/material';
+import styles from './AgentManagement.module.css'; // Import the CSS module
 
-type Tab = 'manage' | 'add';
-type SpawnMessageType = 'success' | 'error' | null;
+// Removed MUI imports: Button, Box
+
+type Tab = 'manage' | 'add'; // This type seems unused now, consider removing if not needed elsewhere
+type SpawnMessageType = 'success' | 'error' | null; // This type seems unused now, consider removing if not needed elsewhere
 
 interface Agent {
   id: string;
@@ -85,35 +87,26 @@ const AgentManagement: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1 style={{ marginBottom: '20px' }}>Agent Management</h1>
+    <div className={styles.container}>
+      <h1 className={styles.title}>Agent Management</h1>
 
       {/* Add Agent Buttons */}
-      <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
-        <Button variant="contained" color="primary" onClick={() => navigate('/add-local-agent')}>
+      <div className={styles.buttonContainer}>
+        <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={() => navigate('/add-local-agent')}>
           Spawn Local Agent
-        </Button>
-        <Button variant="contained" color="secondary" onClick={() => navigate('/add-external-agent')}>
+        </button>
+        <button className={`${styles.button} ${styles.buttonSecondary}`} onClick={() => navigate('/add-external-agent')}>
           Add External Agent
-        </Button>
-      </Box>
+        </button>
+      </div>
 
       {/* Agent List */}
-      <div style={{ marginBottom: '30px' }}>
-        <h2 style={{ marginBottom: '15px' }}>Known Agents</h2>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+      <div className={styles.agentListContainer}>
+        <h2 className={styles.agentListTitle}>Known Agents</h2>
+        <ul className={styles.agentList}>
           {agents.map(agent => (
-                  <li key={agent.id} style={{
-                    border: '1px solid #ddd',
-                    padding: '10px',
-                    marginBottom: '10px',
-                    borderRadius: '4px',
-                    backgroundColor: selectedAgentId === agent.id ? '#e9e9e9' : '#f9f9f9',
-                    display: 'flex',
-                    alignItems: 'left',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', textAlign: 'left' }}>
+                  <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
+                    <div className={styles.agentInfo}>
                       <input
                         type="radio"
                         id={`agent-${agent.id}`}
@@ -121,26 +114,20 @@ const AgentManagement: React.FC = () => {
                         value={agent.id}
                         checked={selectedAgentId === agent.id}
                         onChange={() => handleSelectAgent(agent.id)}
-                        style={{ marginRight: '10px' }}
+                        className={styles.agentRadio}
                       />
-                      <label htmlFor={`agent-${agent.id}`}>
-                        <strong><a href={agent.url + '/.well-known/agent.json'} target="_blank">{agent.name || 'Unnamed Agent'}</a></strong>
-                        {agent.description && <div style={{ fontSize: '0.9em', color: '#555' }}>{agent.description}</div>}
+                      <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
+                        <a href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer" className={styles.agentNameLink}>
+                          {agent.name || 'Unnamed Agent'}
+                        </a>
+                        {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
                       </label>
                     </div>
                     {/* Show stop button only for locally spawned agents */}
                     {agent.isLocal && (
                       <button
                         onClick={() => handleStopAgent(agent.id)}
-                        style={{
-                          marginLeft: '10px',
-                          padding: '5px 10px',
-                          backgroundColor: '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer'
-                        }}
+                        className={styles.buttonDanger}
                       >
                         Stop
                       </button>
@@ -150,7 +137,7 @@ const AgentManagement: React.FC = () => {
               </ul>
         {/* Display TaskList when an agent is selected */}
         {selectedAgentId && (
-          <div style={{ marginTop: '20px', borderTop: '1px solid #eee', paddingTop: '20px' }}>
+          <div className={styles.taskListSection}>
              <TaskList agentId={selectedAgentId} />
           </div>
         )}

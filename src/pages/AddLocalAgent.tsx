@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Import useEffect
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import styles from './AddLocalAgent.module.css'; // Import CSS module
@@ -20,6 +20,9 @@ const AddLocalAgent: React.FC = () => {
   const [isSpawning, setIsSpawning] = useState(false);
   const [spawnStatusMessage, setSpawnStatusMessage] = useState<string | null>(null);
   const [spawnMessageType, setSpawnMessageType] = useState<SpawnMessageType>(null);
+  const [spawnedAgentId, setSpawnedAgentId] = useState<string | null>(null); // State for agent ID
+  const [agentLogs, setAgentLogs] = useState<string[]>([]); // State for logs
+  const [isFetchingLogs, setIsFetchingLogs] = useState(false); // State for log fetching status
 
   const handleSpawnAgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,10 +57,42 @@ const AddLocalAgent: React.FC = () => {
       const spawnedAgent = response.data.data.spawnKaAgent;
       if (spawnedAgent && spawnedAgent.id) {
         console.log('Agent spawned successfully:', spawnedAgent);
-        setSpawnStatusMessage(`Agent "${spawnedAgent.name || spawnedAgent.id}" spawned successfully at ${spawnedAgent.url}. Redirecting...`);
+        setSpawnedAgentId(spawnedAgent.id); // Store the ID
+        setSpawnStatusMessage(`Agent "${spawnedAgent.name || spawnedAgent.id}" spawned successfully at ${spawnedAgent.url}. Fetching initial logs...`);
         setSpawnMessageType('success');
-        // Navigate back after a short delay to show the success message
-        setTimeout(() => navigate('/agents'), 1500);
+        setIsSpawning(false); // Stop initial spawning indicator
+        setIsFetchingLogs(true); // Start log fetching indicator
+
+        // Fetch logs using GraphQL
+        try {
+          const logResponse = await axios.post('http://localhost:3000/graphql', {
+            query: `
+              query AgentLogs($agentId: ID!) {
+                agentLogs(agentId: $agentId)
+              }
+            `,
+            variables: { agentId: spawnedAgent.id },
+          });
+
+          const logs = logResponse.data.data.agentLogs;
+          if (logs) {
+            setAgentLogs(logs);
+            setSpawnStatusMessage(`Agent "${spawnedAgent.name || spawnedAgent.id}" spawned successfully at ${spawnedAgent.url}. Logs retrieved.`); // Update status
+          } else {
+             // Handle case where logs might be null (e.g., agent stopped quickly)
+             console.warn(`Received null logs for agent ${spawnedAgent.id}.`);
+             setAgentLogs([]); // Set to empty array
+             setSpawnStatusMessage(`Agent "${spawnedAgent.name || spawnedAgent.id}" spawned successfully at ${spawnedAgent.url}. No logs available yet.`);
+          }
+        } catch (logError: any) {
+          const errorMessage = logError.response?.data?.errors?.[0]?.message || logError.message || 'Unknown error fetching logs.';
+          console.error(`Error fetching logs for agent ${spawnedAgent.id}:`, errorMessage);
+          setSpawnStatusMessage(`Agent spawned, but failed to fetch logs: ${logError.message}`);
+          setSpawnMessageType('error'); // Show error for log fetching failure
+        } finally {
+          setIsFetchingLogs(false); // Stop log fetching indicator
+        }
+
       } else {
         const errorMessage = response.data.errors?.[0]?.message || 'Failed to spawn agent or received invalid data.';
         console.error('Failed to spawn agent:', spawnAgentConfig, response.data);
@@ -70,9 +105,9 @@ const AddLocalAgent: React.FC = () => {
       const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
       setSpawnStatusMessage(`Error: ${message}`);
       setSpawnMessageType('error');
-      setIsSpawning(false); // Stop loading on error
+      setIsSpawning(false); // Stop loading on spawn error
     }
-    // Don't set isSpawning to false on success, as we are navigating away
+    // Keep isSpawning false unless actively spawning or fetching logs
   };
 
   return (
@@ -214,6 +249,32 @@ const AddLocalAgent: React.FC = () => {
             </div>
           </div>
         </form>
+
+        {/* Log Display Area */}
+        {spawnedAgentId && agentLogs.length > 0 && (
+          <div className={styles.logContainer}>
+            <h2 className={styles.logTitle}>Agent Logs (Last 100 lines)</h2>
+            <pre className={styles.logPre}>
+              {agentLogs.map((log, index) => (
+                <div key={index}>{log}</div>
+              ))}
+            </pre>
+            <button
+              onClick={() => navigate('/agents')}
+              className={`${styles.button} ${styles.buttonSecondary}`}
+              style={{ marginTop: '1rem' }} // Add some spacing
+            >
+              Go Back to Agent List
+            </button>
+          </div>
+        )}
+        {/* Show spinner while fetching logs */}
+        {isFetchingLogs && (
+           <div className={styles.spinnerContainer}>
+             <div className={styles.spinner}></div>
+             <p>Fetching logs...</p>
+           </div>
+        )}
       </div>
     </div>
   );

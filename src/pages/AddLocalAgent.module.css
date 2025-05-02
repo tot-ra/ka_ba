@@ -164,3 +164,61 @@
   color: #b71c1c; /* Dark red */
   border: 1px solid #ffcdd2;
 }
+
+/* Log Display */
+.logContainer {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #f9f9f9; /* Light background for contrast */
+}
+
+.logTitle {
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.logPre {
+  background-color: #282c34; /* Dark background for code */
+  color: #abb2bf; /* Light text for dark background */
+  padding: 12px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.875rem;
+  white-space: pre-wrap; /* Wrap long lines */
+  word-wrap: break-word; /* Break words if necessary */
+  max-height: 400px; /* Limit height and make scrollable */
+  overflow-y: auto;
+}
+
+.logPre div { /* Style individual log lines */
+  margin-bottom: 2px; /* Small space between lines */
+}
+
+/* Spinner Container for Logs */
+.spinnerContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  gap: 8px;
+  color: #666;
+}
+
+.spinnerContainer .spinner { /* Adjust spinner color for light background */
+  border: 3px solid rgba(0, 0, 0, 0.1);
+  border-top: 3px solid #666;
+}
+
+/* Secondary Button Style (for Go Back) */
+.buttonSecondary {
+  background-color: #e0e0e0; /* Grey background */
+  color: #333; /* Dark text */
+}
+.buttonSecondary:hover {
+  background-color: #d5d5d5; /* Slightly darker grey on hover */
+}

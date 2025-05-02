@@ -36,6 +36,7 @@ interface SpawnedProcessInfo {
   process: ChildProcess;
   pid: number;
   port: number;
+  logs: string[]; // Added to store logs
   config: {
     model?: string;
     systemPrompt?: string;
@@ -129,7 +130,9 @@ export class AgentManager {
     kaProcess.unref();
 
     try {
-      const newAgent = await this.waitForAgentStartup(kaProcess, agentPort, agentUrl, name, description, model, systemPrompt, apiBaseUrl);
+      // Destructure the agent and initial logs from the result
+      const { agent: newAgent, logs: initialLogs } = await this.waitForAgentStartup(kaProcess, agentPort, agentUrl, name, description, model, systemPrompt, apiBaseUrl);
+
       this.agents.push(newAgent);
       console.log(`Added spawned agent: ${newAgent.url}`);
       this.notifyAgents();
@@ -139,9 +142,14 @@ export class AgentManager {
           process: kaProcess,
           pid: kaProcess.pid,
           port: agentPort,
+          logs: initialLogs, // Store initial logs captured during startup
           config: { model, systemPrompt, apiBaseUrl },
         });
-          console.log(`Stored spawned process info for agent ID: ${newAgent.id} with PID: ${kaProcess.pid} on port ${agentPort}`);
+        console.log(`Stored spawned process info for agent ID: ${newAgent.id} with PID: ${kaProcess.pid} on port ${agentPort}`);
+
+        // Now setup handlers to capture ongoing logs
+        this.setupOngoingLogCapture(kaProcess, newAgent.id);
+
       } else {
          console.error(`Process started for agent ${newAgent.id} but PID is missing.`);
          kaProcess.kill();
@@ -150,9 +158,9 @@ export class AgentManager {
          throw new Error('Process started but PID is missing.');
       }
 
-      this.setupProcessExitHandler(kaProcess, newAgent.id);
+      this.setupProcessExitHandler(kaProcess, newAgent.id); // Keep exit handler separate
       this.fetchAgentCapabilities(newAgent); // Fetch capabilities after startup
-      return newAgent;
+      return newAgent; // Return only the agent object as before
 
     } catch (error: unknown) {
       console.error("Error during spawnKaAgent execution:", error);
@@ -216,6 +224,42 @@ export class AgentManager {
       }
   }
 
+  // --- Log Management ---
+
+  private _addLog(agentId: string, message: string, stream: 'stdout' | 'stderr'): void {
+    const processInfo = this.spawnedProcesses.get(agentId);
+    if (processInfo) {
+      const maxLogLines = 100; // Consistent max log lines
+      const logEntry = `[${new Date().toISOString()}] [${stream}] ${message.trim()}`;
+      processInfo.logs.push(logEntry);
+      if (processInfo.logs.length > maxLogLines) {
+        processInfo.logs.shift(); // Remove the oldest log line
+      }
+    } else {
+      console.warn(`Attempted to add log for non-existent or cleaned up agent process: ${agentId}`);
+    }
+  }
+
+  private setupOngoingLogCapture(kaProcess: ChildProcess, agentId: string): void {
+    kaProcess.stdout?.on('data', (data: Buffer) => {
+      const output = data.toString();
+      this._addLog(agentId, output, 'stdout');
+      // console.log(`[ka stdout ${agentId}]: ${output}`); // Optional: Keep for backend debugging
+    });
+
+    kaProcess.stderr?.on('data', (data: Buffer) => {
+      const output = data.toString();
+      this._addLog(agentId, output, 'stderr');
+      // console.error(`[ka stderr ${agentId}]: ${output}`); // Optional: Keep for backend debugging
+    });
+  }
+
+  public getAgentLogs(agentId: string): string[] | null {
+    const processInfo = this.spawnedProcesses.get(agentId);
+    return processInfo ? processInfo.logs : null;
+  }
+
+  // --- Agent Notification & Port Management ---
 
   private async notifyAgents() {
     // Removed orchestrator.updateAgents call
@@ -282,11 +326,22 @@ export class AgentManager {
       model: string | undefined,
       systemPrompt: string | undefined,
       apiBaseUrl: string | undefined
-    ): Promise<Agent> {
-    return new Promise<Agent>((resolve, reject) => {
+    ): Promise<{ agent: Agent; logs: string[] }> { // Return logs along with agent
+    return new Promise<{ agent: Agent; logs: string[] }>((resolve, reject) => {
       let resolved = false;
       let processError: Error | null = null;
       const startupTimeoutDuration = 15000; // 15 seconds
+      const startupLogs: string[] = []; // Temporary log storage during startup
+      const maxLogLines = 100; // Max log lines to keep - Note: This is now also defined in _addLog
+
+      // Function to add log entry *during startup only*
+      const addStartupLog = (message: string, stream: 'stdout' | 'stderr') => {
+        const logEntry = `[${new Date().toISOString()}] [${stream}] ${message.trim()}`;
+        startupLogs.push(logEntry);
+        if (startupLogs.length > maxLogLines) {
+          startupLogs.shift(); // Remove the oldest log line
+        }
+      };
 
       const cleanupTimeout = (timeoutId: NodeJS.Timeout) => {
           clearTimeout(timeoutId);
@@ -314,9 +369,14 @@ export class AgentManager {
 
       kaProcess.stdout?.on('data', (data: Buffer) => {
         const output = data.toString();
-        console.log(`[ka stdout ${agentPort}]: ${output}`);
+        addStartupLog(output, 'stdout'); // Capture stdout during startup
+        // console.log(`[ka stdout ${agentPort}]: ${output}`); // Keep console log for debugging
         if (output.includes(`Agent server running at http://localhost:${agentPort}/`) && !resolved) {
           resolved = true;
+          // Important: Remove startup listeners before resolving
+          // to avoid duplicate logging after setupOngoingLogCapture is called.
+          kaProcess.stdout?.removeAllListeners('data');
+          kaProcess.stderr?.removeAllListeners('data');
           cleanupTimeout(startupTimeout);
           console.log(`ka agent on port ${agentPort} started successfully.`);
           const newAgent: Agent = {
@@ -326,13 +386,14 @@ export class AgentManager {
             description: description || `ka agent spawned with model: ${model || 'default'}`,
             isLocal: true,
           };
-          resolve(newAgent);
+          resolve({ agent: newAgent, logs: startupLogs }); // Resolve with agent and logs
         }
       });
 
       kaProcess.stderr?.on('data', (data: Buffer) => {
         const output = data.toString();
-        console.error(`[ka stderr ${agentPort}]: ${output}`);
+        addStartupLog(output, 'stderr'); // Capture stderr during startup
+        // console.error(`[ka stderr ${agentPort}]: ${output}`); // Keep console log for debugging
         if (output.includes('address already in use') && output.includes(`:${agentPort}`)) {
           handleStartupError(`Port ${agentPort} already in use.`, startupTimeout);
         }

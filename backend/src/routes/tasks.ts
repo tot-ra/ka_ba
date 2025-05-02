@@ -82,9 +82,12 @@ export function registerTasksRoutes(fastify: FastifyInstance, agentManager: Agen
       return;
     }
 
+    console.log(`[Tasks Route] Found agent ${agentId}: URL = ${selectedAgent.url}, Name = ${selectedAgent.name}`); // Log the agent URL
+
     const a2aClient = new A2AClient(selectedAgent.url);
 
     try {
+      console.log(`[Tasks Route] Attempting to list tasks from agent ${agentId} at ${selectedAgent.url}`); // Log before calling
       const tasks = await a2aClient.listTasks();
       if (tasks !== null) {
         reply.send(tasks);

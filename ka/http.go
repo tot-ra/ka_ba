@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"        // Added for request body buffering
 	"encoding/json"
 	"fmt"
+	"io"           // Added for io.ReadAll
 	"log"
 	"net/http"
 	"strings" // Added for string manipulation
@@ -11,6 +13,36 @@ import (
 	"ka/llm"
 
 	"github.com/golang-jwt/jwt/v5" // Added for JWT handling
+)
+
+// --- JSON-RPC Structures ---
+type jsonRPCRequest struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+	ID      interface{} `json:"id"`
+}
+
+type jsonRPCResponse struct {
+	JSONRPC string      `json:"jsonrpc"`
+	Result  interface{} `json:"result,omitempty"`
+	Error   *jsonRPCError `json:"error,omitempty"`
+	ID      interface{} `json:"id"`
+}
+
+type jsonRPCError struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+const (
+	jsonRPCParseErrorCode      = -32700
+	jsonRPCInvalidRequestCode  = -32600
+	jsonRPCMethodNotFoundCode  = -32601
+	jsonRPCInvalidParamsCode   = -32602
+	jsonRPCInternalErrorCode   = -32603
+	jsonRPCServerErrorBaseCode = -32000
 )
 
 // --- Middleware Definitions (will be instantiated with config) ---
@@ -78,8 +110,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// Removed global agentCard variable
-
 // agentCardHandler now accepts the agent card map directly
 func agentCardHandler(card map[string]interface{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +117,34 @@ func agentCardHandler(card map[string]interface{}) http.HandlerFunc {
 		json.NewEncoder(w).Encode(card) // Encode the passed card
 	}
 }
+
+// Helper to write JSON-RPC errors (defined before use in jsonRPCHandler)
+func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	// Determine appropriate HTTP status code based on JSON-RPC error code if needed
+	httpStatusCode := http.StatusInternalServerError // Default
+	if code == jsonRPCParseErrorCode || code == jsonRPCInvalidRequestCode || code == jsonRPCInvalidParamsCode {
+		httpStatusCode = http.StatusBadRequest
+	} else if code == jsonRPCMethodNotFoundCode {
+		httpStatusCode = http.StatusNotFound // Or maybe 400 depending on spec interpretation
+	}
+	// Note: Auth errors are typically handled by middleware directly with 401/403
+
+	w.WriteHeader(httpStatusCode) // Set appropriate HTTP status
+	resp := jsonRPCResponse{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error: &jsonRPCError{
+			Code:    code,
+			Message: message,
+			Data:    data,
+		},
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		log.Printf("Error encoding JSON-RPC error response: %v", err)
+	}
+}
+
 
 // Updated signature to accept name, description, model, and auth config
 func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int, agentName, agentDescription, agentModel, jwtSecretString string, apiKeys []string) {
@@ -172,37 +230,141 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 		apiKeyMiddleware = apiKeyAuthMiddleware(actualValidAPIKeys) // Create instance with keys
 	}
 
-	// --- Helper to Apply Middleware Conditionally ---
-	applyAuth := func(baseHandler http.HandlerFunc) http.HandlerFunc {
-		handler := baseHandler
-		// Apply in reverse order of typical execution (innermost first)
-		if apiKeyAuthEnabled {
-			handler = apiKeyMiddleware(handler)
+	// --- JSON-RPC Root Handler ---
+
+	// jsonRPCHandler creates the main handler for all JSON-RPC requests at the root path.
+	// It captures necessary dependencies like taskStore, taskExecutor, and auth middleware.
+	jsonRPCHandler := func(
+		taskStore a2a.TaskStore,
+		taskExecutor *a2a.TaskExecutor,
+		jwtMiddleware func(http.HandlerFunc) http.HandlerFunc,
+		apiKeyMiddleware func(http.HandlerFunc) http.HandlerFunc,
+		jwtAuthEnabled bool,
+		apiKeyAuthEnabled bool,
+	) http.HandlerFunc {
+		// Map method names to their respective handlers
+		// Note: These handlers need to be adapted or wrapped if they don't directly fit http.HandlerFunc
+		// For now, we'll call the existing handler logic inside the dispatcher.
+		// This is a simplification; a more robust implementation might use a dedicated router or map.
+
+		return func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("[Root Handler] Received request: Method=%s, Path=%s, RemoteAddr=%s", r.Method, r.URL.Path, r.RemoteAddr) // Add entry log
+
+			if r.Method != http.MethodPost {
+				log.Printf("[Root Handler] Rejecting non-POST request (Method: %s)", r.Method) // Log rejection
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			log.Printf("[Root Handler] Request is POST, proceeding...") // Log acceptance
+
+			// Read the body
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
+				log.Printf("Error reading request body: %v", err)
+				writeJSONRPCError(w, nil, jsonRPCInternalErrorCode, "Internal server error reading request body", nil)
+				return
+			}
+			r.Body.Close() // Close the original body
+
+			// Restore the body so middleware (if any) can read it again if needed
+			// This is important if middleware needs to inspect the body.
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+			// --- Apply Authentication Middleware ---
+			// We need to wrap the core dispatch logic in the auth middleware
+			coreLogic := func(w http.ResponseWriter, r *http.Request) {
+				// Re-read the body after middleware has potentially consumed it
+				// Note: This assumes middleware doesn't modify the body in incompatible ways.
+				finalBodyBytes, readErr := io.ReadAll(r.Body)
+				if readErr != nil {
+					log.Printf("Error reading request body after middleware: %v", readErr)
+					writeJSONRPCError(w, nil, jsonRPCInternalErrorCode, "Internal server error reading request body post-auth", nil)
+					return
+				}
+				r.Body.Close() // Close the potentially replaced body
+
+				// Decode the JSON-RPC request
+				var req jsonRPCRequest
+				if err := json.Unmarshal(finalBodyBytes, &req); err != nil {
+					log.Printf("Error decoding JSON-RPC request: %v", err)
+					writeJSONRPCError(w, nil, jsonRPCParseErrorCode, "Parse error", err.Error())
+					return
+				}
+
+				// Basic validation
+				if req.JSONRPC != "2.0" || req.Method == "" {
+					writeJSONRPCError(w, req.ID, jsonRPCInvalidRequestCode, "Invalid Request", "Missing jsonrpc version or method")
+					return
+				}
+
+				log.Printf("Received JSON-RPC request: Method=%s, ID=%v", req.Method, req.ID)
+
+				// --- Dispatch based on method ---
+				// We need to simulate the http.HandlerFunc signature for the existing handlers
+				// by creating a new request with the correct body for them to parse.
+				// This is somewhat inefficient but avoids rewriting all handlers immediately.
+
+				// Create a new request context with the original body bytes for the target handler
+				handlerReq := r.Clone(r.Context())
+				handlerReq.Body = io.NopCloser(bytes.NewBuffer(finalBodyBytes)) // Use the final bytes read
+
+				switch req.Method {
+				case "tasks/send":
+					a2a.TasksSendHandler(taskExecutor)(w, handlerReq)
+				case "tasks/status":
+					a2a.TasksStatusHandler(taskStore)(w, handlerReq)
+				case "tasks/sendSubscribe":
+					// Note: sendSubscribe might need special handling if it expects direct streaming response setup
+					a2a.TasksSendSubscribeHandler(taskExecutor)(w, handlerReq)
+				case "tasks/input":
+					a2a.TasksInputHandler(taskExecutor)(w, handlerReq)
+				case "tasks/pushNotification/set":
+					a2a.TasksPushNotificationSetHandler(taskStore)(w, handlerReq)
+				case "tasks/artifact":
+					a2a.TasksArtifactHandler(taskStore)(w, handlerReq)
+				case "tasks/list": // Handle the list method
+					a2a.TasksListHandler(taskStore)(w, handlerReq)
+				default:
+					log.Printf("Method not found: %s", req.Method)
+					writeJSONRPCError(w, req.ID, jsonRPCMethodNotFoundCode, "Method not found", req.Method)
+				}
+			}
+
+			// Apply middleware to the core logic
+			handlerWithAuth := coreLogic
+			if apiKeyAuthEnabled {
+				handlerWithAuth = apiKeyMiddleware(handlerWithAuth)
+			}
+			if jwtAuthEnabled {
+				handlerWithAuth = jwtMiddleware(handlerWithAuth)
+			}
+
+			// Execute the handler chain
+			handlerWithAuth(w, r)
 		}
-		if jwtAuthEnabled {
-			handler = jwtMiddleware(handler)
-		}
-		return handler
 	}
 
 	// --- Route Setup ---
 
-	// Public endpoints
+	// Public endpoints remain the same
 	http.HandleFunc("/.well-known/agent.json", agentCardHandler(dynamicAgentCard))
 	http.HandleFunc("/health", healthHandler)
 
-	// Protected endpoints - apply middleware conditionally
-	http.HandleFunc("/tasks/send", applyAuth(a2a.TasksSendHandler(taskExecutor)))
-	http.HandleFunc("/tasks/status", applyAuth(a2a.TasksStatusHandler(taskStore)))
-	http.HandleFunc("/tasks/sendSubscribe", applyAuth(a2a.TasksSendSubscribeHandler(taskExecutor)))
-	http.HandleFunc("/tasks/input", applyAuth(a2a.TasksInputHandler(taskExecutor)))
-	http.HandleFunc("/tasks/pushNotification/set", applyAuth(a2a.TasksPushNotificationSetHandler(taskStore)))
-	http.HandleFunc("/tasks/artifact", applyAuth(a2a.TasksArtifactHandler(taskStore)))
-	http.HandleFunc("/tasks", applyAuth(a2a.TasksListHandler(taskStore))) // Add handler for listing tasks
+	// Root handler for all JSON-RPC requests
+	http.HandleFunc("/", jsonRPCHandler(
+		taskStore,
+		taskExecutor,
+		jwtMiddleware,    // Pass the instantiated middleware
+		apiKeyMiddleware, // Pass the instantiated middleware
+		jwtAuthEnabled,
+		apiKeyAuthEnabled,
+	))
+
+	// Specific /tasks/* handlers are now removed as they are handled by the root handler
 
 	// --- Start Server ---
 	listenAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("[http] Agent server running at http://localhost:%d/\n", port)
-	fmt.Println("[http] Endpoints: /.well-known/agent.json, /tasks/send, /tasks/status, /tasks/sendSubscribe, /tasks/input, ...")
+	fmt.Println("[http] Registered Handlers: /, /.well-known/agent.json, /health") // Updated log message
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }

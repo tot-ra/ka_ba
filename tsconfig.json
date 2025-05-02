@@ -10,12 +10,16 @@
     "rootDir": "./",
     "resolveJsonModule": true,
     "moduleResolution": "node",
-    "typeRoots": ["./node_modules/@types"]
+    "typeRoots": ["./node_modules/@types"],
+    "jsx": "react-jsx" // Add JSX support for React
   },
   "include": [
-    "backend/src/**/*.ts"
+    "backend/src/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx"   // Removed trailing comma
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "dist"           // Also exclude the output directory
   ]
 }

@@ -9,6 +9,15 @@ function createResolvers(agentManager) {
             agents: (_parent, _args, context, _info) => {
                 return context.agentManager.getAgents();
             },
+            agentLogs: (_parent, { agentId }, context, _info) => {
+                const logs = context.agentManager.getAgentLogs(agentId);
+                if (logs === null) {
+                    // Optionally throw a GraphQL error if agent not found
+                    // throw new Error(`Agent with ID ${agentId} not found or is not a local agent.`);
+                    return null; // Or return null/empty array as per schema
+                }
+                return logs;
+            },
             // Removed getWorkflowStatus resolver
         },
         Mutation: {

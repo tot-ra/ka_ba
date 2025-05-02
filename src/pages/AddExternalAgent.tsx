@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Container, Typography, Paper, TextField, Button, Box, CircularProgress, Alert, Grid } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import styles from './AddExternalAgent.module.css'; // Import the new CSS module
 
 type AddExternalMessageType = 'success' | 'error' | null;
 
@@ -62,63 +62,74 @@ const AddExternalAgent: React.FC = () => {
      // Don't set isAddingExternal to false on success, as we are navigating away
   };
 
-  return (
-    <Container maxWidth="md">
-       <Button onClick={() => navigate('/agents')} sx={{ mt: 2, mb: 1 }}>
-         &larr; Back to Agent Management
-       </Button>
-      <Paper sx={{ p: 3, mt: 1 }}>
-        <Typography variant="h4" gutterBottom sx={{ mb: 3 }}>
-          Add External Agent
-        </Typography>
+  // Helper to get alert class based on type
+  const getAlertClass = (type: AddExternalMessageType): string => {
+    if (type === 'success') return styles.alertSuccess;
+    if (type === 'error') return styles.alertError;
+    return styles.alertInfo; // Default or null
+  };
 
-        <Box component="form" onSubmit={handleAddAgent} sx={{ border: '1px solid #e0e0e0', p: 3, borderRadius: 1 }}>
-           <Grid container spacing={2} alignItems="flex-end">
-             <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  label="Agent Name (Optional)"
+  return (
+    <div className={styles.container}>
+       <button onClick={() => navigate('/agents')} className={`${styles.button} ${styles.buttonBack}`}>
+         &larr; Back to Agent Management
+       </button>
+      <div className={styles.paper}>
+        <h1 className={styles.title}>
+          Add External Agent
+        </h1>
+
+        <form onSubmit={handleAddAgent} className={styles.form}>
+           <div className={styles.formGrid}>
+             {/* Agent Name Field */}
+             <div className={`${styles.formField} ${styles.formFieldName}`}>
+                <label htmlFor="externalAgentName" className={styles.formLabel}>Agent Name (Optional)</label>
+                <input
+                  type="text"
                   id="externalAgentName"
                   value={newAgentName}
                   onChange={(e) => setNewAgentName(e.target.value)}
-                  variant="outlined"
-                  size="small"
+                  className={styles.formInput}
                 />
-             </Grid>
-             <Grid item xs={12} sm={6}>
-               <TextField
-                 fullWidth
+             </div>
+             {/* Agent URL Field */}
+             <div className={`${styles.formField} ${styles.formFieldUrl}`}>
+               <label htmlFor="externalAgentUrl" className={styles.formLabel}>Agent URL</label>
+               <input
+                 type="url" // Use type="url" for better semantics/validation
                  required
-                 label="Agent URL"
                  id="externalAgentUrl"
                  placeholder="http://..."
                  value={newAgentUrl}
                  onChange={(e) => setNewAgentUrl(e.target.value)}
-                 variant="outlined"
-                 size="small"
+                 className={styles.formInput}
                />
-             </Grid>
-             <Grid item xs={12} sm={2}>
-               <Button
-                 fullWidth
+             </div>
+             {/* Submit Button */}
+             <div className={`${styles.formField} ${styles.formFieldButton}`}>
+               {/* Add an empty label for alignment if needed, or adjust CSS */}
+               <label className={styles.formLabel}>&nbsp;</label>
+               <button
                  type="submit"
-                 variant="contained"
-                 color="secondary"
-                 disabled={isAddingExternal}
-                 startIcon={isAddingExternal ? <CircularProgress size={20} color="inherit" /> : null}
+                 className={`${styles.button} ${styles.buttonPrimary}`}
+                 disabled={isAddingExternal || !newAgentUrl} // Also disable if URL is empty
                >
+                 {isAddingExternal && <div className={styles.spinner}></div>}
                  {isAddingExternal ? 'Adding...' : 'Add Agent'}
-                </Button>
-             </Grid>
+                </button>
+             </div>
+             {/* Status Message */}
              {addExternalStatusMessage && (
-               <Grid item xs={12}>
-                 <Alert severity={addExternalMessageType || 'info'}>{addExternalStatusMessage}</Alert>
-               </Grid>
+               <div className={`${styles.formField} ${styles.formFieldFull}`}>
+                 <div className={`${styles.alert} ${getAlertClass(addExternalMessageType)}`}>
+                   {addExternalStatusMessage}
+                 </div>
+               </div>
              )}
-           </Grid>
-        </Box>
-      </Paper>
-    </Container>
+           </div>
+        </form>
+      </div>
+    </div>
   );
 };
 
