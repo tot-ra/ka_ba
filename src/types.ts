@@ -7,6 +7,7 @@ export type MessageRole = "SYSTEM" | "USER" | "ASSISTANT" | "TOOL";
 export interface TextPart {
   type: 'text';
   text: string;
+  metadata?: any; // Added metadata
 }
 
 export interface FilePart {
@@ -15,22 +16,25 @@ export interface FilePart {
   uri?: string; // Optional based on schema comment
   artifactId?: string; // Optional based on schema comment
   fileName?: string; // Added for display, might be in metadata or inferred
+  metadata?: any; // Added metadata
 }
 
 export interface DataPart {
   type: 'data';
   mimeType?: string; // Optional based on schema comment
   data: any;
+  metadata?: any; // Added metadata
 }
 
 export interface UriPart {
     type: 'uri';
     uri: string;
     mimeType?: string;
+    metadata?: any; // Added metadata
 }
 
 // Union type for message parts
-export type MessagePart = TextPart | FilePart | DataPart | UriPart | { type: string; [key: string]: any }; // Fallback for unknown types
+export type MessagePart = TextPart | FilePart | DataPart | UriPart | { type: string; metadata?: any; [key: string]: any }; // Fallback for unknown types, include metadata
 
 
 // This Task interface should align with the data returned by GraphQL queries (listTasks, createTask)
@@ -56,6 +60,7 @@ export interface Message {
   parts: MessagePart[]; // Use the new MessagePart union type
   toolCalls?: any; // Placeholder
   toolCallId?: string;
+  metadata?: any; // Added metadata
 }
 
 

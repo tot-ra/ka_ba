@@ -126,8 +126,8 @@ const AgentInteraction: React.FC = () => {
               # Match fields needed by TaskList component and TaskDetails modal
               id
               state
-              input { role parts } # Simplified parts for list view
-              output { role parts } # Simplified parts for list view
+              input { role parts } # Select the JSONObject directly
+              output { role parts } # Select the JSONObject directly
               error
               createdAt
               updatedAt
@@ -202,6 +202,7 @@ const AgentInteraction: React.FC = () => {
   };
 
   // --- Task Duplication Handler ---
+  // This handler is called from TaskList and the TaskDetails modal
   const handleDuplicateTask = async (agentId: string, taskId: string) => {
     if (!agentId) {
       setError('Cannot duplicate task: No agent selected.');
@@ -212,10 +213,73 @@ const AgentInteraction: React.FC = () => {
     setError(null);
 
     try {
-      // Use the duplicateTask mutation directly
+      // Find the task to duplicate from the current tasks list
+      const taskToDuplicate = tasks.find(task => task.id === taskId);
+
+      if (!taskToDuplicate || !taskToDuplicate.input || taskToDuplicate.input.length === 0) {
+        console.warn(`Cannot duplicate task ${taskId}: Task not found or has no input.`);
+        setError(`Cannot duplicate task ${taskId}: Task not found or has no input.`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Assuming the first message in 'input' is the one to duplicate
+      const originalMessage = taskToDuplicate.input[0];
+      // Use shared MessageRole enum 'USER'
+      if (originalMessage.role !== 'USER' || !originalMessage.parts || originalMessage.parts.length === 0) {
+        console.warn(`Cannot duplicate task ${taskId}: First input message is not a valid user prompt.`);
+        setError(`Cannot duplicate task ${taskId}: First input message is not a valid user prompt.`);
+        setIsLoading(false);
+        return;
+      }
+
+      // Extract the content from the original message parts
+      // We need to map the original parts structure to the InputPart structure
+      const inputParts: InputPart[] = originalMessage.parts.map(part => {
+          // Assuming the structure of Part from backend/src/a2aClient.ts
+          // matches the expected structure for InputPart content in backend/src/graphql/resolvers.ts
+          // e.g., { type: 'text', text: '...' } maps to { type: 'text', content: { text: '...' } }
+          // and { type: 'data', data: { ... } } maps to { type: 'data', content: { ... } }
+          // and { type: 'file', file: { ... } } maps to { type: 'file', content: { ... } }
+          // This mapping might need adjustment based on exact type definitions.
+          // For now, assuming a direct mapping of the 'content' field based on 'type'.
+          let content: any;
+          if (part.type === 'text') {
+              content = { text: (part as any).text }; // Cast to access 'text'
+          } else if (part.type === 'data') {
+              content = (part as any).data; // Cast to access 'data'
+          } else if (part.type === 'file') {
+              content = (part as any).file; // Cast to access 'file'
+          } else {
+              // Handle other types or skip
+              console.warn(`Skipping duplication for unsupported input part type: ${part.type}`);
+              return null; // Skip this part
+          }
+
+          return {
+              type: part.type,
+              content: content,
+              metadata: part.metadata, // Include metadata if present
+          };
+      }).filter(part => part !== null) as InputPart[]; // Filter out skipped parts and cast
+
+      if (inputParts.length === 0) {
+          setError('Could not extract valid input parts from the original task.');
+          setIsLoading(false);
+          return;
+      }
+
+      // Construct the message for the new task
+      const newMessage: InputMessage = {
+        role: 'USER', // New task starts with USER role
+        parts: inputParts,
+        metadata: originalMessage.metadata, // Include original message metadata
+      };
+
+      // Use the existing createTask mutation
       const mutation = `
-        mutation DuplicateTask($agentId: ID!, $taskId: ID!) {
-          duplicateTask(agentId: $agentId, taskId: $taskId) {
+        mutation CreateTask($agentId: ID, $message: InputMessage!) {
+          createTask(agentId: $agentId, message: $message) {
             # Request all fields defined in the Task type in schema.graphql
             id
             state
@@ -228,23 +292,29 @@ const AgentInteraction: React.FC = () => {
           }
         }
       `;
-      const variables = { agentId, taskId };
 
-      const response = await sendGraphQLRequest<{ duplicateTask: Task }>(mutation, variables);
+      const variables = {
+        agentId: agentId, // Use the agentId of the original task
+        message: newMessage,
+      };
+
+      console.log(`[AgentInteraction] Creating new task by duplicating task ${taskId} with message:`, newMessage);
+
+      const response = await sendGraphQLRequest<{ createTask: Task }>(mutation, variables);
 
       if (response.errors) {
-        console.error(`[AgentInteraction] GraphQL errors duplicating task ${taskId}:`, response.errors);
+        console.error(`[AgentInteraction] GraphQL errors creating duplicated task from ${taskId}:`, response.errors);
         throw new Error(response.errors.map((e: any) => e.message).join('; '));
-      } else if (response.data?.duplicateTask) {
-        console.log('Task duplicated:', response.data.duplicateTask);
+      } else if (response.data?.createTask) {
+        console.log('Duplicated task created:', response.data.createTask);
         setError(null); // Clear previous errors
         // Refetch the task list to show the new task
         await fetchTasks();
         // Optionally set the new task as the current task for immediate details view
-        // setCurrentTask(response.data.duplicateTask);
+        // setCurrentTask(response.data.createTask);
       } else {
-        console.error('[GraphQL duplicateTask] Unexpected response structure:', response);
-        setError('Received an unexpected response structure when duplicating task.');
+        console.error('[GraphQL createTask (Duplication)] Unexpected response structure:', response);
+        setError('Received an unexpected response structure when creating duplicated task.');
       }
 
     } catch (err: any) {
