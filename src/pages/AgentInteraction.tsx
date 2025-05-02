@@ -29,6 +29,55 @@ interface Agent {
   description?: string;
 }
 
+// Basic Modal Component (can be moved to a separate file later)
+const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+
+  return (
+    // Modal backdrop
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
+      justifyContent: 'flex-end', // Align modal to the right
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        width: '60vw', // 70% of viewport width
+        height: '100vh', // Full viewport height
+        overflowY: 'auto', // Allow scrolling within the modal
+        display: 'flex',
+        flexDirection: 'column', // Stack elements vertically
+        padding: '20px', // Add padding inside
+        boxSizing: 'border-box', // Include padding in width/height calculation
+      }}>
+        <h2>{title}</h2>
+        <div style={{ flexGrow: 1, overflowY: 'auto' }}>
+          {children}
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            alignSelf: 'flex-start', // Position button at the start (top-left within flex container)
+            marginBottom: '15px', // Space below the button
+            padding: '8px 15px',
+            backgroundColor: 'black',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '0.9em',
+            fontWeight: 'bold',
+          }}
+        >
+          Back
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
 const AgentInteraction: React.FC = () => {
   const { selectedAgentId } = useAgent();
@@ -46,6 +95,11 @@ const AgentInteraction: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(false);
   const [listError, setListError] = useState<string | null>(null);
+
+  // State for Task Details Modal
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [taskToShowDetails, setTaskToShowDetails] = useState<Task | null>(null);
+
 
   // --- GraphQL Mutation Definition ---
   const DELETE_TASK_MUTATION = `
@@ -69,7 +123,7 @@ const AgentInteraction: React.FC = () => {
         query: `
           query ListTasks($agentId: ID!) {
             listTasks(agentId: $agentId) {
-              # Match fields needed by TaskList component
+              # Match fields needed by TaskList component and TaskDetails modal
               id
               state
               input { role parts } # Simplified parts for list view
@@ -77,7 +131,7 @@ const AgentInteraction: React.FC = () => {
               error
               createdAt
               updatedAt
-              # artifacts # Maybe omit artifacts from list view for performance?
+              artifacts # Include artifacts for details view
             }
           }
         `,
@@ -354,6 +408,18 @@ const AgentInteraction: React.FC = () => {
      fontWeight: 'bold',
    };
 
+   // Handler to open the task details modal
+   const handleViewTaskDetails = (task: Task) => {
+     setTaskToShowDetails(task);
+     setShowDetailsModal(true);
+   };
+
+   // Handler to close the task details modal
+   const closeDetailsModal = () => {
+     setShowDetailsModal(false);
+     setTaskToShowDetails(null); // Clear selected task when closing
+   };
+
 
   // Ensure this log is present before the return statement
   console.log('[AgentInteraction render] Tasks state before passing to TaskList:', tasks);
@@ -392,6 +458,7 @@ const AgentInteraction: React.FC = () => {
                   loading={listLoading}
                   error={listError}
                   onDeleteTask={handleDeleteTask} // Pass the delete handler down
+                  onViewTaskDetails={handleViewTaskDetails} // Pass the new handler
                   // Pass fetchTasks down if TaskList needs a manual refresh button (optional)
                   // onRefresh={fetchTasks}
                 />
@@ -407,14 +474,6 @@ const AgentInteraction: React.FC = () => {
 
                 {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
 
-                <TaskDetails
-                  currentTask={currentTask}
-                  streamingOutput={streamingOutput}
-                  // Temporarily cast artifacts to 'any' to resolve type mismatch.
-                  // TODO: Investigate TaskDetails props and fix Artifact type properly.
-                  artifacts={artifacts as any}
-                  onDuplicateClick={handleDuplicateClick}
-                />
               </>
             )}
           </div>
@@ -422,6 +481,26 @@ const AgentInteraction: React.FC = () => {
       ) : (
         <p>Please select an agent from the Agent Management page.</p>
       )}
+
+      <Modal
+        isOpen={showDetailsModal}
+        onClose={closeDetailsModal}
+        title={`Task Details: ${taskToShowDetails?.id || ''}`}
+      >
+        {taskToShowDetails ? (
+          <TaskDetails
+            currentTask={taskToShowDetails}
+            streamingOutput={''} // Streaming output is only for the *current* task
+            onDuplicateClick={() => {
+              // Handle duplication from modal - likely close modal and populate main form
+              handleDuplicateClick(); // Reuse the existing duplication logic
+              closeDetailsModal();
+            }}
+          />
+        ) : (
+          <div>Loading task details...</div> // Should not happen if taskToShowDetails is set before opening
+        )}
+      </Modal>
     </div>
   );
 };

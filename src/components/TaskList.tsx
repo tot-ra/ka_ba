@@ -1,15 +1,6 @@
-import React, { useState } from 'react'; // Removed useEffect
+import React from 'react'; // Removed useState, useEffect
 // Import shared types needed by this component
-import { Task, TaskHistory } from '../types';
-
-// --- Removed local type definitions ---
-// type TaskState = ...
-// type MessageRole = ...
-// interface Message { ... }
-// interface Artifact { ... }
-// interface Task { ... }
-// interface TaskHistory { ... }
-
+import { Task } from '../types'; // Removed TaskHistory
 
 interface TaskListProps {
   agentId: string | null; // Still needed to know *which* agent's tasks are shown
@@ -17,121 +8,17 @@ interface TaskListProps {
   loading: boolean; // Receive loading state as a prop
   error: string | null; // Receive error state as a prop
   onDeleteTask: (taskId: string) => void; // Callback to delete a task
+  onViewTaskDetails: (task: Task) => void; // New callback to view task details in a modal
   // onRefresh?: () => void; // Optional prop for manual refresh
 }
 
-// Basic Modal Component (can be moved to a separate file later)
-// ... (Modal component remains the same) ...
-const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
+// Removed Modal component definition
 
-  return (
-    // Modal backdrop
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex',
-      justifyContent: 'flex-end', // Align modal to the right
-      zIndex: 1000
-    }}>
-      {/* Modal content */}
-      <div style={{
-        backgroundColor: 'white',
-        width: '70vw', // 70% of viewport width
-        height: '100vh', // Full viewport height
-        overflowY: 'auto', // Allow scrolling within the modal
-        display: 'flex',
-        flexDirection: 'column', // Stack elements vertically
-        padding: '20px', // Add padding inside
-        boxSizing: 'border-box', // Include padding in width/height calculation
-      }}>
-        <h2>{title}</h2>
-        {/* Ensure children container allows scrolling if needed */}
-        <div style={{ flexGrow: 1, overflowY: 'auto' }}> {/* Allow this div to grow and scroll */}
-          {children}
-        </div>
-
-        <button
-          onClick={onClose}
-          style={{
-            alignSelf: 'flex-start', // Position button at the start (top-left within flex container)
-            marginBottom: '15px', // Space below the button
-            padding: '8px 15px',
-            backgroundColor: 'black',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '0.9em',
-            fontWeight: 'bold',
-          }}
-        >
-          Back
-        </button>
-      </div>
-    </div>
-  );
-};
-
-
-// Destructure props including tasks, loading, error, and onDeleteTask
-const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onDeleteTask }) => {
-  // Removed internal state for tasks, loading, error
-
-  // Keep state related to the modal/history view
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [taskHistory, setTaskHistory] = useState<TaskHistory | null>(null);
-  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-
+// Destructure props including tasks, loading, error, onDeleteTask, and onViewTaskDetails
+const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onDeleteTask, onViewTaskDetails }) => {
+  // Removed all state related to modal/history view
   // Removed useEffect hook for fetching tasks
-
-  const handleViewHistory = async (task: Task) => {
-    setSelectedTask(task);
-    setIsModalOpen(true);
-    setHistoryLoading(true);
-    setHistoryError(null);
-    setTaskHistory(null); // Clear previous history
-
-    try {
-      // TODO: Implement actual API call to fetch full task history
-      console.log(`Fetching history for task ${task.id}...`);
-      // const response = await fetch(`/api/agents/${agentId}/tasks/${task.id}/history`);
-      // if (!response.ok) {
-      //   throw new Error('Failed to fetch task history');
-      // }
-      // const historyData: TaskHistory = await response.json();
-
-      // Placeholder data for now
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
-      const historyData: TaskHistory = {
-        messages: [
-          { role: 'user', content: 'Initial prompt (placeholder)', timestamp: task.createdAt }, // Use createdAt
-          { role: 'assistant', content: 'Assistant response (placeholder)', timestamp: task.updatedAt }, // Use updatedAt and static text
-          // Add more placeholder messages if needed
-        ],
-        artifacts: [
-          // Add placeholder artifacts if needed
-          // { name: 'output.txt', type: 'text/plain', uri: 'data:text/plain;base64,SGVsbG8gV29ybGQ=' }
-        ],
-      };
-
-      setTaskHistory(historyData);
-    } catch (err) {
-      console.error("Error fetching task history:", err);
-      setHistoryError(err instanceof Error ? err.message : 'An unknown error occurred');
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setSelectedTask(null);
-    setTaskHistory(null);
-    setHistoryError(null);
-  };
-
+  // Removed handleViewHistory and closeModal functions
 
   if (!agentId) {
     // Use loading/error props passed down from parent
@@ -153,9 +40,11 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
       const firstMessage = task.input[0];
       if (firstMessage.parts && firstMessage.parts.length > 0) {
         // Find the first part that looks like a text part
-        const textPart = firstMessage.parts.find(p => typeof p === 'object' && p !== null && p.type === 'text' && typeof p.text === 'string');
+        // Need to cast p to any because parts is [JSONObject!]!
+        const textPart = firstMessage.parts.find((p: any) => typeof p === 'object' && p !== null && p.type === 'text' && typeof p.text === 'string');
         if (textPart) {
-          return textPart.text.substring(0, 100) + (textPart.text.length > 100 ? '...' : ''); // Truncate long text
+          // Cast textPart to the expected structure
+          return (textPart as any).text.substring(0, 100) + ((textPart as any).text.length > 100 ? '...' : ''); // Truncate long text
         }
       }
     }
@@ -186,12 +75,12 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
           <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             {/* Left Section */}
             <div style={{ flexGrow: 1, marginRight: '15px' }}>
-              {/* Input Text Link */}
+              {/* Input Text Link - Now calls onViewTaskDetails */}
               <a
                 href="#"
-                onClick={(e) => { e.preventDefault(); handleViewHistory(task); }}
+                onClick={(e) => { e.preventDefault(); onViewTaskDetails(task); }}
                 style={{ marginTop: '5px', display: 'block', cursor: 'pointer', textDecoration: 'underline', color: '#007bff', wordBreak: 'break-word' }}
-                title="View History" // Add a title for accessibility/hover
+                title="View Details" // Updated title
               >
                 {getFirstInputText(task)}
               </a>
@@ -211,7 +100,7 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
               </div>
               <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>Updated: {new Date(task.updatedAt).toLocaleString()}</div>
 
-              
+
             </div>
 
 
@@ -248,41 +137,7 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
         ))}
       </ul>
 
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={`History for Task: ${selectedTask?.id}`}>
-        {historyLoading && <div>Loading history...</div>}
-        {historyError && <div style={{ color: 'red' }}>Error: {historyError}</div>}
-        {taskHistory && (
-          <div>
-            <h4>Messages</h4>
-            {taskHistory.messages.length > 0 ? (
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {taskHistory.messages.map((msg, index) => (
-                  <li key={index} style={{ marginBottom: '10px', borderBottom: '1px dashed #eee', paddingBottom: '5px' }}>
-                    <strong>{msg.role}</strong> ({new Date(msg.timestamp).toLocaleString()}):
-                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '5px 0 0 10px' }}>{msg.content}</pre>
-                    {/* TODO: Render parts if they exist */}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div>No messages found.</div>
-            )}
-
-            <h4>Artifacts</h4>
-            {taskHistory.artifacts.length > 0 ? (
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {taskHistory.artifacts.map((art, index) => (
-                  <li key={index}>
-                    {art.name} ({art.type}) - <a href={art.uri} target="_blank" rel="noopener noreferrer">View/Download</a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div>No artifacts found.</div>
-            )}
-          </div>
-        )}
-      </Modal>
+      {/* Modal component removed - will be handled by parent */}
     </div>
   );
 };
