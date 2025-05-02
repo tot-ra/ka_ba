@@ -13,8 +13,8 @@ const AddExternalAgent = () => {
     const [newAgentUrl, setNewAgentUrl] = (0, react_1.useState)('');
     const [newAgentName, setNewAgentName] = (0, react_1.useState)('');
     const [isAddingExternal, setIsAddingExternal] = (0, react_1.useState)(false);
-    const [addExternalStatusMessage, setAddExternalStatusMessage] = (0, react_1.useState)(null);
-    const [addExternalMessageType, setAddExternalMessageType] = (0, react_1.useState)(null);
+    const [addExternalStatusMessage, setAddExternalStatusMessage] = (0, react_1.useState)(null); // Keep for errors
+    const [addExternalMessageType, setAddExternalMessageType] = (0, react_1.useState)(null); // Keep for errors
     const handleAddAgent = async (e) => {
         e.preventDefault();
         setIsAddingExternal(true);
@@ -42,10 +42,8 @@ const AddExternalAgent = () => {
             const newAgent = response.data.data.addAgent;
             if (newAgent && newAgent.id) {
                 console.log('Agent added successfully:', newAgent);
-                setAddExternalStatusMessage(`External agent "${newAgent.name || newAgent.id}" added successfully. Redirecting...`);
-                setAddExternalMessageType('success');
-                // Navigate back after a short delay
-                setTimeout(() => navigate('/agents'), 1500);
+                // Navigate back immediately on success
+                navigate('/agents');
             }
             else {
                 const errorMessage = response.data.errors?.[0]?.message || 'Failed to add agent or received invalid data.';
@@ -62,17 +60,16 @@ const AddExternalAgent = () => {
             setAddExternalMessageType('error');
             setIsAddingExternal(false); // Stop loading on error
         }
-        // Don't set isAddingExternal to false on success, as we are navigating away
+        // No need to keep isAddingExternal true on success anymore
     };
-    // Helper to get alert class based on type
+    // Helper to get alert class based on type (only needed for error now)
     const getAlertClass = (type) => {
-        if (type === 'success')
-            return AddExternalAgent_module_css_1.default.alertSuccess;
+        // if (type === 'success') return styles.alertSuccess; // No longer needed
         if (type === 'error')
             return AddExternalAgent_module_css_1.default.alertError;
         return AddExternalAgent_module_css_1.default.alertInfo; // Default or null
     };
     return ((0, jsx_runtime_1.jsxs)("div", { className: AddExternalAgent_module_css_1.default.container, children: [(0, jsx_runtime_1.jsx)("button", { onClick: () => navigate('/agents'), className: `${AddExternalAgent_module_css_1.default.button} ${AddExternalAgent_module_css_1.default.buttonBack}`, children: "\u2190 Back to Agent Management" }), (0, jsx_runtime_1.jsxs)("div", { className: AddExternalAgent_module_css_1.default.paper, children: [(0, jsx_runtime_1.jsx)("h1", { className: AddExternalAgent_module_css_1.default.title, children: "Add External Agent" }), (0, jsx_runtime_1.jsx)("form", { onSubmit: handleAddAgent, className: AddExternalAgent_module_css_1.default.form, children: (0, jsx_runtime_1.jsxs)("div", { className: AddExternalAgent_module_css_1.default.formGrid, children: [(0, jsx_runtime_1.jsxs)("div", { className: `${AddExternalAgent_module_css_1.default.formField} ${AddExternalAgent_module_css_1.default.formFieldName}`, children: [(0, jsx_runtime_1.jsx)("label", { htmlFor: "externalAgentName", className: AddExternalAgent_module_css_1.default.formLabel, children: "Agent Name (Optional)" }), (0, jsx_runtime_1.jsx)("input", { type: "text", id: "externalAgentName", value: newAgentName, onChange: (e) => setNewAgentName(e.target.value), className: AddExternalAgent_module_css_1.default.formInput })] }), (0, jsx_runtime_1.jsxs)("div", { className: `${AddExternalAgent_module_css_1.default.formField} ${AddExternalAgent_module_css_1.default.formFieldUrl}`, children: [(0, jsx_runtime_1.jsx)("label", { htmlFor: "externalAgentUrl", className: AddExternalAgent_module_css_1.default.formLabel, children: "Agent URL" }), (0, jsx_runtime_1.jsx)("input", { type: "url" // Use type="url" for better semantics/validation
-                                            , required: true, id: "externalAgentUrl", placeholder: "http://...", value: newAgentUrl, onChange: (e) => setNewAgentUrl(e.target.value), className: AddExternalAgent_module_css_1.default.formInput })] }), (0, jsx_runtime_1.jsxs)("div", { className: `${AddExternalAgent_module_css_1.default.formField} ${AddExternalAgent_module_css_1.default.formFieldButton}`, children: [(0, jsx_runtime_1.jsx)("label", { className: AddExternalAgent_module_css_1.default.formLabel, children: "\u00A0" }), (0, jsx_runtime_1.jsxs)("button", { type: "submit", className: `${AddExternalAgent_module_css_1.default.button} ${AddExternalAgent_module_css_1.default.buttonPrimary}`, disabled: isAddingExternal || !newAgentUrl, children: [isAddingExternal && (0, jsx_runtime_1.jsx)("div", { className: AddExternalAgent_module_css_1.default.spinner }), isAddingExternal ? 'Adding...' : 'Add Agent'] })] }), addExternalStatusMessage && ((0, jsx_runtime_1.jsx)("div", { className: `${AddExternalAgent_module_css_1.default.formField} ${AddExternalAgent_module_css_1.default.formFieldFull}`, children: (0, jsx_runtime_1.jsx)("div", { className: `${AddExternalAgent_module_css_1.default.alert} ${getAlertClass(addExternalMessageType)}`, children: addExternalStatusMessage }) }))] }) })] })] }));
+                                            , required: true, id: "externalAgentUrl", placeholder: "http://...", value: newAgentUrl, onChange: (e) => setNewAgentUrl(e.target.value), className: AddExternalAgent_module_css_1.default.formInput })] }), (0, jsx_runtime_1.jsxs)("div", { className: `${AddExternalAgent_module_css_1.default.formField} ${AddExternalAgent_module_css_1.default.formFieldButton}`, children: [(0, jsx_runtime_1.jsx)("label", { className: AddExternalAgent_module_css_1.default.formLabel, children: "\u00A0" }), (0, jsx_runtime_1.jsxs)("button", { type: "submit", className: `${AddExternalAgent_module_css_1.default.button} ${AddExternalAgent_module_css_1.default.buttonPrimary}`, disabled: isAddingExternal || !newAgentUrl, children: [isAddingExternal && (0, jsx_runtime_1.jsx)("div", { className: AddExternalAgent_module_css_1.default.spinner }), isAddingExternal ? 'Adding...' : 'Add Agent'] })] }), addExternalStatusMessage && addExternalMessageType === 'error' && ((0, jsx_runtime_1.jsx)("div", { className: `${AddExternalAgent_module_css_1.default.formField} ${AddExternalAgent_module_css_1.default.formFieldFull}`, children: (0, jsx_runtime_1.jsx)("div", { className: `${AddExternalAgent_module_css_1.default.alert} ${getAlertClass(addExternalMessageType)}`, children: addExternalStatusMessage }) }))] }) })] })] }));
 };
 exports.default = AddExternalAgent;

@@ -546,14 +546,12 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 }
 
 // TasksListHandler retrieves all tasks from the store.
+// It's called via the JSON-RPC dispatcher which uses POST, so the method check is removed.
 func TasksListHandler(taskStore TaskStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
+		// Removed: if r.Method != http.MethodGet check
 
-		log.Println("[TaskList] Received request to list all tasks.")
+		log.Println("[TaskList] Received request to list all tasks (via JSON-RPC dispatcher).")
 
 		tasks, err := taskStore.ListTasks() // Use the existing ListTasks method
 		if err != nil {

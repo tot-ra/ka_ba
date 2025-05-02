@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createResolvers = createResolvers;
+const schema_1 = require("./schema"); // Re-add JSONObjectResolver import
 // Removed orchestrator from function signature
 function createResolvers(agentManager) {
     return {
-        // Removed JSONObject resolver
+        JSONObject: schema_1.JSONObjectResolver, // Re-add JSONObject resolver
         Query: {
             agents: (_parent, _args, context, _info) => {
                 return context.agentManager.getAgents();
@@ -17,6 +18,17 @@ function createResolvers(agentManager) {
                     return null; // Or return null/empty array as per schema
                 }
                 return logs;
+            },
+            listTasks: async (_parent, { agentId }, context, _info) => {
+                // Using any[] for now to match AgentManager method, refine later if needed
+                try {
+                    return await context.agentManager.getAgentTasks(agentId);
+                }
+                catch (error) {
+                    console.error(`[Resolver listTasks] Error fetching tasks for agent ${agentId}:`, error);
+                    // Re-throw the error so GraphQL client receives it
+                    throw new Error(`Failed to fetch tasks for agent ${agentId}: ${error.message}`);
+                }
             },
             // Removed getWorkflowStatus resolver
         },

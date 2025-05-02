@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { AgentManager, Agent } from '../services/agentManager';
+import { JSONObjectResolver } from './schema'; // Re-add JSONObjectResolver import
 // Removed Orchestrator import
-// Removed JSONObjectResolver import
 
 interface ResolverContext {
   request: FastifyRequest;
@@ -13,7 +13,7 @@ interface ResolverContext {
 // Removed orchestrator from function signature
 export function createResolvers(agentManager: AgentManager) {
   return {
-    // Removed JSONObject resolver
+    JSONObject: JSONObjectResolver, // Re-add JSONObject resolver
     Query: {
       agents: (_parent: any, _args: any, context: ResolverContext, _info: any): Agent[] => {
         return context.agentManager.getAgents();
@@ -26,6 +26,16 @@ export function createResolvers(agentManager: AgentManager) {
           return null; // Or return null/empty array as per schema
         }
         return logs;
+      },
+      listTasks: async (_parent: any, { agentId }: { agentId: string }, context: ResolverContext, _info: any): Promise<any[]> => {
+        // Using any[] for now to match AgentManager method, refine later if needed
+        try {
+          return await context.agentManager.getAgentTasks(agentId);
+        } catch (error: any) {
+          console.error(`[Resolver listTasks] Error fetching tasks for agent ${agentId}:`, error);
+          // Re-throw the error so GraphQL client receives it
+          throw new Error(`Failed to fetch tasks for agent ${agentId}: ${error.message}`);
+        }
       },
       // Removed getWorkflowStatus resolver
     },

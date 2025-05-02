@@ -510,4 +510,56 @@ export class AgentManager {
       return null;
     }
   }
+
+  // Method to fetch tasks from a specific agent
+  public async getAgentTasks(agentId: string): Promise<any[]> { // Using any[] for now, refine later
+    const agent = this.agents.find(a => a.id === agentId);
+    if (!agent) {
+      console.error(`[getAgentTasks] Agent with ID ${agentId} not found.`);
+      throw new Error(`Agent with ID ${agentId} not found.`);
+    }
+
+    const agentUrl = agent.url; // Root URL for JSON-RPC
+    const requestId = `list-tasks-${agentId}-${Date.now()}`;
+    const requestBody = {
+      jsonrpc: "2.0",
+      method: "tasks/list",
+      id: requestId,
+    };
+
+    console.log(`[getAgentTasks] Sending tasks/list request to agent ${agentId} at ${agentUrl}`);
+
+    try {
+      const response = await axios.post(agentUrl, requestBody, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000, // 10 second timeout
+      });
+
+      // Check for JSON-RPC level errors
+      if (response.data.error) {
+        console.error(`[getAgentTasks] JSON-RPC error from agent ${agentId}:`, response.data.error);
+        throw new Error(`Agent ${agentId} returned error: ${response.data.error.message} (Code: ${response.data.error.code})`);
+      }
+
+      // Check if result is present and is an array
+      if (response.data.result && Array.isArray(response.data.result)) {
+        console.log(`[getAgentTasks] Received ${response.data.result.length} tasks from agent ${agentId}`);
+        return response.data.result;
+      } else {
+        // Handle cases where result is missing or not an array (unexpected response)
+        console.warn(`[getAgentTasks] Unexpected response format from agent ${agentId}. Result was not an array or was missing. Response:`, response.data);
+        // Return empty array or throw error based on desired strictness
+        return [];
+      }
+
+    } catch (error: any) {
+      if (axios.isAxiosError(error)) {
+        console.error(`[getAgentTasks] Axios error fetching tasks from agent ${agentId} (${agentUrl}): ${error.message}`, error.response?.data);
+        throw new Error(`Failed to communicate with agent ${agentId}: ${error.message}`);
+      } else {
+        console.error(`[getAgentTasks] Non-Axios error fetching tasks from agent ${agentId}:`, error);
+        throw new Error(`An unexpected error occurred while fetching tasks from agent ${agentId}.`);
+      }
+    }
+  }
 }

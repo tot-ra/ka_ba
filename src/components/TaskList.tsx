@@ -1,19 +1,40 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // Import axios
+
+// --- Interfaces matching GraphQL Schema ---
+type TaskState = "SUBMITTED" | "WORKING" | "INPUT_REQUIRED" | "COMPLETED" | "FAILED" | "CANCELED";
+type MessageRole = "SYSTEM" | "USER" | "ASSISTANT" | "TOOL";
+
+// Using 'any' for parts to match JSONObject scalar for now
+interface Message {
+  role: MessageRole;
+  parts: any[]; // Array of parts (simplified)
+  toolCalls?: any; // Placeholder
+  toolCallId?: string;
+}
+
+interface Artifact {
+  id: string;
+  type: string;
+  filename?: string;
+}
 
 interface Task {
   id: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  lastMessage: string; // Or a more complex message object
-  // Add potentially more fields if needed for history view trigger
+  state: TaskState;
+  input?: Message[];
+  output?: Message[];
+  error?: string;
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
+  artifacts?: { [key: string]: Artifact }; // Map of artifact ID to Artifact
 }
 
 // Define a more detailed structure for task history if available
-// Placeholder for now
+// Placeholder for now - might reuse Task interface fields
 interface TaskHistory {
-  messages: Array<{ role: string; content: string; parts?: any[]; timestamp: string }>;
-  artifacts: Array<{ name: string; type: string; uri: string }>;
+  messages: Array<{ role: string; content: string; parts?: any[]; timestamp: string }>; // Example structure
+  artifacts: Array<{ name: string; type: string; uri: string }>; // Example structure
 }
 
 
@@ -64,27 +85,53 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
     const fetchTasks = async () => {
       setLoading(true);
       setError(null);
+      console.log(`Fetching tasks for agent: ${agentId}`);
       try {
-        // TODO: Replace with actual API call to the 'ba' backend
-        // Call the actual backend API endpoint
-        const response = await fetch(`/api/agents/${agentId}/tasks`);
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: 'Failed to fetch tasks and parse error response' }));
-          throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-        }
-        const data: Task[] = await response.json(); // Assuming the backend returns Task[] directly
+        const graphqlQuery = {
+          query: `
+            query ListTasks($agentId: ID!) {
+              listTasks(agentId: $agentId) {
+                id
+                state
+                input {
+                  role
+                  parts # Fetching parts as JSONObject
+                }
+                output {
+                  role
+                  parts
+                }
+                error
+                createdAt
+                updatedAt
+                artifacts # Fetching artifacts map
+              }
+            }
+          `,
+          variables: { agentId },
+        };
 
-        // Validate the structure of the received data (basic check)
+        const response = await axios.post('http://localhost:3000/graphql', graphqlQuery);
+
+        if (response.data.errors) {
+          // Handle GraphQL errors
+          console.error("GraphQL errors:", response.data.errors);
+          throw new Error(response.data.errors.map((e: any) => e.message).join(', '));
+        }
+
+        const data: Task[] = response.data.data.listTasks;
+
+        // Basic validation
         if (!Array.isArray(data)) {
-          console.error("Received non-array data from task list endpoint:", data);
+          console.error("Received non-array data from listTasks query:", data);
           throw new Error('Invalid data format received from server.');
         }
-        // Optional: Add more detailed validation for each task object if needed
 
+        console.log(`Received ${data.length} tasks.`);
         setTasks(data);
 
       } catch (err) {
-        console.error("Error fetching tasks:", err); // Log the actual error
+        console.error("Error fetching tasks:", err);
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
         setTasks([]);
       } finally {
@@ -115,8 +162,8 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
       await new Promise(resolve => setTimeout(resolve, 500)); // Simulate network delay
       const historyData: TaskHistory = {
         messages: [
-          { role: 'user', content: 'Initial prompt', timestamp: new Date().toISOString() },
-          { role: 'assistant', content: task.lastMessage, timestamp: task.updatedAt },
+          { role: 'user', content: 'Initial prompt (placeholder)', timestamp: task.createdAt }, // Use createdAt
+          { role: 'assistant', content: 'Assistant response (placeholder)', timestamp: task.updatedAt }, // Use updatedAt and static text
           // Add more placeholder messages if needed
         ],
         artifacts: [
@@ -154,6 +201,22 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
     return <div style={{ color: 'red' }}>Error loading tasks: {error}</div>;
   }
 
+  // Helper to get first text part from input messages
+  const getFirstInputText = (task: Task): string => {
+    if (task.input && task.input.length > 0) {
+      const firstMessage = task.input[0];
+      if (firstMessage.parts && firstMessage.parts.length > 0) {
+        // Find the first part that looks like a text part
+        const textPart = firstMessage.parts.find(p => typeof p === 'object' && p !== null && p.type === 'text' && typeof p.text === 'string');
+        if (textPart) {
+          return textPart.text.substring(0, 100) + (textPart.text.length > 100 ? '...' : ''); // Truncate long text
+        }
+      }
+    }
+    return 'N/A';
+  };
+
+
   if (tasks.length === 0) {
     return <div>No tasks found for this agent.</div>;
   }
@@ -163,14 +226,16 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
       <h3>Tasks</h3>
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {tasks.map(task => (
-          <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px' }}>
-            <div><strong>ID:</strong> {task.id}</div>
-            <div><strong>Status:</strong> {task.status}</div>
-            <div><strong>Last Update:</strong> {new Date(task.updatedAt).toLocaleString()}</div>
-            <div><strong>Last Message:</strong> {task.lastMessage}</div>
-            {/* Removed TODO comment here */}
+          <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', borderRadius: '4px' }}>
+            <div><strong>ID:</strong> <code style={{ fontSize: '0.9em' }}>{task.id}</code></div>
+            <div><strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span></div>
+            <div><strong>Created:</strong> {new Date(task.createdAt).toLocaleString()}</div>
+            <div><strong>Updated:</strong> {new Date(task.updatedAt).toLocaleString()}</div>
+            <div><strong>Input:</strong> <i style={{ color: '#555' }}>{getFirstInputText(task)}</i></div>
+            {task.error && <div style={{ color: 'red' }}><strong>Error:</strong> {task.error}</div>}
+            {/* History button remains, but its functionality is still placeholder */}
             <button onClick={() => handleViewHistory(task)} style={{ marginTop: '5px' }}>
-              View History
+              View History (Placeholder)
             </button>
           </li>
         ))}

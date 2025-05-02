@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bytes"        // Added for request body buffering
+	"bytes" // Added for request body buffering
 	"encoding/json"
 	"fmt"
-	"io"           // Added for io.ReadAll
+	"io" // Added for io.ReadAll
 	"log"
 	"net/http"
 	"strings" // Added for string manipulation
@@ -24,10 +24,10 @@ type jsonRPCRequest struct {
 }
 
 type jsonRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	Result  interface{} `json:"result,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	Result  interface{}   `json:"result,omitempty"`
 	Error   *jsonRPCError `json:"error,omitempty"`
-	ID      interface{} `json:"id"`
+	ID      interface{}   `json:"id"`
 }
 
 type jsonRPCError struct {
@@ -145,7 +145,6 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 	}
 }
 
-
 // Updated signature to accept name, description, model, and auth config
 func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int, agentName, agentDescription, agentModel, jwtSecretString string, apiKeys []string) {
 	// --- Process Auth Configuration ---
@@ -177,30 +176,40 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 	}
 
 	// --- Create Agent Card ---
-	agentURL := fmt.Sprintf("http://localhost:%d/", port)
-	authMethods := []map[string]string{}
+	agentURL := fmt.Sprintf("http://localhost:%d/", port) // Keep trailing slash for consistency within agent.json
+	authMethods := []string{}                             // Change to array of strings as expected by backend TS interface
 	if jwtAuthEnabled {
-		authMethods = append(authMethods, map[string]string{
-			"scheme":      "Bearer",
-			"description": "JWT Bearer token required in Authorization header.",
-		})
+		authMethods = append(authMethods, "jwt") // New format
 	}
 	if apiKeyAuthEnabled {
-		authMethods = append(authMethods, map[string]string{
-			"scheme":      "APIKey",
-			"headerName":  "X-API-Key",
-			"description": "API Key required in X-API-Key header.",
-		})
+		authMethods = append(authMethods, "apiKey") // New format
+	}
+	if len(authMethods) == 0 {
+		authMethods = append(authMethods, "none")
+	}
+
+	// Define endpoints (using root path for now as all handled by JSON-RPC)
+	endpoints := map[string]string{
+		"tasks_send":           "/", // Assuming handled by JSON-RPC method
+		"tasks_send_subscribe": "/", // Assuming handled by JSON-RPC method
+		"tasks_status":         "/", // Assuming handled by JSON-RPC method
+		"tasks_artifact":       "/", // Assuming handled by JSON-RPC method
+		"tasks_list":           "/", // Explicitly add list endpoint path (even though handled by root)
+		// Add other standard endpoints if implemented, e.g., tasks_input
+		"tasks_input": "/",
 	}
 
 	dynamicAgentCard := map[string]interface{}{
-		"name":        agentName,        // Use passed name
-		"description": agentDescription, // Use passed description
-		"version":     "0.1.0",          // Keep static version for now
-		"url":         agentURL,         // Use dynamic URL
+		"name":             agentName,
+		"description":      agentDescription,
+		"version":          "0.1.0",         // TODO: Consider making dynamic
+		"api_version":      "v1",            // Add missing field
+		"protocol_version": "a2a-draft-0.1", // Add missing field
+		"url":              agentURL,        // Use dynamic URL with trailing slash
+		"endpoints":        endpoints,       // Add the endpoints map
 		"capabilities": map[string]interface{}{
 			"streaming":         true,
-			"pushNotifications": false,
+			"pushNotifications": false, // TODO: Implement push notifications
 		},
 		"skills": []map[string]interface{}{
 			{
@@ -212,9 +221,9 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 			},
 		},
 		"llm_info": map[string]string{
-			"model": agentModel, // Use passed model
+			"model": agentModel,
 		},
-		"authentication": authMethods, // Dynamically set auth methods
+		"authentication": authMethods, // Use corrected auth methods format (array of strings)
 	}
 
 	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore)
@@ -242,20 +251,19 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 		jwtAuthEnabled bool,
 		apiKeyAuthEnabled bool,
 	) http.HandlerFunc {
-		// Map method names to their respective handlers
-		// Note: These handlers need to be adapted or wrapped if they don't directly fit http.HandlerFunc
-		// For now, we'll call the existing handler logic inside the dispatcher.
-		// This is a simplification; a more robust implementation might use a dedicated router or map.
+		// Map method names to their respective handlers (done inside the handler)
 
 		return func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("[Root Handler] Received request: Method=%s, Path=%s, RemoteAddr=%s", r.Method, r.URL.Path, r.RemoteAddr) // Add entry log
+			// ADD EXTRA LOGGING HERE
+			log.Printf("[Root Handler Entry] Method=%s, Path=%s, URL=%s, Proto=%s, Header=%v",
+				r.Method, r.URL.Path, r.URL.String(), r.Proto, r.Header)
 
 			if r.Method != http.MethodPost {
-				log.Printf("[Root Handler] Rejecting non-POST request (Method: %s)", r.Method) // Log rejection
+				log.Printf("[Root Handler] REJECTING Method: %s (Expected POST)", r.Method) // More specific log
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			log.Printf("[Root Handler] Request is POST, proceeding...") // Log acceptance
+			log.Printf("[Root Handler] Accepted POST request for Path: %s", r.URL.Path) // Log acceptance
 
 			// Read the body
 			bodyBytes, err := io.ReadAll(r.Body)

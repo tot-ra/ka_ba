@@ -120,7 +120,7 @@ const AgentManagement: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.title}>Agent Management</h1>
+      <h1 className={styles.title}>Agents</h1>
 
       {/* Add Agent Buttons */}
       <div className={styles.buttonContainer}>
@@ -134,7 +134,6 @@ const AgentManagement: React.FC = () => {
 
       {/* Agent List */}
       <div className={styles.agentListContainer}>
-        <h2 className={styles.agentListTitle}>Known Agents</h2>
         <ul className={styles.agentList}>
           {agents.map(agent => (
                   <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
