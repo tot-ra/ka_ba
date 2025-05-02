@@ -220,11 +220,6 @@ const TaskList: React.FC<TaskListProps> = ({ agentId }) => {
     return 'N/A';
   };
 
-
-  if (tasks.length === 0) {
-    return <div>No tasks found for this agent.</div>;
-  }
-
   return (
     <div>
       <h3>Tasks</h3>

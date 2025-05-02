@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios'; // Assuming axios is used for HTTP requests
-import TaskList from '../components/TaskList'; // Import the TaskList component
 import TaskSubmitForm from '../components/TaskSubmitForm'; // Import the new TaskSubmitForm component
 import AgentInteraction from './AgentInteraction'; // Import AgentInteraction
 import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
@@ -151,15 +150,7 @@ const AgentManagement: React.FC = () => {
               </ul>
         {/* Display TaskList and Logs when an agent is selected */}
         {selectedAgentId && (
-          <> {/* Reverted back to Fragment */}
-            {/* Task List Section */}
-            <div className={styles.taskListSection}>
-              <TaskList agentId={selectedAgentId} />
-            </div>
-
-            {/* Removed Historical Logs Section */}
-
-            {/* Render AgentInteraction component - it now handles all logs */}
+          <>
             <AgentInteraction />
 
           </> /* End of Fragment */

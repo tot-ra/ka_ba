@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react'; // Removed useRef
-import { gql, useMutation } from '@apollo/client'; // Removed useSubscription, useQuery, OnDataOptions, ApolloError
+import React, { useState } from 'react'; // Removed useEffect for now, might be needed later
+
 import { useAgent } from '../contexts/AgentContext';
-import AgentLogs from '../components/AgentLogs'; // Import the new component
+import AgentLogs from '../components/AgentLogs';
+import TaskInputForm from '../components/TaskInputForm'; // Import TaskInputForm
+import TaskDetails from '../components/TaskDetails'; // Import TaskDetails
+import TaskList from '../components/TaskList'; // Import the TaskList component
 
-// Removed LogEntry interface
-
+// Keep necessary interfaces
 interface Agent {
   id: string;
   url: string;
@@ -43,43 +45,31 @@ interface Task {
   metadata?: any;
 }
 
+// TaskInput interface is now managed within TaskInputForm, but needed for state definition
 interface TaskInput {
-  type: 'text' | 'file' | 'data'; // Simplified for UI
-  content: string | File | any; // string for text/data, File for file upload
+  type: 'text' | 'file' | 'data';
+  content: string | File | any;
 }
 
-const AgentInteraction: React.FC = () => {
-  // Get selected agent ID from context
-  const { selectedAgentId } = useAgent(); // Use the hook
 
-  const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' });
+const AgentInteraction: React.FC = () => {
+  const { selectedAgentId } = useAgent();
+
+  // State managed by AgentInteraction
+  const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' }); // State for the form, passed down
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [streamingOutput, setStreamingOutput] = useState('');
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [streamingOutput, setStreamingOutput] = useState(''); // Keep for TaskDetails
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]); // Keep for TaskDetails
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Removed log-related state and refs
+  const [activeTab, setActiveTab] = useState<'logs' | 'tasks'>('tasks'); // State for tabs
 
   // TODO: Define CREATE_TASK_MUTATION if replacing axios call
 
-  // Removed log-related GraphQL definitions and hooks
+  // Removed handlers now inside TaskInputForm: handleInputChange, handleFileChange, handleDataTypeChange
+  // Removed getStatusStyle, now inside TaskDetails
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setTaskInput({ ...taskInput, content: e.target.value });
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setTaskInput({ type: 'file', content: e.target.files[0] });
-    }
-  };
-
-  const handleDataTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setTaskInput({ type: e.target.value as 'text' | 'file' | 'data', content: '' });
-  };
-
-  // Removed log scrolling effect
-
+  // Handlers that remain in AgentInteraction as they manage its state
   const handleSendTask = async (e: React.FormEvent) => {
     e.preventDefault();
     // Clear previous logs when starting a new task? Maybe not, keep context? Let's keep them for now.
@@ -249,6 +239,7 @@ const AgentInteraction: React.FC = () => {
      */
    };
 
+   // This handler needs access to setTaskInput, so it stays here
    const handleDuplicateClick = () => {
      if (!currentTask || !currentTask.history || currentTask.history.length === 0) {
        console.warn('Cannot duplicate: Task history not available.');
@@ -282,48 +273,23 @@ const AgentInteraction: React.FC = () => {
      }
    };
 
-   const getStatusStyle = (state: TaskStatus['state']): React.CSSProperties => {
-      let backgroundColor = '#eee';
-      let color = '#333';
-      switch (state) {
-         case 'submitted':
-         case 'unknown':
-            backgroundColor = '#d3d3d3'; // Light Gray
-            break;
-         case 'working':
-            backgroundColor = '#cfe2ff'; // Light Blue
-            color = '#004085';
-            break;
-         case 'input-required':
-            backgroundColor = '#fff3cd'; // Light Yellow
-            color = '#856404';
-            break;
-         case 'completed':
-            backgroundColor = '#d4edda'; // Light Green
-            color = '#155724';
-            break;
-         case 'canceled':
-            backgroundColor = '#f8d7da'; // Light Red
-            color = '#721c24';
-            break;
-         case 'failed':
-            backgroundColor = '#f8d7da'; // Light Red
-            color = '#721c24';
-            break;
-      }
-      return {
-         display: 'inline-block',
-         padding: '0.25em 0.6em',
-         fontSize: '75%',
-         fontWeight: 700,
-         lineHeight: 1,
-         textAlign: 'center',
-         whiteSpace: 'nowrap',
-         verticalAlign: 'baseline',
-         borderRadius: '0.25rem',
-         backgroundColor,
-         color,
-      };
+   // Removed getStatusStyle
+
+   // Simple Tab Styles
+   const tabStyle: React.CSSProperties = {
+     padding: '10px 15px',
+     cursor: 'pointer',
+     border: '1px solid #ccc',
+     borderBottom: 'none',
+     marginRight: '5px',
+     borderRadius: '4px 4px 0 0',
+     backgroundColor: '#eee',
+   };
+   const activeTabStyle: React.CSSProperties = {
+     ...tabStyle,
+     backgroundColor: '#fff',
+     borderBottom: '1px solid #fff', // Hide bottom border for active tab
+     fontWeight: 'bold',
    };
 
 
@@ -335,170 +301,53 @@ const AgentInteraction: React.FC = () => {
           <p>Interacting with Agent ID: <strong>{selectedAgentId}</strong></p>
           {/* TODO: Display selected agent details (name, description, capabilities) */}
 
-
-          {/* Use the new AgentLogs component */}
-          <AgentLogs agentId={selectedAgentId} />
-
-          <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-            <h3 style={{ marginTop: 0 }}>Task Input</h3>
-             <div style={{ marginBottom: '10px' }}>
-                <label htmlFor="inputType" style={{ marginRight: '10px' }}>Input Type:</label>
-                <select id="inputType" value={taskInput.type} onChange={handleDataTypeChange}>
-                   <option value="text">Text</option>
-                   <option value="file">File</option>
-                   <option value="data">Data (JSON)</option>
-                </select>
-             </div>
-            {taskInput.type === 'text' && (
-               <textarea
-                  placeholder="Enter task input..."
-                  value={taskInput.content as string}
-                  onChange={handleInputChange}
-                  rows={5}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
-               ></textarea>
-            )}
-            {taskInput.type === 'file' && (
-               <input type="file" onChange={handleFileChange} />
-            )}
-             {taskInput.type === 'data' && (
-               <textarea
-                  placeholder="Enter JSON data..."
-                  value={taskInput.content as string}
-                  onChange={handleInputChange}
-                  rows={5}
-                  style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
-               ></textarea>
-            )}
+          {/* Tabs */}
+          <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
             <button
-              onClick={handleSendTask}
-              disabled={isLoading || !taskInput.content}
-              style={{
-                marginTop: '10px',
-                padding: '10px 15px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                opacity: isLoading || !taskInput.content ? 0.6 : 1,
-              }}
+              style={activeTab === 'tasks' ? activeTabStyle : tabStyle}
+              onClick={() => setActiveTab('tasks')}
             >
-              {isLoading ? 'Sending...' : 'Send Task'}
+              Tasks
             </button>
-             {currentTask?.status.state === 'input-required' && (
-                <button
-                   onClick={handleInputRequired}
-                   disabled={isLoading || !taskInput.content}
-                   style={{
-                      marginTop: '10px',
-                      marginLeft: '10px',
-                      padding: '10px 15px',
-                      backgroundColor: '#ffc107',
-                      color: 'black',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      opacity: isLoading || !taskInput.content ? 0.6 : 1,
-                   }}
-                >
-                   Submit Input
-                </button>
-             )}
+            <button
+              style={activeTab === 'logs' ? activeTabStyle : tabStyle}
+              onClick={() => setActiveTab('logs')}
+            >
+              Logs
+            </button>
           </div>
 
-          {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
+          {/* Tab Content */}
+          <div style={{ paddingTop: '20px' }}>
+            {activeTab === 'logs' && (
+              <AgentLogs agentId={selectedAgentId} />
+            )}
 
-          {currentTask && (
-            <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-              <h3>
-                 Task Status: <span style={getStatusStyle(currentTask.status.state)}>{currentTask.status.state}</span>
-               </h3>
-               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                 <p style={{ margin: 0 }}>Task ID: {currentTask.id}</p>
-                 <button
-                   onClick={handleDuplicateClick}
-                   disabled={!currentTask?.history || currentTask.history.length === 0 || currentTask.history[0].role !== 'user' || !['text', 'data'].includes(currentTask.history[0].parts?.[0]?.type)}
-                   title={!currentTask?.history || currentTask.history.length === 0 || currentTask.history[0].role !== 'user' || !['text', 'data'].includes(currentTask.history[0].parts?.[0]?.type) ? 'Duplication only supported for tasks initiated with text or data' : 'Duplicate Task (copies prompt to input)'}
-                   style={{
-                     padding: '5px 10px',
-                     fontSize: '0.8em',
-                     backgroundColor: '#6c757d',
-                     color: 'white',
-                     border: 'none',
-                     borderRadius: '4px',
-                     cursor: 'pointer',
-                     opacity: (!currentTask?.history || currentTask.history.length === 0 || currentTask.history[0].role !== 'user' || !['text', 'data'].includes(currentTask.history[0].parts?.[0]?.type)) ? 0.5 : 1,
-                   }}
-                 >
-                   Duplicate Task
-                 </button>
-               </div>
-               {currentTask.status.message && (
-                  <div style={{ marginTop: '10px', padding: '10px', border: '1px dashed #ccc', borderRadius: '4px', background: '#f9f9f9' }}>
-                     <h4>Agent Message:</h4>
-                    {currentTask.status.message.parts?.map((part, index) => {
-                       if (part.type === 'text') {
-                          return <p key={index} style={{ whiteSpace: 'pre-wrap', margin: '5px 0' }}>{part.text}</p>;
-                       }
-                       // TODO: Render other part types (data, file references) if needed
-                       return <pre key={index} style={{ fontSize: '0.9em' }}>{JSON.stringify(part, null, 2)}</pre>;
-                    })}
-                    {/* Fallback for messages without parts or non-standard structure */}
-                    {(!currentTask.status.message.parts || currentTask.status.message.parts.length === 0) && (
-                       <pre style={{ fontSize: '0.9em' }}>{JSON.stringify(currentTask.status.message, null, 2)}</pre>
-                    )}
-                 </div>
-              )}
-            </div>
-          )}
+            {activeTab === 'tasks' && (
+              <>
+                <TaskList agentId={selectedAgentId} />
+                  
+                <TaskInputForm
+                  taskInput={taskInput}
+                  setTaskInput={setTaskInput}
+                  onSendTask={handleSendTask}
+                  onSendInput={handleInputRequired}
+                  isLoading={isLoading}
+                  currentTask={currentTask}
+                />
 
-          {/* Display streaming output (keep if separate from logs) */}
-          {streamingOutput && (
-             <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-                <h3>Task Output</h3>
-                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{streamingOutput}</pre>
-             </div>
-          )}
+                {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
 
-          {/* Display artifacts (keep for now) */}
-           {artifacts.length > 0 && (
-             <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-                <h3>Artifacts</h3>
-                <ul>
-                   {artifacts.map((artifact, index) => (
-                      <li key={index}>
-                          <h4>{artifact.name || `Artifact ${index + 1}`}</h4>
-                          {artifact.description && <p>{artifact.description}</p>}
-                          {artifact.parts?.map((part, partIndex) => (
-                             <div key={partIndex} style={{ marginTop: '5px', paddingLeft: '15px', borderLeft: '2px solid #eee' }}>
-                                {part.type === 'text' && (
-                                   <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: '#f0f0f0', padding: '5px' }}>{part.text}</pre>
-                                )}
-                                {part.type === 'data' && (
-                                   <pre style={{ fontSize: '0.9em', background: '#f0f0f0', padding: '5px' }}>{JSON.stringify(part.data, null, 2)}</pre>
-                                )}
-                                {part.type === 'uri' && (
-                                   <a href={part.uri} target="_blank" rel="noopener noreferrer">Download/View Artifact ({part.mimeType || 'link'})</a>
-                                )}
-                                {part.type === 'file' && (
-                                   // TODO: Implement actual file download link/button using a dedicated endpoint if necessary
-                                   <span>File: {part.fileName || 'Unnamed File'} ({part.mimeType}) - Download not implemented</span>
-                                )}
-                                {/* Render other potential part types or provide a fallback */}
-                                {!['text', 'data', 'uri', 'file'].includes(part.type) && (
-                                    <pre style={{ fontSize: '0.9em' }}>Unsupported part type: {JSON.stringify(part, null, 2)}</pre>
-                                )}
-                             </div>
-                          ))}
-                       </li>
-                    ))}
-                 </ul>
-             </div>
-          )}
-
-
-        </div>
+                <TaskDetails
+                  currentTask={currentTask}
+                  streamingOutput={streamingOutput}
+                  artifacts={artifacts}
+                  onDuplicateClick={handleDuplicateClick}
+                />
+              </>
+            )}
+          </div>
+       </div>
       ) : (
         <p>Please select an agent from the Agent Management page.</p>
       )}
