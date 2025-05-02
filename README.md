@@ -2,6 +2,8 @@
 
 AI Agent Runtime (`ka`) and UI (`ba`).
 
+Status: `early prototype`
+
 <img width="1439" alt="Screenshot 2025-05-02 at 20 56 08" src="https://github.com/user-attachments/assets/fa81a0fa-17c8-4313-84c4-cca0053870dd" />
 
 
