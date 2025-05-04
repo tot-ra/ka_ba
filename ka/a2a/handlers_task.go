@@ -146,7 +146,7 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		// TODO: Refactor CreateTask to accept a single Message or adjust here.
 		// Assuming CreateTask needs []Message for now:
 		inputMessages := []Message{params.Message}
-		task, err := taskExecutor.taskStore.CreateTask(inputMessages)
+		task, err := taskExecutor.TaskStore.CreateTask(inputMessages)
 		if err != nil {
 			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})
@@ -253,7 +253,7 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		log.Printf("[TaskInput %v] Received input request for task %s.", rpcReq.ID, params.TaskID)
 
 		// 3. Business Logic
-		task, err := taskExecutor.taskStore.GetTask(params.TaskID)
+		task, err := taskExecutor.TaskStore.GetTask(params.TaskID)
 		if err != nil {
 			errCode := -32000 // Internal server error default
 			errMsg := "Internal Server Error"
@@ -274,7 +274,7 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		}
 
 		// Update task with new input
-		_, updateErr := taskExecutor.taskStore.UpdateTask(params.TaskID, func(task *Task) error {
+		_, updateErr := taskExecutor.TaskStore.UpdateTask(params.TaskID, func(task *Task) error {
 			// Assuming task.Input is []Message, append the new message
 			task.Input = append(task.Input, params.Input)
 			task.Error = "" // Clear previous error if any
@@ -298,7 +298,7 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		// 4. Send successful JSON-RPC Response
 		// A2A spec for tasks/input returns the updated Task object
-		updatedTask, _ := taskExecutor.taskStore.GetTask(params.TaskID) // Fetch again to get latest state
+		updatedTask, _ := taskExecutor.TaskStore.GetTask(params.TaskID) // Fetch again to get latest state
 		sendJSONRPCResponse(w, rpcReq.ID, updatedTask, nil)             // Return updated task
 	}
 }

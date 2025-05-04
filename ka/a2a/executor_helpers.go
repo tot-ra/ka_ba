@@ -9,10 +9,12 @@ import (
 	"net/url"
 	"strings"
 	"sync/atomic"
+
+	"ka/llm" // Import the llm package
 )
 
 type firstWriteSignaller struct {
-	target       io.Writer
+	target io.Writer
 	firstWriteCh chan struct{}
 	written      atomic.Bool
 }
@@ -100,13 +102,30 @@ func decodeDataURI(uri string) ([]byte, error) {
 	}
 }
 
-// buildPromptFromInput constructs the LLM prompt string from task input messages.
-func buildPromptFromInput(taskID string, inputMessages []Message) (prompt string, promptFound bool, err error) {
-	var promptBuilder strings.Builder
+// buildPromptFromInput constructs the LLM messages slice from task input messages,
+// including the agent's system message.
+// It returns a slice of llm.Message, a boolean indicating if any relevant content was found, and an error.
+func buildPromptFromInput(taskID string, inputMessages []Message, agentSystemMessage string) (messages []llm.Message, contentFound bool, err error) { // Added agentSystemMessage parameter
+	var llmMessages []llm.Message
 	userMessageFound := false
+	contentFound = false // Initialize contentFound
+
+	// Prepend the agent's system message if it exists
+	if agentSystemMessage != "" {
+		llmMessages = append(llmMessages, llm.Message{
+			Role:    string(RoleSystem),
+			Content: agentSystemMessage,
+		})
+		contentFound = true // System message counts as content
+	}
+
 
 	if len(inputMessages) == 0 {
-		return "", false, nil // No input, no prompt
+		// If there's a system message but no other input, it's still valid
+		if agentSystemMessage != "" {
+			return llmMessages, true, nil
+		}
+		return nil, false, nil // No input, no prompt
 	}
 
 	// First pass: Check for at least one user message
@@ -118,34 +137,32 @@ func buildPromptFromInput(taskID string, inputMessages []Message) (prompt string
 	}
 
 	if !userMessageFound {
-		return "", false, fmt.Errorf("input validation failed: no message with role '%s' found", RoleUser)
+		return nil, false, fmt.Errorf("input validation failed: no message with role '%s' found", RoleUser)
 	}
 
-	// Second pass: Build the prompt string
+	// Second pass: Build the prompt string from input messages
 	for _, msg := range inputMessages {
-		// Include messages from User, Assistant, and Tool roles
+		// Include messages from User, Assistant, and Tool roles (System already handled)
 		if msg.Role == RoleUser || msg.Role == RoleAssistant || msg.Role == RoleTool {
-			// Add a separator between messages
-			if promptBuilder.Len() > 0 {
-				promptBuilder.WriteString("\n\n---\n\n")
-			}
-
+			var messageContentBuilder strings.Builder
 			// For Assistant messages with tool_calls, include the tool_calls JSON
 			if msg.Role == RoleAssistant && len(msg.ToolCalls) > 0 {
-				promptBuilder.WriteString(fmt.Sprintf("[TOOL_CALLS]: %s", string(msg.ToolCalls)))
-				promptFound = true // Consider tool calls as contributing to prompt content
+				messageContentBuilder.WriteString(fmt.Sprintf("[TOOL_CALLS]: %s\n", string(msg.ToolCalls)))
+				contentFound = true // Tool calls contribute to content
 			}
 
 			// Include parts for all relevant roles
 			for _, part := range msg.Parts {
 				switch p := part.(type) {
 				case TextPart:
-					promptBuilder.WriteString(p.Text)
-					promptFound = true
+					messageContentBuilder.WriteString(p.Text)
+					contentFound = true
 				case FilePart:
 					parsedURI, ok := isValidPartURI(p.URI)
 					if !ok {
-						return "", false, fmt.Errorf("invalid or unsupported URI scheme in FilePart: %s", p.URI)
+						log.Printf("[Task %s] Warning: Invalid or unsupported URI scheme in FilePart: %s", taskID, p.URI)
+						messageContentBuilder.WriteString(fmt.Sprintf("[Invalid File URI: %s]", p.URI))
+						continue // Skip this part but continue with others
 					}
 
 					switch parsedURI.Scheme {
@@ -154,55 +171,67 @@ func buildPromptFromInput(taskID string, inputMessages []Message) (prompt string
 						content, downloadErr := downloadHTTPContent(p.URI, maxDownloadSize)
 						if downloadErr != nil {
 							log.Printf("[Task %s] Error downloading FilePart content from %s: %v", taskID, p.URI, downloadErr)
-							promptBuilder.WriteString(fmt.Sprintf("[File Download Error: %s (%s) - %v]", p.URI, p.MimeType, downloadErr))
-							// Optionally return error here if download failure should halt processing
-							// return "", false, fmt.Errorf("failed to download content for FilePart %s: %w", p.URI, downloadErr)
+							messageContentBuilder.WriteString(fmt.Sprintf("[File Download Error: %s (%s) - %v]", p.URI, p.MimeType, downloadErr))
 						} else {
 							contentStr := string(content)
 							snippetLen := 500
 							if len(contentStr) > snippetLen {
 								contentStr = contentStr[:snippetLen] + "..."
 							}
-							promptBuilder.WriteString(fmt.Sprintf("[File Content from %s (%s)]:\n%s\n[/File Content]", p.URI, p.MimeType, contentStr))
-							promptFound = true
+							messageContentBuilder.WriteString(fmt.Sprintf("[File Content from %s (%s)]:\n%s\n[/File Content]", p.URI, p.MimeType, contentStr))
+							contentFound = true
 						}
 					case "file":
-						promptBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
-						promptFound = true
+						messageContentBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
+						contentFound = true
 					case "data":
 						dataContent, decodeErr := decodeDataURI(p.URI)
 						if decodeErr != nil {
 							log.Printf("[Task %s] Error decoding Data URI for FilePart %s: %v", taskID, p.URI, decodeErr)
-							promptBuilder.WriteString(fmt.Sprintf("[Data URI Decode Error: %s - %v]", p.MimeType, decodeErr))
-							// Optionally return error here if decode failure should halt processing
-							// return "", false, fmt.Errorf("failed to decode data URI for FilePart %s: %w", p.URI, decodeErr)
+							messageContentBuilder.WriteString(fmt.Sprintf("[Data URI Decode Error: %s - %v]", p.MimeType, decodeErr))
 						} else {
 							contentStr := string(dataContent)
 							snippetLen := 500
 							if len(contentStr) > snippetLen {
 								contentStr = contentStr[:snippetLen] + "..."
 							}
-							promptBuilder.WriteString(fmt.Sprintf("[Data Content (%s)]:\n%s\n[/Data Content]", p.MimeType, contentStr))
-							promptFound = true
+							messageContentBuilder.WriteString(fmt.Sprintf("[Data Content (%s)]:\n%s\n[/Data Content]", p.MimeType, contentStr))
+							contentFound = true
 						}
 					default:
-						return "", false, fmt.Errorf("unexpected URI scheme after validation: %s", parsedURI.Scheme)
+						// This case should ideally not be reached due to isValidPartURI check
+						log.Printf("[Task %s] Warning: Unexpected URI scheme after validation: %s", taskID, parsedURI.Scheme)
+						messageContentBuilder.WriteString(fmt.Sprintf("[Unexpected URI Scheme: %s]", parsedURI.Scheme))
 					}
 
 				case DataPart:
-					promptBuilder.WriteString(fmt.Sprintf("[Data: %s]", p.MimeType))
-					promptFound = true
+					// For DataPart, we might just include a placeholder or summary
+					messageContentBuilder.WriteString(fmt.Sprintf("[Data: %s]", p.MimeType))
+					contentFound = true
 				default:
-					promptBuilder.WriteString(fmt.Sprintf("[Unknown Part Type: %T]", p))
+					log.Printf("[Task %s] Warning: Unrecognized part type %T", taskID, p)
+					messageContentBuilder.WriteString(fmt.Sprintf("[Unknown Part Type: %T]", p))
 				}
+			}
+
+			// Only add message if it has content
+			if messageContentBuilder.Len() > 0 {
+				llmMessages = append(llmMessages, llm.Message{
+					Role:    string(msg.Role), // Convert Task MessageRole to LLM Message Role string
+					Content: messageContentBuilder.String(),
+				})
 			}
 		}
 	}
 
-	if !promptFound {
+	if !contentFound {
 		// This case handles when no parts suitable for prompt were found at all
-		return "", false, fmt.Errorf("could not extract suitable prompt content from messages")
+		return nil, false, fmt.Errorf("could not extract suitable prompt content from messages")
 	}
 
-	return promptBuilder.String(), true, nil
+	// The system message is already prepended if it existed.
+	// The rest of the messages are added in their original order.
+	// No further reordering is needed here.
+
+	return llmMessages, true, nil
 }

@@ -29,12 +29,12 @@ type Request struct {
 type LLMClient struct {
 	APIURL           string
 	Model            string
-	SystemMessage    string
+	SystemMessage    string // Added SystemMessage field
 	MaxContextLength int
 	tokenizer        *tiktoken.Tiktoken
 }
 
-func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LLMClient {
+func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LLMClient { // Added systemMessage parameter
 	// Attempt to get the encoding for the specific model.
 	tkm, err := tiktoken.EncodingForModel(model)
 	if err != nil {
@@ -49,7 +49,7 @@ func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LL
 	return &LLMClient{
 		APIURL:           apiURL,
 		Model:            model,
-		SystemMessage:    systemMessage,
+		SystemMessage:    systemMessage, // Store the system message
 		MaxContextLength: maxContextLength,
 		tokenizer:        tkm,
 	}
@@ -68,33 +68,58 @@ func (c *LLMClient) getTokenLength(text string) int {
 	return len(tokens)
 }
 
-// Chat sends the prompt to the LLM and returns the completion, input tokens, completion tokens, and error.
-func (c *LLMClient) Chat(ctx context.Context, userPrompt string, stream bool, out io.Writer) (string, int, int, error) {
-	messages := []Message{
-		{Role: "system", Content: c.SystemMessage},
-		{Role: "user", Content: userPrompt},
+// Chat sends the provided messages to the LLM and returns the completion, input tokens, completion tokens, and error.
+func (c *LLMClient) Chat(ctx context.Context, messages []Message, stream bool, out io.Writer) (string, int, int, error) {
+	// Prepend the system message
+	systemMessage := Message{
+		Role:    "system",
+		Content: c.SystemMessage,
 	}
+	// Create a new slice with the system message first, followed by the original messages
+	messagesWithSystem := append([]Message{systemMessage}, messages...)
 
 	inputTokenLength := 0
-	for _, message := range messages {
-		inputTokenLength += c.getTokenLength(message.Content) // Use the method
+	for _, message := range messagesWithSystem { // Iterate over the new slice
+		inputTokenLength += c.getTokenLength(message.Content)
 	}
 	fmt.Printf("Current context length: %d tokens\n", inputTokenLength)
 
 	// Store the final calculated input tokens before potential truncation for accurate reporting
 	finalInputTokens := inputTokenLength
 
+	// Now use messagesWithSystem for the rest of the function
+	messages = messagesWithSystem // Reassign messages to the new slice
+
 	if c.MaxContextLength > 0 && inputTokenLength > c.MaxContextLength { // Use inputTokenLength
 		fmt.Printf("Context length exceeds maximum allowed length of %d tokens. Truncating messages.\n", c.MaxContextLength)
 		// Truncate messages to fit within the context length
-		for inputTokenLength > c.MaxContextLength && len(messages) > 0 { // Use inputTokenLength
-			// Remove the oldest message (assuming the first message is the oldest user/assistant message after system)
-			// Note: This simple truncation might remove the system prompt if context is very small.
-			// A more robust implementation might prioritize keeping the system prompt.
+		// Prioritize keeping system messages if they exist
+		// Note: The system message is already prepended, so we just need to ensure it's not truncated unless absolutely necessary.
+		// The truncation logic below already handles this by prioritizing messages at the beginning of the slice (which now includes the system message).
+
+		// Truncate from the end of non-system messages
+		// We need to find the index of the last system message to avoid truncating them prematurely.
+		lastSystemIndex := -1
+		for i, msg := range messages {
+			if msg.Role == "system" {
+				lastSystemIndex = i
+			}
+		}
+
+		// Truncate from the end, but stop before the last system message if possible
+		for inputTokenLength > c.MaxContextLength && len(messages) > lastSystemIndex+1 { // Ensure we don't remove the last system message
+			removedMsg := messages[len(messages)-1]
+			messages = messages[:len(messages)-1]
+			inputTokenLength -= c.getTokenLength(removedMsg.Content)
+			fmt.Printf("Truncated message. New context length: %d tokens\n", inputTokenLength)
+		}
+
+		// If still too long, truncate system messages (should be rare)
+		for inputTokenLength > c.MaxContextLength && len(messages) > 0 {
 			removedMsg := messages[0]
 			messages = messages[1:]
-			inputTokenLength -= c.getTokenLength(removedMsg.Content)                           // Use inputTokenLength
-			fmt.Printf("Truncated message. New context length: %d tokens\n", inputTokenLength) // Use inputTokenLength
+			inputTokenLength -= c.getTokenLength(removedMsg.Content)
+			fmt.Printf("Truncated system message. New context length: %d tokens\n", inputTokenLength)
 		}
 	}
 

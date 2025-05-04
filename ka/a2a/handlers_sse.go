@@ -213,7 +213,7 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		log.Printf("[TaskSendSubscribe] Received valid input message. Validation successful.")
 
 		// Create task using the single message, wrapped in a slice for CreateTask
-		task, err := taskExecutor.taskStore.CreateTask([]Message{params.Message})
+		task, err := taskExecutor.TaskStore.CreateTask([]Message{params.Message})
 		if err != nil {
 			log.Printf("[TaskSendSubscribe] Error creating task: %v", err)
 			http.Error(w, "Internal Server Error: Failed to create task", http.StatusInternalServerError)

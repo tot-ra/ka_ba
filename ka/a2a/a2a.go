@@ -15,17 +15,19 @@ import (
 )
 
 type TaskExecutor struct {
-	llmClient                     *llm.LLMClient
-	taskStore                     TaskStore
+	LLMClient                     *llm.LLMClient // Exported LLMClient
+	TaskStore                     TaskStore      // Exported TaskStore
+	SystemMessage                 string         // Added SystemMessage field
 	mu                            sync.Mutex
 	resumeChannels                map[string]chan struct{}
 	pushNotificationRegistrations map[string]string // Map taskID to notification URL
 }
 
-func NewTaskExecutor(client *llm.LLMClient, store TaskStore) *TaskExecutor {
+func NewTaskExecutor(client *llm.LLMClient, store TaskStore, systemMessage string) *TaskExecutor { // Added systemMessage parameter
 	return &TaskExecutor{
-		llmClient:                     client,
-		taskStore:                     store,
+		LLMClient:                     client,        // Assign to exported field
+		TaskStore:                     store,         // Assign to exported field
+		SystemMessage:                 systemMessage, // Store the system message
 		resumeChannels:                make(map[string]chan struct{}),
 		pushNotificationRegistrations: make(map[string]string), // Initialize the map
 	}
@@ -63,11 +65,11 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 		defer te.removeChannel(t.ID)
 
 		fmt.Printf("[Task %s] Starting processing via Executor...\n", t.ID)
-		te.taskStore.SetState(t.ID, TaskStateWorking)
+		te.TaskStore.SetState(t.ID, TaskStateWorking)
 
 		for {
 
-			currentTask, err := te.taskStore.GetTask(t.ID)
+			currentTask, err := te.TaskStore.GetTask(t.ID)
 			if err != nil {
 				log.Printf("[Task %s] Error getting task from store during execution: %v", t.ID, err)
 
@@ -94,11 +96,11 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 
 				if !userMessageFound {
 					extractErr = fmt.Errorf("input validation failed: no message with role '%s' found", RoleUser)
-					te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+					te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 						task.Error = extractErr.Error()
 						return nil
 					})
-					te.taskStore.SetState(t.ID, TaskStateFailed)
+					te.TaskStore.SetState(t.ID, TaskStateFailed)
 					fmt.Printf("[Task %s] Failed: %v\n", t.ID, extractErr)
 					return
 				}
@@ -187,11 +189,11 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 		handleExtractionError: // Label added for goto jump target
 			if extractErr != nil {
 				// Error already set during part processing
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Error = extractErr.Error()
 					return nil
 				})
-				te.taskStore.SetState(t.ID, TaskStateFailed)
+				te.TaskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s] Failed during input extraction: %v\n", t.ID, extractErr)
 				return
 			}
@@ -199,11 +201,11 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 			if !promptFound {
 				// This case handles when no parts suitable for prompt were found at all
 				extractErr = fmt.Errorf("could not extract suitable prompt content from messages")
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Error = extractErr.Error()
 					return nil
 				})
-				te.taskStore.SetState(t.ID, TaskStateFailed)
+				te.TaskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s] Failed: %v\n", t.ID, extractErr)
 				return
 			}
@@ -217,16 +219,17 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 
 			var resultBuffer bytes.Buffer
 			// Capture result, tokens, and error from the updated Chat function
-			result, inputTokens, completionTokens, err := te.llmClient.Chat(ctx, prompt, false, &resultBuffer) // Pass context
+			messages := []llm.Message{{Role: "user", Content: prompt}}
+			result, inputTokens, completionTokens, err := te.LLMClient.Chat(ctx, messages, false, &resultBuffer) // Pass context
 			// Note: 'result' now directly contains the string, no need for resultBuffer.String()
 
 			if err != nil {
 				fmt.Printf("[Task %s] LLM Error. Input Tokens: %d\n", t.ID, inputTokens) // Log input tokens even on error
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Error = err.Error() // Store the error message
 					return nil
 				})
-				te.taskStore.SetState(t.ID, TaskStateFailed)
+				te.TaskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s] Failed during LLM call: %v\n", t.ID, err)
 				return
 			}
@@ -236,7 +239,7 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 
 			if strings.Contains(result, "[INPUT_REQUIRED]") {
 				outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: result}}}
-				_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Output = append(task.Output, outputMessage)
 					task.Error = ""
 					return nil
@@ -246,7 +249,7 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 
 				}
 
-				setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
+				setStateErr := te.TaskStore.SetState(t.ID, TaskStateInputRequired)
 				if setStateErr != nil {
 					fmt.Printf("[Task %s] Failed to set task state to InputRequired: %v\n", t.ID, setStateErr)
 					return
@@ -261,13 +264,13 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 				case <-ctx.Done():
 					fmt.Printf("[Task %s] Context cancelled while waiting for input. Exiting.\n", t.ID)
 
-					te.taskStore.SetState(t.ID, TaskStateCanceled)
+					te.TaskStore.SetState(t.ID, TaskStateCanceled)
 					return
 				}
 			} else {
 
 				outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: result}}}
-				_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Output = append(task.Output, outputMessage)
 					task.Error = ""
 					return nil
@@ -276,12 +279,12 @@ func (te *TaskExecutor) ExecuteTask(task *Task, requestContext context.Context) 
 					fmt.Printf("[Task %s] Failed to update task with completed output: %v\n", t.ID, updateErr)
 				}
 
-				artifactErr := te.taskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_response.txt", Data: []byte(result)})
+				artifactErr := te.TaskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_response.txt", Data: []byte(result)})
 				if artifactErr != nil {
 					fmt.Printf("[Task %s] Warning: Failed to save result as artifact: %v\n", t.ID, artifactErr)
 				}
 
-				setStateErr := te.taskStore.SetState(t.ID, TaskStateCompleted)
+				setStateErr := te.TaskStore.SetState(t.ID, TaskStateCompleted)
 				if setStateErr != nil {
 					fmt.Printf("[Task %s] Failed to set task state to Completed: %v\n", t.ID, setStateErr)
 				}
@@ -311,7 +314,7 @@ func (te *TaskExecutor) ResumeTask(taskID string) error {
 		return fmt.Errorf("task %s not actively waiting for input", taskID)
 	}
 
-	err := te.taskStore.SetState(taskID, TaskStateWorking)
+	err := te.TaskStore.SetState(taskID, TaskStateWorking)
 	if err != nil {
 		log.Printf("[Executor] Failed to set task %s state to working before resuming: %v", taskID, err)
 		return fmt.Errorf("failed to set task state to working: %w", err)
@@ -342,11 +345,11 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 		workingStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateWorking)})
 		sseWriter.SendEvent("state", string(workingStateData))
 
-		te.taskStore.SetState(t.ID, TaskStateWorking)
+		te.TaskStore.SetState(t.ID, TaskStateWorking)
 
 		for {
 
-			currentTask, err := te.taskStore.GetTask(t.ID)
+			currentTask, err := te.TaskStore.GetTask(t.ID)
 			if err != nil {
 				log.Printf("[Task %s Stream] Error getting task from store: %v", t.ID, err)
 				failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to get task: %v", err)})
@@ -375,8 +378,8 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 
 				if !userMessageFound {
 					extractErr = fmt.Errorf("input validation failed: no message with role '%s' found", RoleUser)
-					te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
-					te.taskStore.SetState(t.ID, TaskStateFailed)
+					te.TaskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
+					te.TaskStore.SetState(t.ID, TaskStateFailed)
 					fmt.Printf("[Task %s Stream] Failed: %v\n", t.ID, extractErr)
 					failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": extractErr.Error()})
 					sseWriter.SendEvent("state", string(failedStateData))
@@ -463,8 +466,8 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 		handleExtractionError: // Label to jump to on extraction error - Ensure this label exists and is used correctly
 			if extractErr != nil {
 				// Error already set during part processing
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
-				te.taskStore.SetState(t.ID, TaskStateFailed)
+				te.TaskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
+				te.TaskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s Stream] Failed during input extraction: %v\n", t.ID, extractErr)
 				failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": extractErr.Error()})
 				sseWriter.SendEvent("state", string(failedStateData))
@@ -475,8 +478,8 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 				// This case handles when no parts suitable for prompt were found at all
 				extractErr = fmt.Errorf("could not extract suitable prompt content")
 				// } // Removed extra brace
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
-				te.taskStore.SetState(t.ID, TaskStateFailed)
+				te.TaskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
+				te.TaskStore.SetState(t.ID, TaskStateFailed)
 				fmt.Printf("[Task %s Stream] Failed: %v\n", t.ID, extractErr)
 				failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": extractErr.Error()})
 				sseWriter.SendEvent("state", string(failedStateData))
@@ -494,7 +497,8 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 			// It also returns the full completion text and token counts.
 			// We don't need the responseBuffer or multiWriter here anymore for the primary call.
 			// We pass sseWriter directly as the output writer.
-			fullResultString, inputTokens, completionTokens, llmErr := te.llmClient.Chat(ctx, prompt, true, sseWriter) // Pass context and sseWriter
+			messages := []llm.Message{{Role: "user", Content: prompt}}
+			fullResultString, inputTokens, completionTokens, llmErr := te.LLMClient.Chat(ctx, messages, true, sseWriter) // Pass context and sseWriter
 
 			if llmErr != nil {
 				fmt.Printf("[Task %s Stream] LLM Error. Input Tokens: %d\n", t.ID, inputTokens) // Log input tokens even on error
@@ -506,8 +510,8 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] LLM stream failed: %v\n", t.ID, llmErr)
 				}
 
-				te.taskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = llmErr.Error(); return nil }) // Store the error
-				setStateErr := te.taskStore.SetState(t.ID, finalState)
+				te.TaskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = llmErr.Error(); return nil }) // Store the error
+				setStateErr := te.TaskStore.SetState(t.ID, finalState)
 
 				if setStateErr == nil && finalState == TaskStateFailed {
 					failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": llmErr.Error()})
@@ -525,7 +529,7 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 				log.Printf("[Task %s Stream] LLM streaming completed, input required.\n", t.ID)
 
 				outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
-				_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Output = append(task.Output, outputMessage)
 					task.Error = ""
 					return nil
@@ -534,7 +538,7 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] Failed to update task with input required output: %v\n", t.ID, updateErr)
 				}
 
-				setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
+				setStateErr := te.TaskStore.SetState(t.ID, TaskStateInputRequired)
 				if setStateErr == nil {
 					inputRequiredStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateInputRequired)})
 					sseWriter.SendEvent("state", string(inputRequiredStateData))
@@ -543,7 +547,6 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 
 					failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": "Failed to transition to input-required state"})
 					sseWriter.SendEvent("state", string(failedStateData))
-					return
 				}
 				fmt.Printf("[Task %s Stream] Input Required. Waiting for signal...\n", t.ID)
 
@@ -556,7 +559,7 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					continue
 				case <-ctx.Done():
 					fmt.Printf("[Task %s Stream] Context cancelled while waiting for input. Exiting.\n", t.ID)
-					te.taskStore.SetState(t.ID, TaskStateCanceled)
+					te.TaskStore.SetState(t.ID, TaskStateCanceled)
 
 					return
 				}
@@ -565,7 +568,7 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 				log.Printf("[Task %s Stream] LLM streaming completed successfully.\n", t.ID)
 
 				outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
-				_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+				_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 					task.Output = append(task.Output, outputMessage)
 					task.Error = ""
 					return nil
@@ -574,12 +577,12 @@ func (te *TaskExecutor) ExecuteTaskStream(task *Task, requestContext context.Con
 					log.Printf("[Task %s Stream] Failed to update task with completed output: %v\n", t.ID, updateErr)
 				}
 
-				artifactErr := te.taskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_streamed_response.txt", Data: []byte(fullResultString)})
+				artifactErr := te.TaskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_streamed_response.txt", Data: []byte(fullResultString)})
 				if artifactErr != nil {
 					fmt.Printf("[Task %s Stream] Warning: Failed to save streamed result as artifact: %v\n", t.ID, artifactErr)
 				}
 
-				setStateErr := te.taskStore.SetState(t.ID, TaskStateCompleted)
+				setStateErr := te.TaskStore.SetState(t.ID, TaskStateCompleted)
 				if setStateErr == nil {
 					completedStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateCompleted)})
 					sseWriter.SendEvent("state", string(completedStateData))

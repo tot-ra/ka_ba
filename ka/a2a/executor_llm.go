@@ -18,7 +18,7 @@ func handleLLMExecution(
 	taskID string,
 	llmClient *llm.LLMClient,
 	taskStore TaskStore,
-	prompt string,
+	messages []llm.Message, // Changed from string to []llm.Message
 ) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, err error) {
 
 	var fullOutputBuffer bytes.Buffer
@@ -45,7 +45,7 @@ func handleLLMExecution(
 	}()
 
 	// Call LLM (Always Streaming Now)
-	fullResultString, inputTokens, completionTokens, llmErr := llmClient.Chat(ctx, prompt, true, signaller)
+	fullResultString, inputTokens, completionTokens, llmErr := llmClient.Chat(ctx, messages, true, signaller) // Pass messages slice
 
 	// Ensure the state update goroutine has finished before proceeding
 	<-stateUpdateCompleted
@@ -95,12 +95,12 @@ func handleLLMExecutionStream(
 	taskID string,
 	llmClient *llm.LLMClient,
 	taskStore TaskStore,
-	prompt string,
+	messages []llm.Message, // Changed from string to []llm.Message
 	sseWriter *SSEWriter,
 ) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, err error) {
 
 	log.Printf("[Task %s Stream] Sending prompt to LLM for streaming...\n", taskID)
-	fullResultString, inputTokens, completionTokens, llmErr := llmClient.Chat(ctx, prompt, true, sseWriter) // Pass context and sseWriter
+	fullResultString, inputTokens, completionTokens, llmErr := llmClient.Chat(ctx, messages, true, sseWriter) // Pass messages slice and sseWriter
 
 	if llmErr != nil {
 		fmt.Printf("[Task %s Stream] LLM Error. Input Tokens: %d\n", taskID, inputTokens) // Log input tokens even on error

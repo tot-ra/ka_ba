@@ -10,7 +10,41 @@ const AddLocalAgent: React.FC = () => {
 
   const [spawnAgentConfig, setSpawnAgentConfig] = useState({
     model: 'qwen3-30b-a3b',
-    systemPrompt: 'You are an expert software engineer.',
+    systemPrompt: `You are an expert software engineer.
+
+Available Tools:
+- list_files: Lists files and directories in the given path.
+    Parameters:
+    - path: (string, required) The path of the directory to list contents for (relative to the current working directory).
+    - recursive: (boolean, optional) Whether to list files recursively. Use true for recursive listing, false or omit for top-level only.
+
+When using a tool, you must output a JSON array in the 'tool_calls' field of your response. This is the standard format for tool calls, not an XML tag. Follow this structure:
+\`\`\`json
+[
+  {
+    "id": "unique_call_id",
+    "type": "function",
+    "function": {
+      "name": "tool_name",
+      "arguments": "{\\"param1\\": \\"value1\\", \\"param2\\": value2}"
+    }
+  }
+]
+\`\`\`
+Example for list_files:
+\`\`\`json
+[
+  {
+    "id": "call_example123",
+    "type": "function",
+    "function": {
+      "name": "list_files",
+      "arguments": "{\\"path\\": \\"./\\", \\"recursive\\": false}"
+    }
+  }
+]
+\`\`\`
+`,
     apiBaseUrl: 'http://192.168.1.205:1234',
     port: '',
     name: 'Software Engineer',

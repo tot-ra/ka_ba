@@ -30,6 +30,7 @@ func main() {
 	descriptionFlag := flag.String("description", "A spawned ka agent instance.", "Description of the agent")
 	jwtSecretFlag := flag.String("jwt-secret", "", "JWT secret key for securing endpoints (if provided, JWT auth is enabled)")
 	apiKeysFlag := flag.String("api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
+	systemPromptFlag := flag.String("system-prompt", "", "System prompt for the LLM (defaults to hardcoded message if not provided)")
 
 	flag.Parse()
 
@@ -55,8 +56,17 @@ func main() {
 
 	// Removed describeFlag logic
 
-	// Pass apiKey to the client constructor
-	llmClient := llm.NewLLMClient(apiURL, *modelFlag, systemMessage, *maxContextLengthFlag) // Removed apiKey argument
+	// Determine the system message: prioritize flag, then hardcoded default
+	actualSystemMessage := systemMessage // Start with hardcoded default
+	if *systemPromptFlag != "" {
+		actualSystemMessage = *systemPromptFlag // Use flag if provided
+		fmt.Printf("[main] Using system message from --system-prompt flag: '%s'\n", actualSystemMessage)
+	} else {
+		fmt.Printf("[main] Using default hardcoded system message: '%s'\n", actualSystemMessage)
+	}
+
+	// Pass system message and other config to the client constructor
+	llmClient := llm.NewLLMClient(apiURL, *modelFlag, actualSystemMessage, *maxContextLengthFlag)
 
 	if *serveFlag {
 		fmt.Println("[main] Starting in server mode...")
@@ -72,6 +82,10 @@ func main() {
 			os.Exit(1)
 		}
 
+		// Create TaskExecutor with the LLM client and system message
+		taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, actualSystemMessage) // Pass actualSystemMessage
+		fmt.Printf("[main] TaskExecutor initialized with SystemMessage: '%s'\n", taskExecutor.SystemMessage)
+
 		// Process API keys from flag
 		apiKeys := []string{}
 		if *apiKeysFlag != "" {
@@ -84,8 +98,8 @@ func main() {
 			}
 		}
 
-		// Pass the determined port, agent info, and auth config to the server start function
-		startHTTPServer(llmClient, taskStore, port, *nameFlag, *descriptionFlag, *modelFlag, *jwtSecretFlag, apiKeys)
+		// Pass the TaskExecutor, port, agent info, and auth config to the server start function
+		startHTTPServer(taskExecutor, port, *nameFlag, *descriptionFlag, *modelFlag, *jwtSecretFlag, apiKeys) // Pass taskExecutor
 	} else {
 		// Ensure auth flags are not accidentally used in CLI mode (or warn)
 		if *jwtSecretFlag != "" || *apiKeysFlag != "" {
@@ -121,7 +135,14 @@ func main() {
 
 		// Added context.Background() as the first argument
 		// Update call to handle new return values (completion, inputTokens, completionTokens, err)
-		_, inputTokens, completionTokens, err := llmClient.Chat(context.Background(), userPrompt, stream, os.Stdout)
+
+		// For CLI mode, create a simple message slice with the user prompt, including the actual system message
+		messages := []llm.Message{
+			{Role: "system", Content: actualSystemMessage}, // Include the actual system message
+			{Role: "user", Content: userPrompt},
+		}
+
+		_, inputTokens, completionTokens, err := llmClient.Chat(context.Background(), messages, stream, os.Stdout)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "LLM error:", err)
 			os.Exit(1)

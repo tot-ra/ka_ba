@@ -10,7 +10,6 @@ import (
 	"strings" // Added for string manipulation
 
 	"ka/a2a" // Keep one a2a import
-	"ka/llm" // Keep one llm import
 
 	"github.com/golang-jwt/jwt/v5" // Keep one jwt import
 )
@@ -145,8 +144,9 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 	}
 }
 
-// Updated signature to accept name, description, model, and auth config
-func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int, agentName, agentDescription, agentModel, jwtSecretString string, apiKeys []string) {
+// startHTTPServer sets up and starts the HTTP server for the agent.
+// It now accepts the TaskExecutor directly.
+func startHTTPServer(taskExecutor *a2a.TaskExecutor, port int, agentName, agentDescription, agentModel, jwtSecretString string, apiKeys []string) {
 	// --- Process Auth Configuration ---
 	jwtAuthEnabled := jwtSecretString != ""
 	apiKeyAuthEnabled := len(apiKeys) > 0
@@ -226,7 +226,9 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 		"authentication": authMethods, // Use corrected auth methods format (array of strings)
 	}
 
-	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore)
+	// The TaskExecutor already holds the llmClient and taskStore.
+	// We can access them via taskExecutor.llmClient and taskExecutor.taskStore if needed,
+	// but the handlers should ideally just use the taskExecutor.
 
 	// --- Middleware Instantiation (using closures) ---
 	var jwtMiddleware func(http.HandlerFunc) http.HandlerFunc
@@ -371,7 +373,7 @@ func startHTTPServer(llmClient *llm.LLMClient, taskStore a2a.TaskStore, port int
 
 	// Root handler for all JSON-RPC requests
 	http.HandleFunc("/", jsonRPCHandler(
-		taskStore,
+		taskExecutor.TaskStore, // Pass taskStore from executor
 		taskExecutor,
 		jwtMiddleware,    // Pass the instantiated middleware
 		apiKeyMiddleware, // Pass the instantiated middleware
