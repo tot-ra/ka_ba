@@ -70,6 +70,7 @@ type Task {
   createdAt: String! # Using String for ISO date format
   updatedAt: String! # Using String for ISO date format
   artifacts: JSONObject # Simplified to JSONObject mapping artifactId -> Artifact (without data)
+  agentId: ID! # Add agentId to link task to agent
 }
 
 # --- Log Streaming Types ---

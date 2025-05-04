@@ -82,6 +82,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             createdAt: task.created_at,
             updatedAt: task.updated_at,
             artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
+            agentId: agentId, // Add agentId from the query arguments
           }));
 
           console.log(`[Resolver listTasks] Mapped tasks for agent ${agentId}:`, mappedTasks);
@@ -217,6 +218,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
               createdAt: initialTask.status?.timestamp, // Map timestamp
               updatedAt: initialTask.status?.timestamp, // Map timestamp
               artifacts: initialTask.artifacts ? JSON.stringify(initialTask.artifacts) : undefined, // Map artifacts (needs proper mapping)
+              agentId: selectedAgent.id, // Add the selected agent's ID
             };
             return mappedInitialTask as any; // Cast needed due to structural differences
           } else {
@@ -225,7 +227,6 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
                extensions: { code: 'AGENT_RESPONSE_INVALID', agentId: selectedAgent.id },
              });
           }
-
         } catch (error: any) {
            console.error(`[GraphQL createTask] Error dispatching task to agent ${selectedAgent.id}:`, error);
            // Check if it's already a GraphQLError
@@ -336,15 +337,19 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
                   }));
                 };
 
+                // Map snake_case fields from the payload (nested in status) to camelCase fields for GraphQL
                 const mappedTask = {
-                  id: payload.id,
-                  state: payload.state.toUpperCase(), // Convert state to uppercase
-                  input: mapMessages(payload.input),
-                  output: mapMessages(payload.output),
-                  error: payload.error,
-                  createdAt: payload.createdAt,
-                  updatedAt: payload.updatedAt,
+                  id: payload.id, // Assuming ID is top-level
+                  state: payload.status?.state?.toUpperCase(), // Access state from status and convert to uppercase
+                  input: mapMessages(payload.history), // Map history to input
+                  output: mapMessages(payload.status?.message ? [payload.status.message] : []), // Map status.message to output (assuming it's the latest output)
+                  error: payload.status?.state === 'failed' && payload.status?.message?.parts?.[0]?.type === 'text'
+                         ? (payload.status.message.parts[0] as any).text // Access error message from status.message
+                         : undefined,
+                  createdAt: payload.status?.timestamp, // Map timestamp from status
+                  updatedAt: payload.status?.timestamp, // Map timestamp from status
                   artifacts: payload.artifacts, // Assuming artifacts matches directly
+                  agentId: agentId, // Add agentId from the subscription arguments
                 };
                 push(mappedTask as any); // Push the mapped payload to the iterator
               };

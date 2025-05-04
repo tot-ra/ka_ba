@@ -149,6 +149,15 @@ export class AgentManager {
     const agentUrl = `http://localhost:${agentPort}`;
     console.log(`Attempting to spawn ka agent at ${agentUrl} using PORT=${agentPort}`);
 
+    // Assign a unique ID to the new agent *before* spawning so we can use it for the task directory
+    const newAgentId = (this.agentIdCounter++).toString();
+
+    // Set the TASK_STORE_DIR environment variable for the spawned process
+    const taskStoreDir = `kaba/backend/_tasks/${newAgentId}`;
+    env.TASK_STORE_DIR = taskStoreDir;
+    console.log(`Setting TASK_STORE_DIR for agent ${newAgentId}: ${taskStoreDir}`);
+
+
     const kaArgs = [];
     if (name) kaArgs.push('--name', name);
     if (description) kaArgs.push('--description', description);
@@ -166,7 +175,8 @@ export class AgentManager {
 
     try {
       // Destructure the agent and initial logs from the result
-      const { agent: newAgent, logs: initialLogs } = await this.waitForAgentStartup(kaProcess, agentPort, agentUrl, name, description, model, systemPrompt, apiBaseUrl);
+      // Pass the pre-generated agent ID to waitForAgentStartup
+      const { agent: newAgent, logs: initialLogs } = await this.waitForAgentStartup(newAgentId, kaProcess, agentPort, agentUrl, name, description, model, systemPrompt, apiBaseUrl);
 
       this.agents.push(newAgent);
       console.log(`Added spawned agent: ${newAgent.url}`);
@@ -380,6 +390,7 @@ export class AgentManager {
   }
 
   private waitForAgentStartup(
+      agentId: string, // Accept the pre-generated agent ID
       kaProcess: ChildProcess,
       agentPort: number,
       agentUrl: string,
@@ -454,9 +465,9 @@ export class AgentManager {
           cleanupTimeout(startupTimeout); // Cleanup timeout and listeners
           console.log(`ka agent on port ${agentPort} started successfully.`);
           const newAgent: Agent = {
-            id: (this.agentIdCounter++).toString(),
+            id: agentId, // Use the passed agent ID
             url: agentUrl,
-            name: name || `Spawned ka Agent ${this.agentIdCounter - 1}`,
+            name: name || `Spawned ka Agent ${agentId}`, // Use the passed agent ID in default name
             description: description || `ka agent spawned with model: ${model || 'default'}`,
             isLocal: true,
           };
@@ -486,7 +497,7 @@ export class AgentManager {
       });
 
       kaProcess.on('exit', (code: number | null, signal: string | null) => {
-        console.log(`ka process (port ${agentPort}) exited with code ${code} and signal ${signal}`);
+        console.log(`ka process (port ${agentPort}) exited with code ${code} and signal ${signal}.`);
         if (!resolved) {
           const exitMsg = `Process exited prematurely with code ${code}, signal ${signal}.`;
           handleStartupError(exitMsg, startupTimeout, processError || undefined);
