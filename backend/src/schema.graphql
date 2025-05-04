@@ -92,7 +92,7 @@ type Query {
 
 type Subscription {
   agentLogs(agentId: ID!): LogEntry! # Subscription for real-time logs
-  # Add other subscriptions like taskUpdates here if needed
+  taskUpdates(agentId: ID!, taskId: ID): Task! # Subscription for real-time task updates
 }
 
 type Mutation {

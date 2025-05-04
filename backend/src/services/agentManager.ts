@@ -5,10 +5,14 @@ import net from 'net';
 import axios from 'axios';
 import { EventEmitter } from 'node:events'; // Import EventEmitter
 import { LogEntryPayload } from '../graphql/resolvers.js';
+import { Task, TaskStatusUpdateEvent, TaskArtifactUpdateEvent } from '../a2aClient.js'; // Import Task and event types
 
 // Get current directory using import.meta.url for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Define a type for the subscription connection (e.g., AbortController for fetch)
+type AgentSubscription = AbortController;
 
 export interface Agent {
   id: string;
@@ -17,6 +21,8 @@ export interface Agent {
   description?: string; // This might become redundant if capabilities.description is used
   isLocal: boolean;
   capabilities?: AgentCapabilities | null; // Added field for agent.json content
+  // Add a field to store the active subscription controller
+  subscriptionController?: AgentSubscription;
 }
 
 // Interface for the expected structure of /.well-known/agent.json
@@ -28,7 +34,7 @@ interface AgentCapabilities {
   protocol_version: string;
   endpoints: {
     tasks_send: string;
-    tasks_send_subscribe: string;
+    tasks_send_subscribe?: string; // Make optional as per spec
     tasks_status: string;
     tasks_artifact?: string; // Optional
     // Add other standard endpoints as needed
@@ -48,6 +54,8 @@ interface SpawnedProcessInfo {
     systemPrompt?: string;
     apiBaseUrl?: string;
   };
+  // Store the subscription controller for local agents too
+  subscriptionController?: AgentSubscription;
 }
 
 export class AgentManager {
@@ -55,10 +63,16 @@ export class AgentManager {
   private spawnedProcesses: Map<string, SpawnedProcessInfo> = new Map();
   private agentIdCounter = 1;
   private eventEmitter: EventEmitter; // Change property name and type
+  private activeSubscriptions: Map<string, AgentSubscription> = new Map(); // Map agentId to subscription controller
 
   // Inject EventEmitter via constructor
   constructor(eventEmitter: EventEmitter) {
     this.eventEmitter = eventEmitter; // Store EventEmitter
+  }
+
+  // Helper to find agent by ID
+  private findAgent(agentId: string): Agent | undefined {
+    return this.agents.find(agent => agent.id === agentId);
   }
 
   // Modify Agent type returned by getAgents to potentially include pid
@@ -97,6 +111,9 @@ export class AgentManager {
       const removedAgent = this.agents.splice(index, 1)[0];
       console.log(`Removed agent: ${removedAgent.url}`);
       this.notifyAgents();
+
+      // Stop the task subscription if active
+      this.stopAgentTaskSubscription(removedAgent.id);
 
       const spawnedProcessInfo = this.spawnedProcesses.get(removedAgent.id);
       if (spawnedProcessInfo) {
@@ -220,12 +237,16 @@ export class AgentManager {
       try {
         process.kill(info.pid);
         console.log(`Sent kill signal to process with PID: ${info.pid}`);
+        // Stop the task subscription if active for local agent
+        this.stopAgentTaskSubscription(agentId);
         this.cleanupAgentData(agentId);
         return true;
       } catch (err: any) {
         console.error(`Failed to stop process with PID ${info.pid}: ${err}`);
         if (err.code === 'ESRCH') {
             console.log(`Process with PID ${info.pid} not found (ESRCH). Assuming already stopped.`);
+            // Stop the task subscription if active for local agent
+            this.stopAgentTaskSubscription(agentId);
             this.cleanupAgentData(agentId);
             return true;
         }
@@ -498,6 +519,15 @@ export class AgentManager {
             agent.description = agent.capabilities.description;
         }
         console.log(`Successfully fetched capabilities for agent ${agent.id}:`, agent.capabilities.description);
+
+        // If the agent supports task subscriptions, start subscribing
+        if (agent.capabilities.endpoints?.tasks_send_subscribe) {
+            console.log(`Agent ${agent.id} supports task subscriptions. Starting subscription...`);
+            this.subscribeToAgentTaskUpdates(agent.id);
+        } else {
+            console.log(`Agent ${agent.id} does not support task subscriptions.`);
+        }
+
       } else {
         console.warn(`Failed to fetch capabilities for agent ${agent.id}: Status ${response.status}`);
         agent.capabilities = null;
@@ -610,5 +640,226 @@ export class AgentManager {
         throw new Error(`An unexpected error occurred while fetching tasks from agent ${agentId}.`);
       }
     }
+  }
+
+  // Method to fetch a single task's details from a specific agent
+  public async getAgentTaskDetails(agentId: string, taskId: string): Promise<Task | null> {
+      const agent = this.findAgent(agentId);
+      if (!agent) {
+          console.error(`[getAgentTaskDetails] Agent with ID ${agentId} not found.`);
+          throw new Error(`Agent with ID ${agentId} not found.`);
+      }
+
+      // Ensure the agent has the tasks_status endpoint
+      if (!agent.capabilities?.endpoints?.tasks_status) {
+          console.warn(`[getAgentTaskDetails] Agent ${agentId} does not support tasks_status endpoint.`);
+          return null; // Or throw an error
+      }
+
+      const statusEndpoint = `${agent.url}${agent.capabilities.endpoints.tasks_status}`;
+      const requestId = `get-task-${agentId}-${taskId}-${Date.now()}`;
+      const requestBody = {
+          jsonrpc: "2.0",
+          method: "tasks/status",
+          params: { id: taskId }, // Assuming the method takes task ID as a param
+          id: requestId,
+      };
+
+      console.log(`[getAgentTaskDetails] Sending tasks/status request for task ${taskId} to agent ${agentId} at ${statusEndpoint}`);
+
+      try {
+          const response = await axios.post(statusEndpoint, requestBody, {
+              headers: { 'Content-Type': 'application/json' },
+              timeout: 5000, // 5 second timeout
+          });
+
+          if (response.data.error) {
+              console.error(`[getAgentTaskDetails] JSON-RPC error from agent ${agentId} for task ${taskId}:`, response.data.error);
+              throw new Error(`Agent ${agentId} returned error for task ${taskId}: ${response.data.error.message} (Code: ${response.data.error.code})`);
+          }
+
+          // Assuming the result is the Task object
+          if (response.data.result) {
+              console.log(`[getAgentTaskDetails] Received task details for task ${taskId} from agent ${agentId}`);
+              return response.data.result as Task; // Cast to Task type
+          } else {
+              console.warn(`[getAgentTaskDetails] Unexpected response format from agent ${agentId} for task ${taskId}. Result was missing. Response:`, response.data);
+              return null;
+          }
+
+      } catch (error: any) {
+          if (axios.isAxiosError(error)) {
+              console.error(`[getAgentTaskDetails] Axios error fetching task ${taskId} from agent ${agentId} (${statusEndpoint}): ${error.message}`, error.response?.data);
+              throw new Error(`Failed to communicate with agent ${agentId} for task ${taskId}: ${error.message}`);
+          } else {
+              console.error(`[getAgentTaskDetails] Non-Axios error fetching task ${taskId} from agent ${agentId}:`, error);
+              throw new Error(`An unexpected error occurred while fetching task ${taskId} from agent ${agentId}.`);
+          }
+      }
+  }
+
+
+  // --- Task Subscription Management ---
+
+  private async subscribeToAgentTaskUpdates(agentId: string): Promise<void> {
+      const agent = this.findAgent(agentId);
+      if (!agent || !agent.capabilities?.endpoints?.tasks_send_subscribe) {
+          console.warn(`[subscribeToAgentTaskUpdates] Agent ${agentId} not found or does not support subscriptions.`);
+          return;
+      }
+
+      // If already subscribed, do nothing
+      if (this.activeSubscriptions.has(agentId)) {
+          console.log(`[subscribeToAgentTaskUpdates] Already subscribed to agent ${agentId}.`);
+          return;
+      }
+
+      const subscribeEndpoint = `${agent.url}${agent.capabilities.endpoints.tasks_send_subscribe}`;
+      console.log(`[subscribeToAgentTaskUpdates] Attempting to subscribe to task updates for agent ${agentId} at ${subscribeEndpoint}`);
+
+      const controller = new AbortController();
+      const signal = controller.signal;
+      this.activeSubscriptions.set(agentId, controller); // Store the controller
+
+      try {
+          const response = await fetch(subscribeEndpoint, { signal });
+
+          if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          if (!response.body) {
+              throw new Error('Response body is null');
+          }
+
+          // Use TextDecoderStream to decode the stream
+          const reader = response.body
+              .pipeThrough(new TextDecoderStream())
+              .getReader();
+
+          let buffer = '';
+          while (true) {
+              const { value, done } = await reader.read();
+              if (done) {
+                  console.log(`[subscribeToAgentTaskUpdates] Stream closed for agent ${agentId}.`);
+                  break;
+              }
+
+              buffer += value;
+              // Process lines (assuming newline-delimited JSON or SSE 'data:' lines)
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || ''; // Keep the last potentially incomplete line
+
+              for (const line of lines) {
+                  if (!line.trim()) continue; // Skip empty lines
+
+                  try {
+                      // Attempt to parse as JSON (assuming newline-delimited JSON)
+                      // If using SSE, need to handle 'data: ' prefix and event types
+                      const event = JSON.parse(line);
+                      console.log(`[subscribeToAgentTaskUpdates] Received event for agent ${agentId}:`, event);
+
+                      // Check if it's a task update event (adjust based on actual agent implementation)
+                      // Assuming events have an 'id' field for the task ID and a 'type' or 'status' field
+                      if (event.id && (event.status || event.artifact)) {
+                          const taskId = event.id;
+                          console.log(`[subscribeToAgentTaskUpdates] Received update for task ${taskId}. Fetching full details...`);
+                          // Fetch the full task details
+                          const updatedTask = await this.getAgentTaskDetails(agentId, taskId);
+
+                          if (updatedTask) {
+                              // Emit event for this specific task update
+                              const topic = `TASK_UPDATE_${agentId}_${taskId}`;
+                              console.log(`[AgentManager subscribeToAgentTaskUpdates] Emitting event on topic ${topic}:`, updatedTask);
+                              this.eventEmitter.emit(topic, updatedTask);
+
+                              // Also emit a general update event for the agent's task list
+                              const allTasksTopic = `TASK_UPDATE_${agentId}_ALL`;
+                              console.log(`[AgentManager subscribeToAgentTaskUpdates] Emitting event on topic ${allTasksTopic}:`, updatedTask);
+                              this.eventEmitter.emit(allTasksTopic, updatedTask);
+                          } else {
+                              console.warn(`[subscribeToAgentTaskUpdates] Failed to fetch updated task details for task ${taskId} on agent ${agentId}.`);
+                          }
+                      } else {
+                          console.warn(`[subscribeToAgentTaskUpdates] Received unrecognized event format from agent ${agentId}:`, event);
+                      }
+
+                  } catch (parseError: any) {
+                      console.error(`[subscribeToAgentTaskUpdates] Error parsing stream data for agent ${agentId}: ${parseError.message}`, line);
+                      // Depending on error, might need to break or continue
+                  }
+              }
+          }
+      } catch (error: any) {
+          if (signal.aborted) {
+              console.log(`[subscribeToAgentTaskUpdates] Subscription for agent ${agentId} aborted.`);
+          } else {
+              console.error(`[subscribeToAgentTaskUpdates] Subscription error for agent ${agentId}: ${error.message}`);
+              // Implement retry logic here if needed
+          }
+      } finally {
+          // Clean up the subscription entry when the stream ends or errors
+          this.activeSubscriptions.delete(agentId);
+          console.log(`[subscribeToAgentTaskUpdates] Cleaned up subscription for agent ${agentId}.`);
+      }
+  }
+
+  // Method to stop a specific agent's task update subscription
+  private stopAgentTaskSubscription(agentId: string): void {
+      const controller = this.activeSubscriptions.get(agentId);
+      if (controller) {
+          console.log(`[stopAgentTaskSubscription] Aborting subscription for agent ${agentId}.`);
+          controller.abort();
+          // The finally block in subscribeToAgentTaskUpdates will handle the map deletion
+      } else {
+          console.log(`[stopAgentTaskSubscription] No active subscription found for agent ${agentId}.`);
+      }
+  }
+
+  // Modify removeAgent and stopLocalAgentProcess to stop subscriptions
+  public removeAgent(id: string): boolean {
+    const index = this.agents.findIndex(agent => agent.id === id);
+    if (index > -1) {
+      const removedAgent = this.agents.splice(index, 1)[0];
+      console.log(`Removed agent: ${removedAgent.url}`);
+      this.notifyAgents();
+
+      // Stop the task subscription if active
+      this.stopAgentTaskSubscription(removedAgent.id);
+
+      const spawnedProcessInfo = this.spawnedProcesses.get(removedAgent.id);
+      if (spawnedProcessInfo) {
+        this.stopLocalAgentProcess(removedAgent.id, spawnedProcessInfo);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private stopLocalAgentProcess(agentId: string, info: SpawnedProcessInfo): boolean {
+     if (typeof info.pid !== 'number') {
+        console.error(`Invalid or missing PID for agent ID: ${agentId}. Cannot stop process.`);
+        this.cleanupAgentData(agentId);
+        return false;
+      }
+
+      try {
+        process.kill(info.pid);
+        console.log(`Sent kill signal to process with PID: ${info.pid}`);
+        // Stop the task subscription if active for local agent
+        this.stopAgentTaskSubscription(agentId);
+        this.cleanupAgentData(agentId);
+        return true;
+      } catch (err: any) {
+        console.error(`Failed to stop process with PID ${info.pid}: ${err}`);
+        if (err.code === 'ESRCH') {
+            console.log(`Process with PID ${info.pid} not found (ESRCH). Assuming already stopped.`);
+            // Stop the task subscription if active for local agent
+            this.stopAgentTaskSubscription(agentId);
+            this.cleanupAgentData(agentId);
+            return true;
+        }
+        return false;
+      }
   }
 }

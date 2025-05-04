@@ -77,14 +77,14 @@ export interface Task { // Export Task
   metadata?: any;
 }
 
-interface TaskStatusUpdateEvent {
+export interface TaskStatusUpdateEvent {
   id: string;
   status: TaskStatus;
   final?: boolean;
   metadata?: any;
 }
 
-interface TaskArtifactUpdateEvent {
+export interface TaskArtifactUpdateEvent {
   id: string;
   artifact: Artifact;
   metadata?: any;

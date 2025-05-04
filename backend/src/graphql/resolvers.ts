@@ -315,6 +315,55 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
           },
         },
         // Add other subscriptions here if needed (e.g., taskUpdates)
+        taskUpdates: {
+          subscribe: (_parent: any, { agentId, taskId }: { agentId: string, taskId?: string }, context: ApolloContext, _info: any) => {
+            console.log(`[Resolver taskUpdates subscribe] Client attempting to subscribe to task updates for agent: ${agentId}, task: ${taskId || 'ALL'}`);
+
+            // Determine the topic based on agentId and optional taskId
+            const topic = taskId ? `TASK_UPDATE_${agentId}_${taskId}` : `TASK_UPDATE_${agentId}_ALL`;
+            console.log(`[Resolver taskUpdates subscribe] Client subscribing to event topic: ${topic}`);
+
+            return new Repeater<Task>(async (push, stop) => {
+              const listener = (payload: Task) => {
+                console.log(`[Resolver taskUpdates listener] Event received on topic ${topic}:`, payload);
+                // Map snake_case fields from agentManager to camelCase fields in GraphQL schema
+                // AND convert state to uppercase
+                const mapMessages = (messages: any[] | undefined | null): any[] => {
+                  if (!messages) return [];
+                  return messages.map(msg => ({
+                    ...msg,
+                    role: msg.role?.toUpperCase(), // Convert role to uppercase
+                  }));
+                };
+
+                const mappedTask = {
+                  id: payload.id,
+                  state: payload.state.toUpperCase(), // Convert state to uppercase
+                  input: mapMessages(payload.input),
+                  output: mapMessages(payload.output),
+                  error: payload.error,
+                  createdAt: payload.createdAt,
+                  updatedAt: payload.updatedAt,
+                  artifacts: payload.artifacts, // Assuming artifacts matches directly
+                };
+                push(mappedTask as any); // Push the mapped payload to the iterator
+              };
+
+              context.eventEmitter.on(topic, listener); // Start listening
+              console.log(`[Resolver taskUpdates subscribe] Attached listener to topic ${topic}`);
+
+              // stop.then is called when the client disconnects
+              await stop;
+
+              context.eventEmitter.off(topic, listener); // Clean up listener
+              console.log(`[Resolver taskUpdates subscribe] Removed listener from topic ${topic} on disconnect`);
+            });
+          },
+          resolve: (payload: Task) => {
+            // The payload is already mapped in the subscribe function
+            return payload;
+          },
+        },
      },
    };
 }
