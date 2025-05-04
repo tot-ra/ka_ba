@@ -123,11 +123,21 @@ func buildPromptFromInput(taskID string, inputMessages []Message) (prompt string
 
 	// Second pass: Build the prompt string
 	for _, msg := range inputMessages {
-		if msg.Role == RoleUser || msg.Role == RoleAssistant {
+		// Include messages from User, Assistant, and Tool roles
+		if msg.Role == RoleUser || msg.Role == RoleAssistant || msg.Role == RoleTool {
+			// Add a separator between messages
+			if promptBuilder.Len() > 0 {
+				promptBuilder.WriteString("\n\n---\n\n")
+			}
+
+			// For Assistant messages with tool_calls, include the tool_calls JSON
+			if msg.Role == RoleAssistant && len(msg.ToolCalls) > 0 {
+				promptBuilder.WriteString(fmt.Sprintf("[TOOL_CALLS]: %s", string(msg.ToolCalls)))
+				promptFound = true // Consider tool calls as contributing to prompt content
+			}
+
+			// Include parts for all relevant roles
 			for _, part := range msg.Parts {
-				if promptBuilder.Len() > 0 {
-					promptBuilder.WriteString("\n\n---\n\n")
-				}
 				switch p := part.(type) {
 				case TextPart:
 					promptBuilder.WriteString(p.Text)

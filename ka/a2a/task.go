@@ -1,6 +1,7 @@
 package a2a
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,6 +68,21 @@ type Message struct {
 	ToolCalls json.RawMessage `json:"tool_calls,omitempty"` // Placeholder for tool calls structure
 	// ToolCallID is used in a tool message to indicate which tool call this message is a response to.
 	ToolCallID string `json:"tool_call_id,omitempty"`
+	// ParsedToolCalls is populated during UnmarshalJSON if Role is RoleAssistant and ToolCalls is present.
+	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
+}
+
+// ToolCall represents a single tool call within the tool_calls array from an assistant message.
+type ToolCall struct {
+	ID       string       `json:"id"`
+	Type     string       `json:"type"` // e.g., "function"
+	Function FunctionCall `json:"function"`
+}
+
+// FunctionCall represents the details of a function tool call.
+type FunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"` // JSON string of arguments
 }
 
 // MarshalJSON implements the json.Marshaler interface for Message.
@@ -93,9 +109,9 @@ func (m Message) MarshalJSON() ([]byte, error) {
 	return json.Marshal(tmp)
 }
 
-
+// UnmarshalJSON implements the json.Unmarshaler interface for Message.
+// This handles the deserialization of the Part interface slice and attempts to parse ToolCalls.
 func (m *Message) UnmarshalJSON(data []byte) error {
-
 	type MessageAlias Message
 
 	tmp := struct {
@@ -115,8 +131,19 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	m.ToolCalls = tmp.ToolCalls
 	m.ToolCallID = tmp.ToolCallID
 
-	for i, rawPart := range tmp.Parts {
+	// Attempt to unmarshal ToolCalls if the role is Assistant and ToolCalls is not empty
+	if m.Role == RoleAssistant && len(m.ToolCalls) > 0 && !bytes.Equal(m.ToolCalls, []byte("null")) {
+		var parsedCalls []ToolCall
+		if err := json.Unmarshal(m.ToolCalls, &parsedCalls); err != nil {
+			// Log a warning but don't fail unmarshalling the whole message
+			log.Printf("Warning: Failed to unmarshal ToolCalls for task message (Role: %s): %v. Raw ToolCalls: %s", m.Role, err, string(m.ToolCalls))
+			// Keep m.ParsedToolCalls as nil or empty slice
+		} else {
+			m.ParsedToolCalls = parsedCalls
+		}
+	}
 
+	for i, rawPart := range tmp.Parts {
 		var typeMap map[string]interface{}
 		if err := json.Unmarshal(rawPart, &typeMap); err != nil {
 			log.Printf("Warning: Failed to unmarshal part %d into type map: %v. Raw: %s", i, err, string(rawPart))

@@ -8,7 +8,7 @@ import (
 )
 
 // processTaskIteration handles a single iteration of the main loop for ExecuteTask.
-// It returns true if the loop should continue (due to INPUT_REQUIRED), false otherwise.
+// It returns true if the loop should continue (due to INPUT_REQUIRED or tool calls), false otherwise.
 // It also returns any error encountered during the iteration that should stop the process.
 func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resumeCh chan struct{}) (continueLoop bool, err error) {
 	currentTask, err := te.taskStore.GetTask(t.ID)
@@ -58,9 +58,64 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		return false, llmErr // Stop processing on LLM error
 	}
 
-	// Process the result based on whether input is required
-	if requiresInput {
-		log.Printf("[Task %s] Input Required detected in full response.", t.ID)
+	// After LLM execution, check the *latest* task state and output for tool calls
+	updatedTask, err := te.taskStore.GetTask(t.ID)
+	if err != nil {
+		log.Printf("[Task %s] Error getting task after LLM execution: %v", t.ID, err)
+		return false, err // Stop processing
+	}
+
+	// Find the last message from the assistant (which should contain tool_calls if any)
+	var lastAssistantMessage *Message
+	for i := len(updatedTask.Output) - 1; i >= 0; i-- {
+		if updatedTask.Output[i].Role == RoleAssistant {
+			lastAssistantMessage = &updatedTask.Output[i]
+			break
+		}
+	}
+
+	if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
+		log.Printf("[Task %s] Detected %d tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
+
+		toolDispatcher := NewToolDispatcher(te.taskStore) // Create a new dispatcher instance
+
+		toolResults := []Message{}
+		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
+			toolResultMsg, dispatchErr := toolDispatcher.DispatchToolCall(ctx, t.ID, toolCall)
+			if dispatchErr != nil {
+				// Log the dispatch error but continue processing other tool calls
+				log.Printf("[Task %s] Error dispatching tool call %s (%s): %v", t.ID, toolCall.ID, toolCall.Function.Name, dispatchErr)
+				// The DispatchToolCall function already includes an error message in the returned Message,
+				// so we just append the message.
+			}
+			toolResults = append(toolResults, toolResultMsg)
+		}
+
+		// Append tool results to the task's input for the next LLM iteration
+		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Input = append(task.Input, toolResults...) // Append all tool result messages
+			// Clear output after processing tool calls, as the next iteration starts with new input
+			task.Output = []Message{}
+			task.Error = "" // Clear any previous error
+			return nil
+		})
+		if updateErr != nil {
+			log.Printf("[Task %s] Failed to update task with tool results: %v", t.ID, updateErr)
+			te.taskStore.SetState(t.ID, TaskStateFailed) // Set state to failed if we can't update task
+			return false, updateErr                      // Stop processing
+		}
+
+		log.Printf("[Task %s] Appended %d tool result messages to input. Continuing loop.", t.ID, len(toolResults))
+		// Set state back to Working before the next iteration
+		if err := te.taskStore.SetState(t.ID, TaskStateWorking); err != nil {
+			log.Printf("[Task %s] Failed to set state back to Working after tool calls: %v", t.ID, err)
+			return false, err // Stop processing if we can't reset state
+		}
+		return true, nil // Continue the loop to send tool results to LLM
+
+	} else if requiresInput {
+		// Process the result based on whether input is required (if no tool calls were made)
+		log.Printf("[Task %s] Input Required detected in full response (no tool calls).", t.ID)
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
 
 		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
@@ -101,8 +156,8 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		}
 
 	} else {
-		// Task Completed Successfully (No Input Required)
-		log.Printf("[Task %s] Task completed normally (no input required).", t.ID)
+		// Task Completed Successfully (No Input Required and No Tool Calls)
+		log.Printf("[Task %s] Task completed normally (no input required, no tool calls).", t.ID)
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
 
 		// Update task output
@@ -139,7 +194,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 }
 
 // processTaskStreamIteration handles a single iteration of the main loop for ExecuteTaskStream.
-// It returns true if the loop should continue (due to INPUT_REQUIRED), false otherwise.
+// It returns true if the loop should continue (due to INPUT_REQUIRED or tool calls), false otherwise.
 // It also returns any error encountered during the iteration that should stop the process.
 func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task, sseWriter *SSEWriter, resumeCh chan struct{}) (continueLoop bool, err error) {
 	currentTask, err := te.taskStore.GetTask(t.ID)
@@ -190,18 +245,83 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		return false, llmErr // Stop processing
 	}
 
-	// Process the result based on whether input is required
-	if requiresInput {
-		log.Printf("[Task %s Stream] LLM streaming completed, input required.\n", t.ID)
+	// After LLM execution, check the *latest* task state and output for tool calls
+	updatedTask, err := te.taskStore.GetTask(t.ID)
+	if err != nil {
+		log.Printf("[Task %s Stream] Error getting task after LLM execution: %v", t.ID, err)
+		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to get task after LLM: %v", err)})
+		sseWriter.SendEvent("state", string(failedStateData))
+		return false, err // Stop processing
+	}
 
-		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+	// Find the last message from the assistant (which should contain tool_calls if any)
+	var lastAssistantMessage *Message
+	for i := len(updatedTask.Output) - 1; i >= 0; i-- {
+		if updatedTask.Output[i].Role == RoleAssistant {
+			lastAssistantMessage = &updatedTask.Output[i]
+			break
+		}
+	}
+
+	if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
+		log.Printf("[Task %s Stream] Detected %d tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
+
+		toolDispatcher := NewToolDispatcher(te.taskStore) // Create a new dispatcher instance
+
+		toolResults := []Message{}
+		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
+			toolResultMsg, dispatchErr := toolDispatcher.DispatchToolCall(ctx, t.ID, toolCall)
+			if dispatchErr != nil {
+				// Log the dispatch error but continue processing other tool calls
+				log.Printf("[Task %s Stream] Error dispatching tool call %s (%s): %v", t.ID, toolCall.ID, toolCall.Function.Name, dispatchErr)
+				// The DispatchToolCall function already includes an error message in the returned Message,
+				// so we just append the message.
+			}
+			toolResults = append(toolResults, toolResultMsg)
+		}
+
+		// Append tool results to the task's input for the next LLM iteration
 		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Output = append(task.Output, outputMessage)
-			task.Error = ""
+			task.Input = append(task.Input, toolResults...) // Append all tool result messages
+			// Clear output after processing tool calls, as the next iteration starts with new input
+			task.Output = []Message{}
+			task.Error = "" // Clear any previous error
 			return nil
 		})
 		if updateErr != nil {
-			log.Printf("[Task %s Stream] Failed to update task with input required output: %v\n", t.ID, updateErr)
+			log.Printf("[Task %s Stream] Failed to update task with tool results: %v", t.ID, updateErr)
+			te.taskStore.SetState(t.ID, TaskStateFailed) // Set state to failed if we can't update task
+			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to update task with tool results: %v", updateErr)})
+			sseWriter.SendEvent("state", string(failedStateData))
+			return false, updateErr // Stop processing
+		}
+
+		log.Printf("[Task %s Stream] Appended %d tool result messages to input. Continuing loop.", t.ID, len(toolResults))
+		// Set state back to Working before the next iteration
+		if err := te.taskStore.SetState(t.ID, TaskStateWorking); err != nil {
+			log.Printf("[Task %s Stream] Failed to set state back to Working after tool calls: %v", t.ID, err)
+			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to set state after tool calls: %v", err)})
+			sseWriter.SendEvent("state", string(failedStateData))
+			return false, err // Stop processing if we can't reset state
+		}
+		// Send a state update event to the client
+		workingStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateWorking)})
+		sseWriter.SendEvent("state", string(workingStateData))
+
+		return true, nil // Continue the loop to send tool results to LLM
+
+	} else if requiresInput {
+		// Process the result based on whether input is required (if no tool calls were made)
+		log.Printf("[Task %s Stream] Input Required detected in full response (no tool calls).", t.ID)
+		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+
+		_, updateErr := te.taskStore.UpdateTask(t.ID, func(task *Task) error {
+			task.Output = append(task.Output, outputMessage)
+			task.Error = "" // Clear any previous error
+			return nil
+		})
+		if updateErr != nil {
+			log.Printf("[Task %s Stream] Failed to update task with input required output: %v", t.ID, updateErr)
 		}
 
 		setStateErr := te.taskStore.SetState(t.ID, TaskStateInputRequired)
@@ -209,12 +329,12 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 			inputRequiredStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateInputRequired)})
 			sseWriter.SendEvent("state", string(inputRequiredStateData))
 		} else {
-			log.Printf("[Task %s Stream] Failed to set task state to InputRequired: %v\n", t.ID, setStateErr)
+			log.Printf("[Task %s Stream] Failed to set task state to InputRequired: %v", t.ID, setStateErr)
 			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": "Failed to transition to input-required state"})
 			sseWriter.SendEvent("state", string(failedStateData))
 			return false, setStateErr // Stop processing
 		}
-		fmt.Printf("[Task %s Stream] Input Required. Waiting for signal...\n", t.ID)
+		fmt.Printf("[Task %s Stream] State set to InputRequired. Waiting for signal...\n", t.ID)
 
 		select {
 		case <-resumeCh:
@@ -235,7 +355,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 			return false, ctx.Err() // Stop processing
 		}
 	} else {
-		// Task Completed Successfully (No Input Required)
+		// Task Completed Successfully (No Input Required and No Tool Calls)
 		log.Printf("[Task %s Stream] LLM streaming completed successfully.\n", t.ID)
 
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
