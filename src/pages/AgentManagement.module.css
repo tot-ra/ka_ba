@@ -3,8 +3,8 @@
 .container {
   padding: 20px;
   font-family: sans-serif;
-  max-width: 1200px; /* Slightly wider */
-  margin: 0 auto;
+  width: 100%; /* Changed to 100% */
+  /* Removed max-width and margin: 0 auto */
 }
 
 .title {
@@ -184,4 +184,23 @@
   font-family: monospace; /* Use monospace font for logs */
   font-size: 0.9em; /* Slightly larger font */
   text-align: left;
+}
+
+/* Split screen layout */
+.splitContainer {
+  display: flex;
+  height: calc(100vh - 50px); /* Adjust height as needed, considering header/footer */
+}
+
+.leftPane {
+  flex: 1; /* Takes 1 part of the available space */
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 20px; /* Add padding */
+  border-right: 1px solid #ccc; /* Separator line */
+}
+
+.rightPane {
+  flex: 2; /* Takes 2 parts of the available space (wider) */
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 20px; /* Add padding */
 }

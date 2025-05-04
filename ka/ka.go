@@ -60,7 +60,13 @@ func main() {
 
 	if *serveFlag {
 		fmt.Println("[main] Starting in server mode...")
-		taskStore, err := a2a.NewFileTaskStore("")
+		taskStoreDir := os.Getenv("TASK_STORE_DIR") // Read environment variable
+		if taskStoreDir == "" {
+			fmt.Println("[main] TASK_STORE_DIR not set, using default task directory.")
+		} else {
+			fmt.Printf("[main] Using task directory from TASK_STORE_DIR: %s\n", taskStoreDir)
+		}
+		taskStore, err := a2a.NewFileTaskStore(taskStoreDir) // Pass the determined directory
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error initializing file task store: %v\n", err)
 			os.Exit(1)

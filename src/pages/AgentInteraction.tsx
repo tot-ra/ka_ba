@@ -6,8 +6,7 @@ import { gql, useSubscription } from '@apollo/client';
 import TaskList from '../components/TaskList';
 import { sendGraphQLRequest } from '../utils/graphqlClient';
 import { Task, Artifact, TaskInputState as TaskInput, InputMessage, InputPart, Message, MessagePart } from '../types';
-import Modal from '../components/Modal';
-import TaskDetailsModalContent from '../components/TaskDetailsModalContent';
+import TaskDetails from '../components/TaskDetails'; // Import TaskDetails directly
 
 const AgentInteraction: React.FC = () => {
   const { selectedAgentId } = useAgent();
@@ -24,8 +23,7 @@ const AgentInteraction: React.FC = () => {
   const [listLoading, setListLoading] = useState<boolean>(false);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const [taskToShowDetails, setTaskToShowDetails] = useState<Task | null>(null);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null); // New state for selected task details
 
   const DELETE_TASK_MUTATION = `
     mutation DeleteTask($agentId: ID!, $taskId: ID!) {
@@ -119,9 +117,9 @@ const AgentInteraction: React.FC = () => {
           }
         });
 
-        if (taskToShowDetails && taskToShowDetails.id === updatedTask.id) {
-            console.log('[AgentInteraction useSubscription] Updating task details modal with new data for task:', updatedTask.id);
-            setTaskToShowDetails(updatedTask);
+        if (selectedTask && selectedTask.id === updatedTask.id) {
+            console.log('[AgentInteraction useSubscription] Updating selected task details with new data for task:', updatedTask.id);
+            setSelectedTask(updatedTask);
         }
       }
     },
@@ -134,14 +132,18 @@ const AgentInteraction: React.FC = () => {
     fetchTasks();
   }, [fetchTasks]);
 
+  const handleSelectTask = (task: Task) => {
+    setSelectedTask(task);
+  };
+
   const handleDeleteTask = async (taskId: string) => {
     if (!selectedAgentId) {
       setError('Cannot delete task: No agent selected.');
       return;
     }
 
-    if (taskToShowDetails && taskToShowDetails.id === taskId) {
-        closeDetailsModal();
+    if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask(null); // Close details if the deleted task was open
     }
 
     console.log(`[AgentInteraction] Attempting to delete task ${taskId} for agent ${selectedAgentId}`);
@@ -178,8 +180,8 @@ const AgentInteraction: React.FC = () => {
       return;
     }
 
-    if (taskToShowDetails && taskToShowDetails.id === taskId) {
-        closeDetailsModal();
+    if (selectedTask && selectedTask.id === taskId) {
+        setSelectedTask(null); // Close details if the duplicated task was open
     }
 
     setIsLoading(true);
@@ -468,87 +470,80 @@ const AgentInteraction: React.FC = () => {
      fontWeight: 'bold',
    };
 
-   const handleViewTaskDetails = (task: Task) => {
-     setTaskToShowDetails(task);
-     setShowDetailsModal(true);
-   };
-
-   const closeDetailsModal = () => {
-     setShowDetailsModal(false);
-     setTaskToShowDetails(null);
-   };
-
   console.log('[AgentInteraction render] Tasks state before passing to TaskList:', tasks);
 
   return (
-    <div style={{ fontFamily: 'sans-serif' }}>
+    <div style={{ fontFamily: 'sans-serif', display: 'flex', height: 'calc(100vh - 50px)' }}> {/* Added flex display and height */}
 
       {selectedAgentId ? (
-        <div>
-          <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
-            <button
-              style={activeTab === 'tasks' ? activeTabStyle : tabStyle}
-              onClick={() => setActiveTab('tasks')}
-            >
-              Tasks
-            </button>
-            <button
-              style={activeTab === 'logs' ? activeTabStyle : tabStyle}
-              onClick={() => setActiveTab('logs')}
-            >
-              Logs
-            </button>
+        <> {/* Use fragment for multiple top-level elements */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '10px', borderRight: '1px solid #ccc' }}> {/* Left Pane */}
+            <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
+              <button
+                style={activeTab === 'tasks' ? activeTabStyle : tabStyle}
+                onClick={() => setActiveTab('tasks')}
+              >
+                Tasks
+              </button>
+              <button
+                style={activeTab === 'logs' ? activeTabStyle : tabStyle}
+                onClick={() => setActiveTab('logs')}
+              >
+                Logs
+              </button>
+            </div>
+
+            <div>
+              {activeTab === 'logs' && (
+                <AgentLogs agentId={selectedAgentId} />
+              )}
+
+              {activeTab === 'tasks' && (
+                <>
+                  <TaskList
+                    agentId={selectedAgentId}
+                    tasks={tasks}
+                    loading={listLoading}
+                    error={listError}
+                    onDeleteTask={handleDeleteTask}
+                    onViewTaskDetails={handleSelectTask} // Changed to handleSelectTask
+                    onDuplicateTask={handleDuplicateTask}
+                  />
+
+                  <TaskInputForm
+                    taskInput={taskInput}
+                    setTaskInput={setTaskInput}
+                    onSendTask={handleSendTask}
+                    onSendInput={handleInputRequired}
+                    isLoading={isLoading}
+                    currentTask={currentTask}
+                  />
+
+                  {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
+
+                </>
+              )}
+            </div>
           </div>
 
-          <div>
-            {activeTab === 'logs' && (
-              <AgentLogs agentId={selectedAgentId} />
-            )}
-
-            {activeTab === 'tasks' && (
-              <>
-                <TaskList
-                  agentId={selectedAgentId}
-                  tasks={tasks}
-                  loading={listLoading}
-                  error={listError}
-                  onDeleteTask={handleDeleteTask}
-                  onViewTaskDetails={handleViewTaskDetails}
-                  onDuplicateTask={handleDuplicateTask}
-                />
-
-                <TaskInputForm
-                  taskInput={taskInput}
-                  setTaskInput={setTaskInput}
-                  onSendTask={handleSendTask}
-                  onSendInput={handleInputRequired}
-                  isLoading={isLoading}
-                  currentTask={currentTask}
-                />
-
-                {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
-
-              </>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}> {/* Right Pane */}
+            {selectedTask ? (
+              <TaskDetails
+                currentTask={selectedTask} // Pass selectedTask
+                streamingOutput={''} // Streaming output is not relevant for historical task details
+                onDuplicateClick={() => {
+                  handleDuplicateTask(selectedAgentId!, selectedTask.id);
+                  setSelectedTask(null); // Close details after duplicating
+                }}
+              />
+            ) : (
+              <p>Select a task from the list to view details.</p>
             )}
           </div>
-       </div>
+        </>
       ) : (
         <p>Please select an agent from the Agent Management page.</p>
       )}
-
-      <Modal
-        isOpen={showDetailsModal}
-        onClose={closeDetailsModal}
-        title={`Task Details: ${taskToShowDetails?.id || ''}`}
-      >
-        <TaskDetailsModalContent
-          taskToShowDetails={taskToShowDetails}
-          onDuplicateClick={() => {
-            handleDuplicateTask(selectedAgentId!, taskToShowDetails!.id);
-            closeDetailsModal();
-          }}
-        />
-      </Modal>
     </div>
   );
 };
