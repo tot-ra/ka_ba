@@ -48,7 +48,7 @@ const TaskInputForm: React.FC<TaskInputFormProps> = ({
 
   return (
     <div style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '15px', borderRadius: '4px' }}>
-      <h3 style={{ marginTop: 0 }}>Submit Task / Provide Input</h3>
+      <h3 style={{ marginTop: 0 }}>New Task</h3>
       <div style={{ marginBottom: '10px' }}>
         <label htmlFor="inputType" style={{ marginRight: '10px' }}>Input Type:</label>
         <select id="inputType" value={taskInput.type} onChange={handleDataTypeChange}>
@@ -93,7 +93,7 @@ const TaskInputForm: React.FC<TaskInputFormProps> = ({
           opacity: isLoading || !taskInput.content ? 0.6 : 1,
         }}
       >
-        {isLoading ? 'Sending...' : (isInputRequired ? 'Submit Input' : 'Submit New Task')} {/* Dynamic label */}
+        {isLoading ? 'Sending...' : (isInputRequired ? 'Submit Input' : 'Create')} {/* Dynamic label */}
       </button>
       {/* Removed the separate conditional button */}
     </div>
