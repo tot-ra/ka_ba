@@ -189,18 +189,38 @@
 /* Split screen layout */
 .splitContainer {
   display: flex;
-  height: calc(100vh - 50px); /* Adjust height as needed, considering header/footer */
+  flex-direction: column; /* Stack columns by default (mobile) */
+  height: auto; /* Auto height for stacking */
+  min-height: calc(100vh - 50px); /* Ensure minimum height */
 }
 
 .leftPane {
-  flex: 1; /* Takes 1 part of the available space */
   overflow-y: auto; /* Add scroll if content overflows */
   padding: 20px; /* Add padding */
-  border-right: 1px solid #ccc; /* Separator line */
+  border-right: none; /* No border on mobile */
+  border-bottom: 1px solid #ccc; /* Add bottom border on mobile */
 }
 
 .rightPane {
-  flex: 2; /* Takes 2 parts of the available space (wider) */
   overflow-y: auto; /* Add scroll if content overflows */
   padding: 20px; /* Add padding */
+}
+
+/* Desktop layout */
+@media (min-width: 1200px) { /* Adjust breakpoint as needed */
+  .splitContainer {
+    flex-direction: row; /* Arrange columns in a row */
+    height: calc(100vh - 50px); /* Fixed height for desktop */
+    min-height: 0; /* Reset min-height */
+  }
+
+  .leftPane {
+    flex: 0 0 400px; /* Fixed width for left pane */
+    border-right: 1px solid #ccc; /* Separator line */
+    border-bottom: none; /* No bottom border on desktop */
+  }
+
+  .rightPane {
+    flex: 1; /* Right pane takes remaining space */
+  }
 }

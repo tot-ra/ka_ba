@@ -80,40 +80,40 @@ const AgentManagement: React.FC = () => {
         <div className={styles.agentListContainer}>
           <ul className={styles.agentList}>
             {agents.map(agent => (
-                    <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
-                      <div className={styles.agentInfo}>
-                        <input
-                          type="radio"
-                          id={`agent-${agent.id}`}
-                          name="selectedAgent"
-                          value={agent.id}
-                          checked={selectedAgentId === agent.id}
-                          onChange={() => handleSelectAgent(agent.id)}
-                          className={styles.agentRadio}
-                        />
-                        <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
-                          <div className={styles.agentNameContainer}>
-                            <a href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer" className={styles.agentNameLink}>
-                              {agent.name || 'Unnamed Agent'}
-                            </a>
-                            <span className={styles.agentUrl}>({agent.url})</span> {/* Display URL */}
-                            {agent.isLocal && agent.pid && <span className={styles.agentPid}> (PID: {agent.pid})</span>} {/* Display PID */}
-                          </div>
-                          {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
-                        </label>
+                <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
+                  <div className={styles.agentInfo}>
+                    <input
+                      type="radio"
+                      id={`agent-${agent.id}`}
+                      name="selectedAgent"
+                      value={agent.id}
+                      checked={selectedAgentId === agent.id}
+                      onChange={() => handleSelectAgent(agent.id)}
+                      className={styles.agentRadio}
+                    />
+                    <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
+                      <div className={styles.agentNameContainer}>
+                        <a href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer" className={styles.agentNameLink}>
+                          {agent.name || 'Unnamed Agent'}
+                        </a>
+                        <span className={styles.agentUrl}>({agent.url})</span> {/* Display URL */}
+                        {agent.isLocal && agent.pid && <span className={styles.agentPid}> (PID: {agent.pid})</span>} {/* Display PID */}
                       </div>
-                      {/* Show stop button only for locally spawned agents */}
-                      {agent.isLocal && (
-                        <button
-                          onClick={() => handleStopAgent(agent.id)}
-                          className={styles.buttonDanger}
-                        >
-                          Stop
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                      {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
+                    </label>
+                  </div>
+                  {/* Show stop button only for locally spawned agents */}
+                  {agent.isLocal && (
+                    <button
+                      onClick={() => handleStopAgent(agent.id)}
+                      className={styles.buttonDanger}
+                    >
+                      Stop
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
         </div>
       </div>
 

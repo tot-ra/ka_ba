@@ -7,6 +7,7 @@ import TaskList from '../components/TaskList';
 import { sendGraphQLRequest } from '../utils/graphqlClient';
 import { Task, Artifact, TaskInputState as TaskInput, InputMessage, InputPart, Message, MessagePart } from '../types';
 import TaskDetails from '../components/TaskDetails'; // Import TaskDetails directly
+import styles from './AgentInteraction.module.css'; // Import the CSS module
 
 const AgentInteraction: React.FC = () => {
   const { selectedAgentId } = useAgent();
@@ -473,11 +474,11 @@ const AgentInteraction: React.FC = () => {
   console.log('[AgentInteraction render] Tasks state before passing to TaskList:', tasks);
 
   return (
-    <div style={{ fontFamily: 'sans-serif', display: 'flex', height: 'calc(100vh - 50px)' }}> {/* Added flex display and height */}
+    <div className={styles.splitContainer}> {/* Apply splitContainer class */}
 
       {selectedAgentId ? (
         <> {/* Use fragment for multiple top-level elements */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '10px', borderRight: '1px solid #ccc' }}> {/* Left Pane */}
+          <div className={styles.leftPane}> {/* Apply leftPane class */}
             <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
               <button
                 style={activeTab === 'tasks' ? activeTabStyle : tabStyle}
@@ -526,7 +527,7 @@ const AgentInteraction: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}> {/* Right Pane */}
+          <div className={styles.rightPane}> {/* Apply rightPane class */}
             {selectedTask ? (
               <TaskDetails
                 currentTask={selectedTask} // Pass selectedTask

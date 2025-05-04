@@ -1,0 +1,36 @@
+/* Styles for AgentInteraction page split layout */
+
+.splitContainer {
+  display: flex;
+  flex-direction: column; /* Stack columns by default (mobile) */
+  height: auto; /* Auto height for stacking */
+  min-height: calc(100vh - 50px); /* Ensure minimum height */
+}
+
+.leftPane {
+  flex: 1; /* Takes 1 part of the available space */
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 10px; /* Add padding */
+  border-right: none; /* No border on mobile */
+  border-bottom: 1px solid #ccc; /* Add bottom border on mobile */
+}
+
+.rightPane {
+  flex: 1; /* Takes 1 part of the available space */
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 10px; /* Add padding */
+}
+
+/* Desktop layout */
+@media (min-width: 768px) { /* Adjust breakpoint as needed */
+  .splitContainer {
+    flex-direction: row; /* Arrange columns in a row */
+    height: calc(100vh - 50px); /* Fixed height for desktop */
+    min-height: 0; /* Reset min-height */
+  }
+
+  .leftPane {
+    border-right: 1px solid #ccc; /* Separator line */
+    border-bottom: none; /* No bottom border on desktop */
+  }
+}
