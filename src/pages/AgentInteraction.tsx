@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAgent } from '../contexts/AgentContext';
 import AgentLogs from '../components/AgentLogs';
 import TaskInputForm from '../components/TaskInputForm';
-import { gql, useSubscription } from '@apollo/client';
+import { useSubscription } from '@apollo/client';
+import { DELETE_TASK_MUTATION, TASK_UPDATES_SUBSCRIPTION, LIST_TASKS_QUERY, CREATE_TASK_MUTATION } from '../graphql/agentTaskQueries';
 import TaskList from '../components/TaskList';
 import { sendGraphQLRequest } from '../utils/graphqlClient';
 import { Task, Artifact, TaskInputState as TaskInput, InputMessage, InputPart, Message, MessagePart } from '../types';
@@ -14,7 +15,6 @@ const AgentInteraction: React.FC = () => {
 
   const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' });
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
-  const [streamingOutput, setStreamingOutput] = useState('');
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,27 +25,8 @@ const AgentInteraction: React.FC = () => {
   const [listError, setListError] = useState<string | null>(null);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null); // New state for selected task details
+  const [streamingOutput, setStreamingOutput] = useState<string>(''); // State for streaming output
 
-  const DELETE_TASK_MUTATION = `
-    mutation DeleteTask($agentId: ID!, $taskId: ID!) {
-      deleteTask(agentId: $agentId, taskId: $taskId)
-    }
-  `;
-
-  const TASK_UPDATES_SUBSCRIPTION = gql`
-    subscription TaskUpdates($agentId: ID!) {
-      taskUpdates(agentId: $agentId) {
-        id
-        state
-        input { role parts }
-        output { role parts }
-        error
-        createdAt
-        updatedAt
-        artifacts
-      }
-    }
-  `;
 
   const fetchTasks = useCallback(async () => {
     if (!selectedAgentId) {
@@ -57,24 +38,7 @@ const AgentInteraction: React.FC = () => {
     setListError(null);
     console.log(`[AgentInteraction] Fetching tasks for agent: ${selectedAgentId}`);
     try {
-      const graphqlQuery = {
-        query: `
-          query ListTasks($agentId: ID!) {
-            listTasks(agentId: $agentId) {
-              id
-              state
-              input { role parts }
-              output { role parts }
-              error
-              createdAt
-              updatedAt
-              artifacts
-            }
-          }
-        `,
-        variables: { agentId: selectedAgentId },
-      };
-      const response = await sendGraphQLRequest<{ listTasks: Task[] }>(graphqlQuery.query, graphqlQuery.variables);
+      const response = await sendGraphQLRequest<{ listTasks: Task[] }>(LIST_TASKS_QUERY.loc!.source.body, { agentId: selectedAgentId });
 
       if (response.errors) {
         console.error("[AgentInteraction] GraphQL errors fetching list:", response.errors);
@@ -121,6 +85,17 @@ const AgentInteraction: React.FC = () => {
         if (selectedTask && selectedTask.id === updatedTask.id) {
             console.log('[AgentInteraction useSubscription] Updating selected task details with new data for task:', updatedTask.id);
             setSelectedTask(updatedTask);
+            console.log('[AgentInteraction useSubscription] Updated selected task output:', updatedTask.output);
+            // Assuming streaming output comes in parts and needs to be appended
+            if (updatedTask.output && updatedTask.output.length > 0) {
+                const latestOutput = updatedTask.output[updatedTask.output.length - 1];
+                if (latestOutput.parts && latestOutput.parts.length > 0) {
+                    const latestPart = latestOutput.parts[latestOutput.parts.length - 1];
+                    if (latestPart.type === 'text' && latestPart.text) {
+                        setStreamingOutput(prev => prev + latestPart.text);
+                    }
+                }
+            }
         }
       }
     },
@@ -153,7 +128,7 @@ const AgentInteraction: React.FC = () => {
 
     try {
       const variables = { agentId: selectedAgentId, taskId };
-      const response = await sendGraphQLRequest<{ deleteTask: boolean }>(DELETE_TASK_MUTATION, variables);
+      const response = await sendGraphQLRequest<{ deleteTask: boolean }>(DELETE_TASK_MUTATION.loc!.source.body, variables);
 
       if (response.errors) {
         console.error(`[AgentInteraction] GraphQL errors deleting task ${taskId}:`, response.errors);
@@ -238,21 +213,6 @@ const AgentInteraction: React.FC = () => {
         metadata: originalMessage.metadata,
       };
 
-      const mutation = `
-        mutation CreateTask($agentId: ID, $message: InputMessage!) {
-          createTask(agentId: $agentId, message: $message) {
-            id
-            state
-            input { role parts toolCalls toolCallId }
-            output { role parts toolCalls toolCallId }
-            error
-            createdAt
-            updatedAt
-            artifacts
-          }
-        }
-      `;
-
       const variables = {
         agentId: agentId,
         message: newMessage,
@@ -260,7 +220,7 @@ const AgentInteraction: React.FC = () => {
 
       console.log(`[AgentInteraction] Creating new task by duplicating task ${taskId} with message:`, newMessage);
 
-      const response = await sendGraphQLRequest<{ createTask: Task }>(mutation, variables);
+      const response = await sendGraphQLRequest<{ createTask: Task }>(CREATE_TASK_MUTATION.loc!.source.body, variables);
 
       if (response.errors) {
         console.error(`[AgentInteraction] GraphQL errors creating duplicated task from ${taskId}:`, response.errors);
@@ -290,24 +250,8 @@ const AgentInteraction: React.FC = () => {
 
     setIsLoading(true);
     setError(null);
-    setStreamingOutput('');
     setArtifacts([]);
     setCurrentTask(null);
-
-    const mutation = `
-      mutation CreateTask($agentId: ID, $message: InputMessage!) {
-        createTask(agentId: $agentId, message: $message) {
-          id
-          state
-          input { role parts toolCalls toolCallId }
-          output { role parts toolCalls toolCallId }
-          error
-          createdAt
-          updatedAt
-          artifacts
-        }
-      }
-    `;
 
     let parts: InputPart[] = [];
     try {
@@ -357,7 +301,7 @@ const AgentInteraction: React.FC = () => {
     };
 
     try {
-      const response = await sendGraphQLRequest<{ createTask: Task }>(mutation, variables);
+      const response = await sendGraphQLRequest<{ createTask: Task }>(CREATE_TASK_MUTATION.loc!.source.body, variables);
 
       if (response.errors) {
         console.error('GraphQL errors:', response.errors);
@@ -531,7 +475,7 @@ const AgentInteraction: React.FC = () => {
             {selectedTask ? (
               <TaskDetails
                 currentTask={selectedTask} // Pass selectedTask
-                streamingOutput={''} // Streaming output is not relevant for historical task details
+                streamingOutput={streamingOutput} // Pass streamingOutput state
                 onDuplicateClick={() => {
                   handleDuplicateTask(selectedAgentId!, selectedTask.id);
                   setSelectedTask(null); // Close details after duplicating
