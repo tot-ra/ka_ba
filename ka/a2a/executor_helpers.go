@@ -145,11 +145,7 @@ func buildPromptFromInput(taskID string, inputMessages []Message, agentSystemMes
 		// Include messages from User, Assistant, and Tool roles (System already handled)
 		if msg.Role == RoleUser || msg.Role == RoleAssistant || msg.Role == RoleTool {
 			var messageContentBuilder strings.Builder
-			// For Assistant messages with tool_calls, include the tool_calls JSON
-			if msg.Role == RoleAssistant && len(msg.ToolCalls) > 0 {
-				messageContentBuilder.WriteString(fmt.Sprintf("[TOOL_CALLS]: %s\n", string(msg.ToolCalls)))
-				contentFound = true // Tool calls contribute to content
-			}
+			// Tool calls are now handled by parsing XML in executor_llm.go, not included directly in the prompt here.
 
 			// Include parts for all relevant roles
 			for _, part := range msg.Parts {

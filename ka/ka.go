@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"ka/a2a"
 	"ka/llm"
+	"log" // Manually added back
 	"os"
 	"strconv" // Added for port conversion
 	"strings" // Added for API key splitting
@@ -14,7 +15,6 @@ import (
 
 const (
 	model                   = "qwen3-30b-a3b"
-	systemMessage           = "Think step by step and provide clear instructions to the user."
 	apiURL                  = "http://localhost:1234/v1/chat/completions"
 	defaultMaxContextLength = 2048
 )
@@ -56,13 +56,46 @@ func main() {
 
 	// Removed describeFlag logic
 
-	// Determine the system message: prioritize flag, then hardcoded default
-	actualSystemMessage := systemMessage // Start with hardcoded default
+	// Get the current working directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		log.Printf("[main] Error getting current working directory: %v", err)
+		currentDir = "unknown" // Fallback
+	}
+
+	// Construct the default system message including the current directory and tool instructions
+	defaultSystemMessage := fmt.Sprintf(`
+You are a helpful AI agent.
+Your current working directory is: %s
+
+You have access to the following tools:
+- list_files: Lists files and directories in a specified path.
+  Arguments:
+    - path (string, required): The path to list.
+    - recursive (boolean, optional): Whether to list recursively.
+
+When you need to use a tool, output an XML block like this:
+<tool_code>
+  <tool_call id="call_abc" type="function">
+    <function>
+      <name>list_files</name>
+      <arguments>
+        {"path": ".", "recursive": false}
+      </arguments>
+    </function>
+  </tool_call>
+</tool_code>
+
+Think step by step and provide clear instructions to the user or use tools when necessary.
+`, currentDir)
+
+	// Determine the system message: prioritize flag, then the new default
+	actualSystemMessage := defaultSystemMessage // Start with the new default
 	if *systemPromptFlag != "" {
 		actualSystemMessage = *systemPromptFlag // Use flag if provided
 		fmt.Printf("[main] Using system message from --system-prompt flag: '%s'\n", actualSystemMessage)
 	} else {
-		fmt.Printf("[main] Using default hardcoded system message: '%s'\n", actualSystemMessage)
+		fmt.Printf("[main] Using default system message:\n%s\n", actualSystemMessage)
 	}
 
 	// Pass system message and other config to the client constructor

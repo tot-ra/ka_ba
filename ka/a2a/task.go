@@ -1,11 +1,12 @@
 package a2a
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
+	"encoding/json" // Manually added back
+	"encoding/xml" // Import the XML package
+	"errors" // Manually added back
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -63,85 +64,66 @@ func (dp DataPart) GetType() string { return "data" }
 type Message struct {
 	Role  MessageRole `json:"role"`
 	Parts []Part      `json:"parts"`
-	// ToolCalls represents a list of tool calls made by the assistant.
-	// The exact structure needs to be defined based on the A2A spec.
-	ToolCalls json.RawMessage `json:"tool_calls,omitempty"` // Placeholder for tool calls structure
+	// RawToolCallsXML stores the raw XML string containing tool calls extracted from the LLM response.
+	RawToolCallsXML string `json:"-"` // Ignore this field during standard JSON marshalling
+	// ParsedToolCalls is populated after parsing RawToolCallsXML.
+	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
 	// ToolCallID is used in a tool message to indicate which tool call this message is a response to.
 	ToolCallID string `json:"tool_call_id,omitempty"`
-	// ParsedToolCalls is populated during UnmarshalJSON if Role is RoleAssistant and ToolCalls is present.
-	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
 }
 
-// ToolCall represents a single tool call within the tool_calls array from an assistant message.
+// ToolCall represents a single tool call parsed from the XML structure.
 type ToolCall struct {
-	ID       string       `json:"id"`
-	Type     string       `json:"type"` // e.g., "function"
-	Function FunctionCall `json:"function"`
+	ID       string       `xml:"id,attr"`   // Tool call ID from XML attribute
+	Type     string       `xml:"type,attr"` // Tool type from XML attribute (e.g., "function")
+	Function FunctionCall `xml:"function"`
 }
 
-// FunctionCall represents the details of a function tool call.
+// FunctionCall represents the details of a function tool call parsed from XML.
 type FunctionCall struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"` // JSON string of arguments
+	Name      string `xml:"name"`      // Function name from XML element
+	Arguments string `xml:"arguments"` // Arguments as a string from XML element
 }
 
 // MarshalJSON implements the json.Marshaler interface for Message.
 // This handles the serialization of the Part interface slice correctly.
 func (m Message) MarshalJSON() ([]byte, error) {
-	// Use an alias type to avoid recursion
 	type MessageAlias Message
-	// Define a temporary struct for marshalling, replacing Parts with []interface{}
-	// or handling each part type explicitly. Let's use []interface{} for simplicity,
-	// as json.Marshal can handle concrete types within an interface{} slice.
 	tmp := struct {
 		MessageAlias
-		Parts []interface{} `json:"parts"` // Use interface{} slice
+		Parts []interface{} `json:"parts"`
 	}{
 		MessageAlias: MessageAlias(m),
 		Parts:        make([]interface{}, len(m.Parts)),
 	}
 
-	// Copy concrete parts into the interface{} slice
 	for i, part := range m.Parts {
-		tmp.Parts[i] = part // json.Marshal will handle the concrete types
+		tmp.Parts[i] = part
 	}
 
 	return json.Marshal(tmp)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for Message.
-// This handles the deserialization of the Part interface slice and attempts to parse ToolCalls.
+// This handles the deserialization of the Part interface slice.
+// XML tool call parsing will happen separately after the full LLM response is received.
 func (m *Message) UnmarshalJSON(data []byte) error {
 	type MessageAlias Message
 
 	tmp := struct {
 		MessageAlias
 		Parts      []json.RawMessage `json:"parts"`
-		ToolCalls  json.RawMessage   `json:"tool_calls,omitempty"`   // Include for unmarshalling
-		ToolCallID string            `json:"tool_call_id,omitempty"` // Include for unmarshalling
+		ToolCallID string            `json:"tool_call_id,omitempty"`
 	}{}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return fmt.Errorf("failed to unmarshal message base structure: %w", err)
 	}
 
-	// Assign fields from the temporary struct, including new ones
 	m.Role = tmp.Role
-	m.Parts = make([]Part, 0, len(tmp.Parts)) // Parts will be unmarshaled below
-	m.ToolCalls = tmp.ToolCalls
+	m.Parts = make([]Part, 0, len(tmp.Parts))
 	m.ToolCallID = tmp.ToolCallID
-
-	// Attempt to unmarshal ToolCalls if the role is Assistant and ToolCalls is not empty
-	if m.Role == RoleAssistant && len(m.ToolCalls) > 0 && !bytes.Equal(m.ToolCalls, []byte("null")) {
-		var parsedCalls []ToolCall
-		if err := json.Unmarshal(m.ToolCalls, &parsedCalls); err != nil {
-			// Log a warning but don't fail unmarshalling the whole message
-			log.Printf("Warning: Failed to unmarshal ToolCalls for task message (Role: %s): %v. Raw ToolCalls: %s", m.Role, err, string(m.ToolCalls))
-			// Keep m.ParsedToolCalls as nil or empty slice
-		} else {
-			m.ParsedToolCalls = parsedCalls
-		}
-	}
+	// RawToolCallsXML and ParsedToolCalls are not unmarshalled from the standard JSON message
 
 	for i, rawPart := range tmp.Parts {
 		var typeMap map[string]interface{}
@@ -184,6 +166,36 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 		m.Parts = append(m.Parts, part)
 	}
 
+	return nil
+}
+
+// ParseToolCallsFromXML attempts to find and parse tool calls from the RawToolCallsXML field.
+func (m *Message) ParseToolCallsFromXML() error {
+	if m.Role != RoleAssistant || m.RawToolCallsXML == "" {
+		m.ParsedToolCalls = nil // Ensure it's nil if not an assistant message or no XML
+		return nil
+	}
+
+	// Define the structure to unmarshal the XML into
+	type ToolCallsXML struct {
+		XMLName   xml.Name   `xml:"tool_code"` // Expecting a root tag like <tool_code>
+		ToolCalls []ToolCall `xml:"tool_call"` // Expecting multiple <tool_call> tags
+	}
+
+	var toolCallsXML ToolCallsXML
+	// Use a decoder with Strict set to false to ignore unknown fields and allow comments
+	decoder := xml.NewDecoder(strings.NewReader(m.RawToolCallsXML))
+	decoder.Strict = false
+
+	if err := decoder.Decode(&toolCallsXML); err != nil {
+		// Log the error but don't necessarily fail the whole task, just this parsing step
+		log.Printf("Warning: Failed to parse XML tool calls for task message: %v. Raw XML: %s", err, m.RawToolCallsXML)
+		m.ParsedToolCalls = nil // Ensure it's nil on parsing failure
+		return fmt.Errorf("failed to parse XML tool calls: %w", err)
+	}
+
+	m.ParsedToolCalls = toolCallsXML.ToolCalls
+	log.Printf("Successfully parsed %d tool calls from XML.", len(m.ParsedToolCalls))
 	return nil
 }
 
