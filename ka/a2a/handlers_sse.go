@@ -213,7 +213,8 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		log.Printf("[TaskSendSubscribe] Received valid input message. Validation successful.")
 
 		// Create task using the single message, wrapped in a slice for CreateTask
-		task, err := taskExecutor.TaskStore.CreateTask([]Message{params.Message})
+		// Pass the current system prompt from the LLMClient to CreateTask
+		task, err := taskExecutor.TaskStore.CreateTask(taskExecutor.LLMClient.SystemMessage, []Message{params.Message})
 		if err != nil {
 			log.Printf("[TaskSendSubscribe] Error creating task: %v", err)
 			http.Error(w, "Internal Server Error: Failed to create task", http.StatusInternalServerError)
@@ -235,7 +236,7 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		sseWriter.SendEvent("state", string(initialStateData)) // Send initial state
 
 		// Delegate the rest of the streaming to the executor
-		taskExecutor.ExecuteTaskStream(task, r.Context(), sseWriter)
+		taskExecutor.ExecuteTaskStream(r.Context(), task, sseWriter) // Pass context, task, and writer
 
 		log.Printf("[Task %s] sendSubscribe handler finished, streaming delegated to executor.\n", taskID)
 		// The response is kept open by ExecuteTaskStream

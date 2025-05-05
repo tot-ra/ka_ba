@@ -8,8 +8,11 @@ import (
 	"log"
 	"net/http"
 	"strings" // Added for string manipulation
+	"os" // Added for os.Getwd
 
 	"ka/a2a" // Keep one a2a import
+	"ka/llm" // Import llm package
+	"ka/tools" // Added for tools.ComposeSystemPrompt and tools.Tool
 
 	"github.com/golang-jwt/jwt/v5" // Keep one jwt import
 )
@@ -145,8 +148,18 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 }
 
 // startHTTPServer sets up and starts the HTTP server for the agent.
-// It now accepts the TaskExecutor directly.
-func startHTTPServer(taskExecutor *a2a.TaskExecutor, port int, agentName, agentDescription, agentModel, jwtSecretString string, apiKeys []string) {
+// It now accepts the TaskExecutor, the LLMClient, and the map of available tools.
+func startHTTPServer(
+		taskExecutor *a2a.TaskExecutor, 
+		llmClient *llm.LLMClient, 
+		port int, 
+		agentName, 
+		agentDescription, 
+		agentModel, 
+		jwtSecretString string, 
+		apiKeys []string, 
+		availableTools map[string]tools.Tool,
+	) {
 	// --- Process Auth Configuration ---
 	jwtAuthEnabled := jwtSecretString != ""
 	apiKeyAuthEnabled := len(apiKeys) > 0
@@ -365,13 +378,128 @@ func startHTTPServer(taskExecutor *a2a.TaskExecutor, port int, agentName, agentD
 		}
 	}
 
+	// --- Handlers for new endpoints ---
+
+	// toolsHandler lists available tools
+	toolsHandler := func(availableTools map[string]tools.Tool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+
+			// Prepare a list of tool definitions suitable for JSON output
+			type ToolDefinition struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}
+			var toolList []ToolDefinition
+			for _, tool := range availableTools {
+				toolList = append(toolList, ToolDefinition{
+					Name:        tool.GetName(),
+					Description: tool.GetDescription(),
+				})
+			}
+
+			// ADDED: Log the toolList before encoding
+			log.Printf("[toolsHandler] Tool list before encoding: %+v", toolList)
+
+			encoder := json.NewEncoder(w)
+			encoder.SetIndent("", "  ") // Optional: make output readable for debugging
+
+			if err := encoder.Encode(toolList); err != nil {
+				// ADDED: Log the encoding error explicitly
+				log.Printf("[toolsHandler] Error encoding tools list: %v", err)
+				http.Error(w, "Internal server error during tool list encoding", http.StatusInternalServerError)
+				return // Ensure we stop processing after sending error
+			}
+
+			// ADDED: Log successful encoding
+			log.Printf("[toolsHandler] Successfully encoded and sent tool list.")
+		}
+	}
+
+	// updateSystemPromptHandler updates the agent's system prompt
+	updateSystemPromptHandler := func(llmClient *llm.LLMClient) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPut && r.Method != http.MethodPost {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+
+			var requestBody struct {
+				SystemPrompt string `json:"systemPrompt"`
+			}
+
+			if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+				log.Printf("Error decoding system prompt update request body: %v", err)
+				http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+				return
+			}
+
+			if requestBody.SystemPrompt == "" {
+				http.Error(w, "SystemPrompt field is required in the request body", http.StatusBadRequest)
+				return
+			}
+
+			llmClient.UpdateSystemMessage(requestBody.SystemPrompt) // Call the new method on LLMClient
+			log.Printf("System prompt updated successfully.")
+
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": "System prompt updated"})
+		}
+	}
+
+	// composePromptHandler composes the system prompt based on selected tools
+	composePromptHandler := func(availableTools map[string]tools.Tool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+
+			var selectedToolNames []string
+			if err := json.NewDecoder(r.Body).Decode(&selectedToolNames); err != nil {
+				log.Printf("Error decoding selected tool names: %v", err)
+				writeJSONRPCError(w, nil, jsonRPCInvalidParamsCode, "Invalid Request Body", "Expected JSON array of tool names")
+				return
+			}
+
+			// Get the current working directory for the prompt
+			currentDir, err := os.Getwd()
+			if err != nil {
+				log.Printf("Error getting current working directory for prompt composition: %v", err)
+				currentDir = "unknown" // Fallback
+			}
+
+			composedPrompt := tools.ComposeSystemPrompt(selectedToolNames, availableTools, currentDir)
+
+			// Return the composed prompt as a JSON string
+			response := map[string]string{"systemPrompt": composedPrompt}
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				log.Printf("Error encoding composed prompt response: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
+		}
+	}
+
 	// --- Route Setup ---
 
 	// Public endpoints remain the same
 	http.HandleFunc("/.well-known/agent.json", agentCardHandler(dynamicAgentCard))
 	http.HandleFunc("/health", healthHandler)
 
-	// Root handler for all JSON-RPC requests
+	// New endpoints for tool management, prompt composition, and prompt update
+	// Register these specific paths BEFORE the root handler
+	http.HandleFunc("/tools", toolsHandler(availableTools))
+	http.HandleFunc("/compose-prompt", composePromptHandler(availableTools))
+	http.HandleFunc("/system-prompt", updateSystemPromptHandler(llmClient)) // Register the new handler
+
+
+	// Root handler for all JSON-RPC requests (should be registered last)
 	http.HandleFunc("/", jsonRPCHandler(
 		taskExecutor.TaskStore, // Pass taskStore from executor
 		taskExecutor,
@@ -386,6 +514,6 @@ func startHTTPServer(taskExecutor *a2a.TaskExecutor, port int, agentName, agentD
 	// --- Start Server ---
 	listenAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("[http] Agent server running at http://localhost:%d/\n", port)
-	fmt.Println("[http] Registered Handlers: /, /.well-known/agent.json, /health") // Updated log message
+	fmt.Println("[http] Registered Handlers: /.well-known/agent.json, /health, /tools, /compose-prompt, /system-prompt, /") // Updated log message order
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }

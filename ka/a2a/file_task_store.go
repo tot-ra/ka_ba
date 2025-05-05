@@ -77,21 +77,22 @@ func (fts *FileTaskStore) loadTask(taskID string) (*Task, error) {
 	return &task, nil
 }
 
-func (fts *FileTaskStore) CreateTask(initialMessages []Message) (*Task, error) {
+func (fts *FileTaskStore) CreateTask(systemPrompt string, initialMessages []Message) (*Task, error) {
 	fts.mu.Lock()
 	defer fts.mu.Unlock()
 
 	taskID := uuid.NewString()
 	now := time.Now().UTC()
 	task := &Task{
-		ID:        taskID,
-		State:     TaskStateSubmitted,
-		Input:     initialMessages,
-		Output:    []Message{},
-		Artifacts: make(map[string]*Artifact),
-		CreatedAt: now,
-		UpdatedAt: now, // Added missing comma here
-	} // Close the struct literal here
+		ID:           taskID,
+		State:        TaskStateSubmitted,
+		SystemPrompt: systemPrompt, // Store the provided system prompt
+		Input:        initialMessages,
+		Output:       []Message{},
+		Artifacts:    make(map[string]*Artifact),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
 
 	log.Printf("[FileTaskStore CreateTask] Attempting to save task %s...", taskID) // Added log
 	err := fts.saveTask(task)

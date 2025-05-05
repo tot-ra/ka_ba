@@ -111,6 +111,7 @@ export interface TaskSendParams { // Export TaskSendParams
   // Adjusting the client or the usage might be needed later.
   id?: string; // Making ID optional for now, assuming agent generates it if missing.
   sessionId?: string;
+  systemPrompt?: string; // Added systemPrompt field
   message: Message;
   pushNotification?: any; // TODO: Define PushNotificationConfig interface
   historyLength?: number;

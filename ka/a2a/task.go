@@ -207,14 +207,15 @@ type Artifact struct {
 }
 
 type Task struct {
-	ID        string               `json:"id"`
-	State     TaskState            `json:"state"`
-	Input     []Message            `json:"input,omitempty"`
-	Output    []Message            `json:"output,omitempty"`
-	Error     string               `json:"error,omitempty"`
-	CreatedAt time.Time            `json:"created_at"`
-	UpdatedAt time.Time            `json:"updated_at"`
-	Artifacts map[string]*Artifact `json:"artifacts,omitempty"`
+	ID           string               `json:"id"`
+	State        TaskState            `json:"state"`
+	SystemPrompt string               `json:"system_prompt,omitempty"` // Added SystemPrompt field
+	Input        []Message            `json:"input,omitempty"`
+	Output       []Message            `json:"output,omitempty"`
+	Error        string               `json:"error,omitempty"`
+	CreatedAt    time.Time            `json:"created_at"`
+	UpdatedAt    time.Time            `json:"updated_at"`
+	Artifacts    map[string]*Artifact `json:"artifacts,omitempty"`
 }
 
 type InMemoryTaskStore struct {
@@ -226,7 +227,7 @@ func NewInMemoryTaskStore() *InMemoryTaskStore {
 	return &InMemoryTaskStore{tasks: make(map[string]*Task)}
 }
 
-func (s *InMemoryTaskStore) CreateTask(inputMessages []Message) (*Task, error) {
+func (s *InMemoryTaskStore) CreateTask(systemPrompt string, inputMessages []Message) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -234,12 +235,13 @@ func (s *InMemoryTaskStore) CreateTask(inputMessages []Message) (*Task, error) {
 	now := time.Now()
 
 	task := &Task{
-		ID:        id,
-		State:     TaskStateSubmitted,
-		Input:     inputMessages,
-		CreatedAt: now,
-		UpdatedAt: now,
-		Artifacts: make(map[string]*Artifact),
+		ID:           id,
+		State:        TaskStateSubmitted,
+		SystemPrompt: systemPrompt, // Store the provided system prompt
+		Input:        inputMessages,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		Artifacts:    make(map[string]*Artifact),
 	}
 	s.tasks[id] = task
 	fmt.Printf("[TaskStore] Created Task: %s\n", id)
@@ -354,7 +356,7 @@ func (s *InMemoryTaskStore) DeleteTask(taskID string) error {
 }
 
 type TaskStore interface {
-	CreateTask(inputMessages []Message) (*Task, error)
+	CreateTask(systemPrompt string, inputMessages []Message) (*Task, error) // Updated signature
 	GetTask(taskID string) (*Task, error)
 	UpdateTask(taskID string, updateFn func(*Task) error) (*Task, error)
 	SetState(taskID string, state TaskState) error

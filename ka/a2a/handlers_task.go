@@ -146,7 +146,8 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		// TODO: Refactor CreateTask to accept a single Message or adjust here.
 		// Assuming CreateTask needs []Message for now:
 		inputMessages := []Message{params.Message}
-		task, err := taskExecutor.TaskStore.CreateTask(inputMessages)
+		// Pass the current system prompt from the LLMClient to CreateTask
+		task, err := taskExecutor.TaskStore.CreateTask(taskExecutor.LLMClient.SystemMessage, inputMessages)
 		if err != nil {
 			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})
@@ -155,7 +156,7 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		// Start task execution asynchronously using a background context
 		// so it's not cancelled when the initial HTTP request closes.
-		go taskExecutor.ExecuteTask(task, context.Background()) // Use background context
+		go taskExecutor.ExecuteTask(context.Background(), task) // Use background context and pass task
 
 		log.Printf("[TaskSend %v] Task %s created and execution started.", rpcReq.ID, task.ID)
 

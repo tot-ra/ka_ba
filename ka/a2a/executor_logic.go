@@ -5,7 +5,152 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 )
+
+// ExecuteTask runs a task to completion, handling LLM calls and tool execution.
+// It does NOT stream output.
+func (te *TaskExecutor) ExecuteTask(ctx context.Context, t *Task) {
+	log.Printf("[Task %s] Starting execution.", t.ID)
+	defer log.Printf("[Task %s] Execution finished.", t.ID)
+
+	// Ensure task state is Working
+	if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
+		log.Printf("[Task %s] Failed to set state to Working: %v", t.ID, err)
+		// Attempt to set state to Failed if we can't set to Working
+		te.TaskStore.SetState(t.ID, TaskStateFailed)
+		return // Stop execution if initial state cannot be set
+	}
+
+	// Get or create the resume channel for this task
+	resumeCh := te.getOrCreateResumeChannel(t.ID)
+	defer te.deleteResumeChannel(t.ID) // Clean up the channel when execution finishes
+
+	// Main task execution loop
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[Task %s] Context cancelled. Stopping execution.", t.ID)
+			te.TaskStore.SetState(t.ID, TaskStateCanceled)
+			return // Exit the goroutine
+		default:
+			// Continue execution
+		}
+
+		// Process one iteration of the task logic
+		continueLoop, err := te.processTaskIteration(ctx, t, resumeCh)
+		if err != nil {
+			log.Printf("[Task %s] Iteration error: %v. Stopping execution.", t.ID, err)
+			// State should already be Failed if processTaskIteration returned an error
+			return // Exit the goroutine on error
+		}
+		if !continueLoop {
+			log.Printf("[Task %s] Iteration finished, no more steps required. Stopping execution.", t.ID)
+			// State should already be Completed or InputRequired or Failed
+			return // Exit the goroutine if no more steps are needed
+		}
+		// If continueLoop is true, the state should have been set back to Working
+		// or InputRequired within processTaskIteration.
+	}
+}
+
+// ExecuteTaskStream runs a task and streams output via SSE.
+func (te *TaskExecutor) ExecuteTaskStream(ctx context.Context, t *Task, sseWriter *SSEWriter) {
+	log.Printf("[Task %s Stream] Starting execution.", t.ID)
+	defer log.Printf("[Task %s Stream] Execution finished.", t.ID)
+
+	// Ensure task state is Working and send SSE update
+	if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
+		log.Printf("[Task %s Stream] Failed to set state to Working: %v", t.ID, err)
+		// Attempt to set state to Failed and send SSE update
+		te.TaskStore.SetState(t.ID, TaskStateFailed)
+		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to set initial state: %v", err)})
+		sseWriter.SendEvent("state", string(failedStateData))
+		return // Stop execution
+	}
+	workingStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateWorking)})
+	sseWriter.SendEvent("state", string(workingStateData))
+
+
+	// Get or create the resume channel for this task
+	resumeCh := te.getOrCreateResumeChannel(t.ID)
+	defer te.deleteResumeChannel(t.ID) // Clean up the channel when execution finishes
+
+	// Main task execution loop
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[Task %s Stream] Context cancelled. Stopping execution.", t.ID)
+			te.TaskStore.SetState(t.ID, TaskStateCanceled)
+			// Optionally send a final SSE event for cancellation
+			return // Exit the goroutine
+		default:
+			// Continue execution
+		}
+
+		// Process one iteration of the task logic (streaming version)
+		continueLoop, err := te.processTaskStreamIteration(ctx, t, sseWriter, resumeCh)
+		if err != nil {
+			log.Printf("[Task %s Stream] Iteration error: %v. Stopping execution.", t.ID, err)
+			// Error logging and state/SSE updates are handled within processTaskStreamIteration
+			return // Exit the goroutine on error
+		}
+		if !continueLoop {
+			log.Printf("[Task %s Stream] Iteration finished, no more steps required. Stopping execution.", t.ID)
+			// State should already be Completed or InputRequired or Failed
+			return // Exit the goroutine if no more steps are needed
+		}
+		// If continueLoop is true, the state should have been set back to Working
+		// or InputRequired within processTaskStreamIteration.
+	}
+}
+
+// ResumeTask signals a task that is waiting for input to resume execution.
+func (te *TaskExecutor) ResumeTask(taskID string) error {
+	te.mu.Lock()
+	defer te.mu.Unlock()
+
+	resumeCh, ok := te.resumeChannels[taskID]
+	if !ok {
+		return fmt.Errorf("no active task found with ID %s waiting for input", taskID)
+	}
+
+	// Signal the task to resume
+	select {
+	case resumeCh <- struct{}{}:
+		log.Printf("[Task %s] Signaled to resume.", taskID)
+		return nil
+	default:
+		// This case should ideally not be hit if the task is correctly waiting on the channel
+		return fmt.Errorf("task %s is not currently waiting for input", taskID)
+	}
+}
+
+// getOrCreateResumeChannel gets the resume channel for a task, creating it if it doesn't exist.
+func (te *TaskExecutor) getOrCreateResumeChannel(taskID string) chan struct{} {
+	te.mu.Lock()
+	defer te.mu.Unlock()
+
+	ch, ok := te.resumeChannels[taskID]
+	if !ok {
+		ch = make(chan struct{}, 1) // Use a buffered channel of size 1
+		te.resumeChannels[taskID] = ch
+		log.Printf("[Task %s] Created resume channel.", taskID)
+	}
+	return ch
+}
+
+// deleteResumeChannel removes the resume channel for a task.
+func (te *TaskExecutor) deleteResumeChannel(taskID string) {
+	te.mu.Lock()
+	defer te.mu.Unlock()
+
+	if ch, ok := te.resumeChannels[taskID]; ok {
+		close(ch) // Close the channel
+		delete(te.resumeChannels, taskID)
+		log.Printf("[Task %s] Deleted resume channel.", taskID)
+	}
+}
 
 // processTaskIteration handles a single iteration of the main loop for ExecuteTask.
 // It returns true if the loop should continue (due to INPUT_REQUIRED or tool calls), false otherwise.
@@ -21,8 +166,8 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		return false, nil // Not an error, but stop processing
 	}
 
-	// Build messages for the LLM using the helper function
-	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input, te.SystemMessage)
+	// Build messages for the LLM using the helper function, using the task's SystemPrompt
+	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input, currentTask.SystemPrompt) // Use currentTask.SystemPrompt
 	if extractErr != nil {
 		te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 			task.Error = extractErr.Error()
@@ -84,7 +229,8 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 	if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
 		log.Printf("[Task %s] Detected %d tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
 
-		toolDispatcher := NewToolDispatcher(te.TaskStore) // Create a new dispatcher instance
+		// Pass the map of available tools to the dispatcher
+		toolDispatcher := NewToolDispatcher(te.TaskStore, te.AvailableTools) // Pass te.AvailableTools
 
 		toolResults := []Message{}
 		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
@@ -209,16 +355,16 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		log.Printf("[Task %s Stream] Error getting task from store: %v", t.ID, err)
 		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": fmt.Sprintf("Failed to get task: %v", err)})
 		sseWriter.SendEvent("state", string(failedStateData))
-		return false, err // Stop processing
+		return false, err
 	}
 	if currentTask.State == TaskStateCanceled {
-		log.Printf("[Task %s Stream] Task cancelled externally. Stopping.", t.ID)
+		log.Printf("[Task %s Stream] Task was cancelled externally. Stopping.", t.ID)
 		// Optionally send a final SSE event for cancellation
 		return false, nil // Stop processing
 	}
 
-	// Build messages for the LLM using the helper function
-	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input, te.SystemMessage)
+	// Build messages for the LLM using the helper function, using the task's SystemPrompt
+	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input, currentTask.SystemPrompt) // Use currentTask.SystemPrompt
 	if extractErr != nil {
 		te.TaskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
 		te.TaskStore.SetState(t.ID, TaskStateFailed)
@@ -280,7 +426,8 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 	if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
 		log.Printf("[Task %s Stream] Detected %d tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
 
-		toolDispatcher := NewToolDispatcher(te.TaskStore) // Create a new dispatcher instance
+		// Pass the map of available tools to the dispatcher
+		toolDispatcher := NewToolDispatcher(te.TaskStore, te.AvailableTools) // Pass te.AvailableTools
 
 		toolResults := []Message{}
 		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
@@ -398,4 +545,39 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		fmt.Printf("[Task %s Stream] Completed.\n", t.ID)
 		return false, nil // Stop the loop, task is complete
 	}
+}
+
+// extractToolCodeXML finds and extracts the content within <tool_code>...</tool_code> tags.
+func extractToolCodeXML(text string) string {
+	startTag := "<tool_code>"
+	endTag := "</tool_code>"
+
+	startIndex := strings.Index(text, startTag)
+	if startIndex == -1 {
+		return "" // No start tag found
+	}
+
+	endIndex := strings.Index(text[startIndex+len(startTag):], endTag)
+	if endIndex == -1 {
+		// Start tag found, but no end tag. Return empty or the content until the end?
+		// Returning empty is safer to avoid incomplete XML.
+		return ""
+	}
+
+	// Calculate the end index in the original string
+	endIndex = startIndex + len(startTag) + endIndex
+
+	// Extract the content including the tags
+	return text[startIndex : endIndex+len(endTag)]
+}
+
+// containsInputRequiredPhrase checks if the LLM's response contains a phrase indicating it needs input.
+func containsInputRequiredPhrase(text string) bool {
+	// This is a simple heuristic. A more robust approach might involve
+	// the LLM explicitly signaling this or using a structured output.
+	// For now, check for common phrases.
+	lowerText := strings.ToLower(text)
+	return strings.Contains(lowerText, "input required") ||
+		strings.Contains(lowerText, "waiting for input") ||
+		strings.Contains(lowerText, "please provide") // Add other phrases as needed
 }

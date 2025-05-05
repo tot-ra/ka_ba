@@ -1,15 +1,16 @@
 package llm
 
 import (
+	"bufio" // Added for reading stream line by line
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log" // Added for logging warnings/errors
 	"net/http"
 	"strings"
 
-	// Added for string builder
 	"github.com/pkoukk/tiktoken-go"
 )
 
@@ -31,7 +32,7 @@ type LLMClient struct {
 	Model            string
 	SystemMessage    string // Added SystemMessage field
 	MaxContextLength int
-	tokenizer        *tiktoken.Tiktoken
+	tokenizer *tiktoken.Tiktoken
 }
 
 func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LLMClient { // Added systemMessage parameter
@@ -47,12 +48,18 @@ func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LL
 		}
 	}
 	return &LLMClient{
-		APIURL:           apiURL,
-		Model:            model,
-		SystemMessage:    systemMessage, // Store the system message
+		APIURL: apiURL,
+		Model: model,
+		SystemMessage: systemMessage, // Store the system message
 		MaxContextLength: maxContextLength,
-		tokenizer:        tkm,
+		tokenizer: tkm,
 	}
+}
+
+// UpdateSystemMessage updates the system message for the LLM client.
+func (c *LLMClient) UpdateSystemMessage(newSystemMessage string) {
+	c.SystemMessage = newSystemMessage
+	fmt.Printf("LLMClient system message updated to: %s\n", newSystemMessage)
 }
 
 // getTokenLength uses the client's specific tiktoken tokenizer to count tokens.
@@ -97,7 +104,6 @@ func (c *LLMClient) Chat(ctx context.Context, messages []Message, stream bool, o
 		// Note: The system message is already prepended, so we just need to ensure it's not truncated unless absolutely necessary.
 		// The truncation logic below already handles this by prioritizing messages at the beginning of the slice (which now includes the system message).
 
-		// Truncate from the end of non-system messages
 		// We need to find the index of the last system message to avoid truncating them prematurely.
 		lastSystemIndex := -1
 		for i, msg := range messages {
@@ -168,63 +174,77 @@ func (c *LLMClient) Chat(ctx context.Context, messages []Message, stream bool, o
 
 	if stream {
 		var completionBuilder strings.Builder // Use strings.Builder to capture completion
-		reader := io.Reader(resp.Body)
-		buffer := bytes.Buffer{}
-		// We will read from 'reader', write to 'out', and write to 'completionBuilder'
+		reader := bufio.NewReader(resp.Body) // Use bufio.Reader for easier line reading
+		var currentEventData strings.Builder // Buffer for accumulating data lines for a single SSE event
 
-		buf := make([]byte, 1024)
 		for {
-			// Read directly from the original response body reader
-			n, readErr := reader.Read(buf)
-			if n > 0 {
-				// Write chunk to the output writer
-				if _, writeErr := out.Write(buf[:n]); writeErr != nil {
-					// Handle error writing to output if necessary, maybe just log
-					fmt.Printf("Error writing stream chunk to output: %v\n", writeErr)
-				}
-				// Write chunk to our internal buffer for JSON decoding
-				buffer.Write(buf[:n])
-				// Write chunk to the string builder to capture the full response
-				completionBuilder.Write(buf[:n])
+			line, readErr := reader.ReadString('\n')
 
-				// Process JSON chunks from the internal buffer
-				decoder := json.NewDecoder(&buffer) // Recreate decoder each time with current buffer state
-				for buffer.Len() > 0 {
-					var chunk map[string]interface{}
-					if decodeErr := decoder.Decode(&chunk); decodeErr != nil {
-						if decodeErr == io.EOF || decodeErr == io.ErrUnexpectedEOF {
-							// Incomplete chunk, need more data
-							break
-						}
-						// Handle other decoding errors if necessary
-						// fmt.Printf("Streaming decoding error: %v\n", decodeErr) // Optional debug
-						break // Assume incomplete chunk on error
-					}
-					// We don't strictly need to parse the content here again
-					// as we are writing raw bytes to 'out' and 'completionBuilder'.
-					// This loop is mainly to consume the decoded JSON object from the buffer.
-				}
+			if readErr != nil && readErr != io.EOF {
+				return "", finalInputTokens, 0, fmt.Errorf("reading streaming response line: %w", readErr)
 			}
-			if readErr != nil {
-				if readErr == io.EOF {
-					break // End of stream
+
+			line = strings.TrimRight(line, "\r\n") // Trim potential \r and \n
+
+			if strings.HasPrefix(line, "data: ") {
+				// Append data line content (after "data: ") to the current event data buffer
+				currentEventData.WriteString(line[6:]) // +6 to skip "data: "
+			} else if line == "" {
+				// Empty line signifies the end of an event
+				eventData := currentEventData.String()
+				currentEventData.Reset() // Reset buffer for the next event
+
+				if eventData == "[DONE]" {
+					break // End of stream signal
 				}
-				return "", finalInputTokens, 0, fmt.Errorf("reading streaming response body: %w", readErr)
+
+				// Parse the JSON data for this event
+				var chunk map[string]interface{}
+				if jsonErr := json.Unmarshal([]byte(eventData), &chunk); jsonErr != nil {
+					log.Printf("Warning: Failed to parse stream chunk JSON: %v, data: %s", jsonErr, eventData)
+					// Continue processing, maybe this chunk was just metadata or an error we can skip
+					continue
+				}
+
+				// Extract the content delta
+				// Navigate the nested structure: choices -> [0] -> delta -> content
+				if choices, ok := chunk["choices"].([]interface{}); ok && len(choices) > 0 {
+					if choice, ok := choices[0].(map[string]interface{}); ok {
+						if delta, ok := choice["delta"].(map[string]interface{}); ok {
+							if content, ok := delta["content"].(string); ok && content != "" {
+								// Found content delta, write it to the output writer
+								// This will call SSEWriter.Write, which wraps it in {"chunk": "..."}
+								if _, writeErr := out.Write([]byte(content)); writeErr != nil {
+									log.Printf("Error writing content delta to output: %v", writeErr)
+									// Depending on error handling strategy, might return here
+								}
+								// Also append to the completion builder for the full result
+								completionBuilder.WriteString(content)
+							}
+							// Handle tool_calls delta if needed in the future
+							// if toolCalls, ok := delta["tool_calls"].([]interface{}); ok { ... }
+						}
+					}
+				}
+
+			} else if strings.HasPrefix(line, ":") {
+				// Ignore comment lines (keep-alives)
+				continue
+			} else {
+				// Handle other unexpected lines if necessary
+				log.Printf("Warning: Unexpected line in stream: %s", line)
+			}
+
+			if readErr == io.EOF {
+				break // End of stream
 			}
 		}
-		fmt.Fprintln(out) // Add a newline at the end of the stream
 
+		// After the loop, calculate completion tokens and return
 		completionText := completionBuilder.String()
-		// Now, attempt to parse the *complete* streamed text to extract the actual content
-		// This is tricky because the raw stream might contain multiple JSON objects.
-		// A simpler approach for token counting is to tokenize the raw captured text.
-		// This might overestimate tokens if there's non-content JSON structure, but it's better than 0.
 		completionTokens := c.getTokenLength(completionText)
-		fmt.Printf("Streaming completion tokens (estimated from raw stream): %d\n", completionTokens)
+		fmt.Printf("Streaming completion tokens (estimated from parsed content): %d\n", completionTokens)
 
-		// We should return the *parsed* content if possible, but the current structure
-		// just writes to 'out'. Returning the raw captured text is the best we can do
-		// without significantly refactoring the streaming logic.
 		return completionText, finalInputTokens, completionTokens, nil
 
 	} else {

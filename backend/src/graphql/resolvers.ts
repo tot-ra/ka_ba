@@ -1,11 +1,13 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { EventEmitter } from 'node:events'; // Import EventEmitter
-import { AgentManager, Agent } from '../services/agentManager.js';
+import { AgentManager } from '../services/agentManager.js';
+import { Agent } from '../services/agentRegistry.js'; // Import Agent from agentRegistry
 import { A2AClient, TaskSendParams, Task, Message, Part } from '../a2aClient.js';
 import { JSONObjectResolver, DateTimeResolver } from 'graphql-scalars';
 import { GraphQLError } from 'graphql';
 import { ApolloContext } from './server.js';
 import { Repeater } from '@repeaterjs/repeater'; // Import Repeater for AsyncIterator creation
+import axios from 'axios'; // Import axios for HTTP calls to ka agent
 
 // Define the payload structure for the agentLogs subscription
 export interface LogEntryPayload {
@@ -18,6 +20,7 @@ export interface LogEntryPayload {
 interface CreateTaskArgs {
   agentId?: string;
   sessionId?: string;
+  systemPrompt?: string; // Added systemPrompt field
   message: { // Corresponds to InputMessage
     role: 'user' | 'agent'; // Assuming MessageRole maps directly
     parts: Array<{ // Corresponds to InputPart
@@ -30,6 +33,12 @@ interface CreateTaskArgs {
   pushNotification?: any;
   historyLength?: number;
   metadata?: any;
+}
+
+// Define the structure for ToolDefinition to match the schema
+interface ToolDefinition {
+  name: string;
+  description: string;
 }
 
 
@@ -61,22 +70,11 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
           // Filter tasks to ensure they have a valid state before mapping
           const validTasks = rawTasks.filter((task: any) => task?.state); // Check top-level state
 
-          // Map snake_case fields from agentManager to camelCase fields in GraphQL schema
-          // AND convert state to uppercase (accessing top-level property)
-          // Helper function to map messages and convert roles
-          const mapMessages = (messages: any[] | undefined | null): any[] => {
-            if (!messages) return [];
-            return messages.map(msg => ({
-              ...msg,
-              role: msg.role?.toUpperCase(), // Convert role to uppercase
-              // Keep parts as is for now, assuming GraphQL handles JSONObject
-            }));
-          };
-
+          // Use the shared mapMessages helper function
           const mappedTasks = validTasks.map((task: any) => ({
             id: task.id,
             state: task.state.toUpperCase(), // Convert state to uppercase
-            input: mapMessages(task.input), // Map input messages
+            input: mapMessages(task.history), // Map history to input? Check schema/logic
             output: mapMessages(task.output), // Map output messages
             error: task.error,
             createdAt: task.created_at,
@@ -97,6 +95,56 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
           });
         }
       },
+      // New resolver to list available tools for a specific agent
+      availableTools: async (_parent: any, { agentId }: { agentId: string }, context: ApolloContext, _info: any): Promise<ToolDefinition[]> => {
+        const { agentManager } = context;
+
+        // 1. Find the agent
+        const agent = agentManager.getAgents().find((a: Agent) => a.id === agentId);
+        if (!agent) {
+          throw new GraphQLError(`Agent with ID ${agentId} not found.`, {
+            extensions: { code: 'AGENT_NOT_FOUND' },
+          });
+        }
+
+        // 2. Check if the agent supports the /tools endpoint (optional but good practice)
+        // This would require the agent card to expose this endpoint.
+        // For now, we'll assume ka agents support it and just call the endpoint.
+
+        // 3. Call the agent's /tools HTTP endpoint
+        try {
+          const toolsUrl = `${agent.url.replace(/\/+$/, '')}/tools`; // Ensure no double slash
+          console.log(`[GraphQL availableTools] Fetching tools from agent ${agentId} at ${toolsUrl}`);
+          const response = await axios.get<ToolDefinition[]>(toolsUrl);
+
+          if (response.status !== 200 || !Array.isArray(response.data)) {
+             console.error(`[GraphQL availableTools] Unexpected response from agent ${agentId} /tools endpoint: Status ${response.status}, Data:`, response.data);
+             throw new GraphQLError(`Agent ${agentId} returned invalid data from /tools endpoint.`, {
+               extensions: { code: 'AGENT_RESPONSE_INVALID', agentId: agentId },
+             });
+          }
+
+          console.log(`[GraphQL availableTools] Received ${response.data.length} tools from agent ${agentId}.`);
+          return response.data; // Return the array of ToolDefinition
+        } catch (error: any) {
+          console.error(`[GraphQL availableTools] Error fetching tools from agent ${agentId}:`, error);
+          // Log the original error details for debugging
+          if (error.response) {
+            console.error(`[GraphQL availableTools] Agent response status: ${error.response.status}`);
+            console.error(`[GraphQL availableTools] Agent response data:`, error.response.data);
+            console.error(`[GraphQL availableTools] Agent response headers:`, error.response.headers);
+          } else if (error.request) {
+            console.error(`[GraphQL availableTools] No response received from agent. Request details:`, error.request);
+          } else {
+            console.error(`[GraphQL availableTools] Error setting up the request to agent:`, error.message);
+          }
+          // Wrap error in GraphQLError
+          throw new GraphQLError(`Failed to fetch available tools from agent ${agentId}: ${error.message}`, {
+            extensions: { code: 'AGENT_COMMUNICATION_ERROR', agentId: agentId, originalError: { message: error.message, stack: error.stack, responseStatus: error.response?.status, responseData: error.response?.data } },
+            originalError: error
+          });
+        }
+      },
     },
     Mutation: {
       addAgent: (_parent: any, { url, name }: { url: string, name?: string }, context: ApolloContext, _info: any): Agent => {
@@ -109,11 +157,66 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
         return context.agentManager.spawnLocalAgent(args);
       },
       stopKaAgent: (_parent: any, { id }: { id: string }, context: ApolloContext, _info: any): boolean => {
-        return context.agentManager.stopLocalAgent(id);
+        // Use removeAgent which handles stopping local agents internally
+        return context.agentManager.removeAgent(id);
+      },
+      // New resolver to update an agent's system prompt
+      updateAgentSystemPrompt: async (_parent: any, { agentId, systemPrompt }: { agentId: string, systemPrompt: string }, context: ApolloContext, _info: any): Promise<Agent> => {
+        const { agentManager } = context;
+        try {
+          const updatedAgent = await agentManager.updateAgentSystemPrompt(agentId, systemPrompt);
+          return updatedAgent;
+        } catch (error: any) {
+          console.error(`[GraphQL updateAgentSystemPrompt] Error updating system prompt for agent ${agentId}:`, error);
+          throw new GraphQLError(`Failed to update system prompt for agent ${agentId}: ${error.message}`, {
+            extensions: { code: 'AGENT_UPDATE_ERROR', agentId: agentId },
+            originalError: error
+          });
+        }
+      },
+      // New resolver to compose system prompt
+      composeSystemPrompt: async (_parent: any, { agentId, toolNames }: { agentId: string, toolNames: string[] }, context: ApolloContext, _info: any): Promise<string> => {
+         const { agentManager } = context;
+
+         // 1. Find the agent
+         const agent = agentManager.getAgents().find((a: Agent) => a.id === agentId);
+         if (!agent) {
+           throw new GraphQLError(`Agent with ID ${agentId} not found.`, {
+             extensions: { code: 'AGENT_NOT_FOUND' },
+           });
+         }
+
+         // 2. Check if the agent supports the /compose-prompt endpoint (optional but good practice)
+         // This would require the agent card to expose this endpoint.
+         // For now, we'll assume ka agents support it and just call the endpoint.
+
+         // 3. Call the agent's /compose-prompt HTTP endpoint with the selected tool names
+         try {
+           const composeUrl = `${agent.url.replace(/\/+$/, '')}/compose-prompt`; // Ensure no double slash
+           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames);
+           const response = await axios.post<{ systemPrompt: string }>(composeUrl, toolNames); // Send toolNames array in body
+
+           if (response.status !== 200 || typeof response.data?.systemPrompt !== 'string') {
+              console.error(`[GraphQL composeSystemPrompt] Unexpected response from agent ${agentId} /compose-prompt endpoint: Status ${response.status}, Data:`, response.data);
+              throw new GraphQLError(`Agent ${agentId} returned invalid data from /compose-prompt endpoint.`, {
+                extensions: { code: 'AGENT_RESPONSE_INVALID', agentId: agentId },
+              });
+           }
+
+           console.log(`[GraphQL composeSystemPrompt] Received composed prompt from agent ${agentId}.`);
+           return response.data.systemPrompt; // Return the composed system prompt string
+         } catch (error: any) {
+           console.error(`[GraphQL composeSystemPrompt] Error composing prompt for agent ${agentId}:`, error);
+           // Wrap error in GraphQLError
+           throw new GraphQLError(`Failed to compose system prompt from agent ${agentId}: ${error.message}`, {
+             extensions: { code: 'AGENT_COMMUNICATION_ERROR', agentId: agentId },
+             originalError: error
+           });
+         }
       },
       createTask: async (_parent: any, args: CreateTaskArgs, context: ApolloContext, _info: any): Promise<Task> => {
         // Destructure context as well
-        const { agentId, sessionId, message: inputMessage, pushNotification, historyLength, metadata } = args;
+        const { agentId, sessionId, systemPrompt, message: inputMessage, pushNotification, historyLength, metadata } = args; // Include systemPrompt
         const { agentManager, eventEmitter } = context; // Get eventEmitter from context
 
         // --- 1. Determine Target Agent ---
@@ -185,6 +288,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
 
           const paramsToSend: TaskSendParams = {
             sessionId,
+            systemPrompt, // Include the systemPrompt from arguments
             message: taskMessage,
             pushNotification,
             historyLength,
@@ -209,7 +313,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             const mappedInitialTask = {
               id: initialTask.id,
               state: uppercaseState, // Use the validated and converted state
-              input: initialTask.history, // Map history to input? Check schema/logic
+              input: mapMessages(initialTask.history), // Map history to input? Check schema/logic
               output: [], // Output likely comes from updates, not initial response
               // Safely access text part for error message
               error: initialTask.status?.state === 'failed' && initialTask.status?.message?.parts?.[0]?.type === 'text'
@@ -327,17 +431,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             return new Repeater<Task>(async (push, stop) => {
               const listener = (payload: Task) => {
                 console.log(`[Resolver taskUpdates listener] Event received on topic ${topic}:`, payload);
-                // Map snake_case fields from agentManager to camelCase fields in GraphQL schema
-                // AND convert state to uppercase
-                const mapMessages = (messages: any[] | undefined | null): any[] => {
-                  if (!messages) return [];
-                  return messages.map(msg => ({
-                    ...msg,
-                    role: msg.role?.toUpperCase(), // Convert role to uppercase
-                  }));
-                };
-
-                // Map snake_case fields from the payload (nested in status) to camelCase fields for GraphQL
+                // Use the shared mapMessages helper function
                 const mappedTask = {
                   id: payload.id, // Assuming ID is top-level
                   state: payload.status?.state?.toUpperCase(), // Access state from status and convert to uppercase
@@ -369,6 +463,16 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             return payload;
           },
         },
-     },
-   };
+      },
+    };
+
+    // Helper function to map messages and convert roles (Define once here)
+    function mapMessages(messages: any[] | undefined | null): any[] {
+      if (!messages) return [];
+      return messages.map(msg => ({
+        ...msg,
+        role: msg.role?.toUpperCase(), // Convert role to uppercase
+        // Keep parts as is for now, assuming GraphQL handles JSONObject
+      }));
+    }
 }

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"ka/a2a"
 	"ka/llm"
+	"ka/tools" // Import the tools package
 	"log" // Manually added back
 	"os"
 	"strconv" // Added for port conversion
@@ -19,6 +20,8 @@ const (
 	defaultMaxContextLength = 2048
 )
 
+var availableToolsMap map[string]tools.Tool
+
 func main() {
 	serveFlag := flag.Bool("serve", false, "Run the agent as an A2A HTTP server")
 	streamFlag := flag.Bool("stream", false, "Enable streaming output for CLI chat")
@@ -30,9 +33,16 @@ func main() {
 	descriptionFlag := flag.String("description", "A spawned ka agent instance.", "Description of the agent")
 	jwtSecretFlag := flag.String("jwt-secret", "", "JWT secret key for securing endpoints (if provided, JWT auth is enabled)")
 	apiKeysFlag := flag.String("api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
-	systemPromptFlag := flag.String("system-prompt", "", "System prompt for the LLM (defaults to hardcoded message if not provided)")
+	// Removed systemPromptFlag as prompt is now composed dynamically
 
 	flag.Parse()
+
+	// Load all available tools
+	availableToolsSlice := tools.GetAllTools()
+	availableToolsMap := make(map[string]tools.Tool)
+	for _, tool := range availableToolsSlice {
+		availableToolsMap[tool.GetName()] = tool
+	}
 
 	// Determine the port
 	port := *portFlag // Start with the flag value (or default)
@@ -63,43 +73,8 @@ func main() {
 		currentDir = "unknown" // Fallback
 	}
 
-	// Construct the default system message including the current directory and tool instructions
-	defaultSystemMessage := fmt.Sprintf(`
-You are a helpful AI agent.
-Your current working directory is: %s
-
-You have access to the following tools:
-- list_files: Lists files and directories in a specified path.
-  Arguments:
-    - path (string, required): The path to list.
-    - recursive (boolean, optional): Whether to list recursively.
-
-When you need to use a tool, output an XML block like this:
-<tool_code>
-  <tool_call id="call_abc" type="function">
-    <function>
-      <name>list_files</name>
-      <arguments>
-        {"path": ".", "recursive": false}
-      </arguments>
-    </function>
-  </tool_call>
-</tool_code>
-
-Think step by step and provide clear instructions to the user or use tools when necessary.
-`, currentDir)
-
-	// Determine the system message: prioritize flag, then the new default
-	actualSystemMessage := defaultSystemMessage // Start with the new default
-	if *systemPromptFlag != "" {
-		actualSystemMessage = *systemPromptFlag // Use flag if provided
-		fmt.Printf("[main] Using system message from --system-prompt flag: '%s'\n", actualSystemMessage)
-	} else {
-		fmt.Printf("[main] Using default system message:\n%s\n", actualSystemMessage)
-	}
-
-	// Pass system message and other config to the client constructor
-	llmClient := llm.NewLLMClient(apiURL, *modelFlag, actualSystemMessage, *maxContextLengthFlag)
+	// In server mode, we will compose the system prompt dynamically based on task input.
+	// In CLI mode, we will compose a default prompt with all available tools.
 
 	if *serveFlag {
 		fmt.Println("[main] Starting in server mode...")
@@ -115,9 +90,13 @@ Think step by step and provide clear instructions to the user or use tools when 
 			os.Exit(1)
 		}
 
-		// Create TaskExecutor with the LLM client and system message
-		taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, actualSystemMessage) // Pass actualSystemMessage
-		fmt.Printf("[main] TaskExecutor initialized with SystemMessage: '%s'\n", taskExecutor.SystemMessage)
+		// Create the LLM client for server mode (system message is handled per task)
+		llmClient := llm.NewLLMClient(apiURL, *modelFlag, "", *maxContextLengthFlag)
+
+		// Create TaskExecutor with the LLM client, task store, and available tools
+		// The system message will be passed per task
+		taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, availableToolsMap) // Pass availableToolsMap
+		fmt.Printf("[main] TaskExecutor initialized with %d available tools.\n", len(availableToolsMap))
 
 		// Process API keys from flag
 		apiKeys := []string{}
@@ -132,7 +111,18 @@ Think step by step and provide clear instructions to the user or use tools when 
 		}
 
 		// Pass the TaskExecutor, port, agent info, and auth config to the server start function
-		startHTTPServer(taskExecutor, port, *nameFlag, *descriptionFlag, *modelFlag, *jwtSecretFlag, apiKeys) // Pass taskExecutor
+		startHTTPServer(
+			taskExecutor, 
+			llmClient,
+			port, 
+			*nameFlag, 
+			*descriptionFlag, 
+			*modelFlag, 
+			*jwtSecretFlag, 
+			apiKeys, 
+			availableToolsMap,
+		)
+
 	} else {
 		// Ensure auth flags are not accidentally used in CLI mode (or warn)
 		if *jwtSecretFlag != "" || *apiKeysFlag != "" {
@@ -166,22 +156,39 @@ Think step by step and provide clear instructions to the user or use tools when 
 			os.Exit(1)
 		}
 
-		// Added context.Background() as the first argument
-		// Update call to handle new return values (completion, inputTokens, completionTokens, err)
+		// For CLI mode, compose a default system prompt with all available tools
+		var allToolNames []string
+		for name := range availableToolsMap {
+			allToolNames = append(allToolNames, name)
+		}
+		cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, availableToolsMap, currentDir)
+		fmt.Printf("[main] Using CLI system message:\n%s\n", cliSystemMessage)
+
+		// Pass the CLI system message to the LLM client for CLI mode
+		cliLLMClient := llm.NewLLMClient(apiURL, *modelFlag, cliSystemMessage, *maxContextLengthFlag)
+
 
 		// For CLI mode, create a simple message slice with the user prompt, including the actual system message
 		messages := []llm.Message{
-			{Role: "system", Content: actualSystemMessage}, // Include the actual system message
+			{Role: "system", Content: cliSystemMessage}, // Include the actual system message
 			{Role: "user", Content: userPrompt},
 		}
 
-		_, inputTokens, completionTokens, err := llmClient.Chat(context.Background(), messages, stream, os.Stdout)
+		// In CLI mode, we don't have the full tool execution loop.
+		// We'll just send the initial prompt and print the LLM's response.
+		// A more complete CLI tool execution would require implementing the loop here.
+		fmt.Println("[main] Sending prompt to LLM...")
+		completion, inputTokens, completionTokens, err := cliLLMClient.Chat(context.Background(), messages, stream, os.Stdout)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "LLM error:", err)
 			os.Exit(1)
 		}
 		// Optionally log token usage in CLI mode
 		fmt.Fprintf(os.Stderr, "\n[CLI Mode] Input Tokens: %d, Completion Tokens: %d\n", inputTokens, completionTokens)
+		// Print the final completion if not streaming (streaming is handled by llmClient.Chat)
+		if !stream && completion != "" {
+			fmt.Println(completion)
+		}
 	}
 }
 

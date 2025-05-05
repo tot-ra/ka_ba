@@ -1,50 +1,20 @@
-import React, { useState, useEffect } from 'react'; // Import useEffect
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import styles from './AddLocalAgent.module.css'; // Import CSS module
+import styles from './AddLocalAgent.module.css';
 
-type SpawnMessageType = 'success' | 'error' | null;
+type MessageType = 'success' | 'error' | 'info' | null;
+
+interface ToolDefinition {
+  name: string;
+  description: string;
+}
 
 const AddLocalAgent: React.FC = () => {
   const navigate = useNavigate();
 
   const [spawnAgentConfig, setSpawnAgentConfig] = useState({
     model: 'qwen3-30b-a3b',
-    systemPrompt: `You are an expert software engineer.
-
-Available Tools:
-- list_files: Lists files and directories in the given path.
-    Parameters:
-    - path: (string, required) The path of the directory to list contents for (relative to the current working directory).
-    - recursive: (boolean, optional) Whether to list files recursively. Use true for recursive listing, false or omit for top-level only.
-
-When using a tool, you must output a JSON array in the 'tool_calls' field of your response. This is the standard format for tool calls, not an XML tag. Follow this structure:
-\`\`\`json
-[
-  {
-    "id": "unique_call_id",
-    "type": "function",
-    "function": {
-      "name": "tool_name",
-      "arguments": "{\\"param1\\": \\"value1\\", \\"param2\\": value2}"
-    }
-  }
-]
-\`\`\`
-Example for list_files:
-\`\`\`json
-[
-  {
-    "id": "call_example123",
-    "type": "function",
-    "function": {
-      "name": "list_files",
-      "arguments": "{\\"path\\": \\"./\\", \\"recursive\\": false}"
-    }
-  }
-]
-\`\`\`
-`,
     apiBaseUrl: 'http://192.168.1.205:1234',
     port: '',
     name: 'Software Engineer',
@@ -52,30 +22,45 @@ Example for list_files:
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSpawning, setIsSpawning] = useState(false);
-  const [spawnStatusMessage, setSpawnStatusMessage] = useState<string | null>(null);
-  const [spawnMessageType, setSpawnMessageType] = useState<SpawnMessageType>(null);
-  // Removed spawnedAgentId, agentLogs, isFetchingLogs states
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [messageType, setMessageType] = useState<MessageType>(null);
+
+  const [spawnedAgentId, setSpawnedAgentId] = useState<string | null>(null);
+  const [availableTools, setAvailableTools] = useState<ToolDefinition[]>([]);
+  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [composedSystemPrompt, setComposedSystemPrompt] = useState<string>('');
+  const [isFetchingTools, setIsFetchingTools] = useState(false);
+  const [isComposingPrompt, setIsComposingPrompt] = useState(false);
+  const [isUpdatingPrompt, setIsUpdatingPrompt] = useState(false);
+
 
   const handleSpawnAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSpawning(true);
-    setSpawnStatusMessage(null);
-    setSpawnMessageType(null);
+    setStatusMessage(null);
+    setMessageType(null);
+    setSpawnedAgentId(null); // Reset agent ID on new spawn attempt
+    setAvailableTools([]); // Reset tools
+    setSelectedTools([]); // Reset selected tools
+    setComposedSystemPrompt(''); // Reset composed prompt
+
     console.log('Attempting to spawn agent with config:', spawnAgentConfig);
 
     const variables = {
-      ...spawnAgentConfig,
+      model: spawnAgentConfig.model,
+      apiBaseUrl: spawnAgentConfig.apiBaseUrl,
       port: spawnAgentConfig.port ? parseInt(spawnAgentConfig.port.toString(), 10) : null,
       name: spawnAgentConfig.name || null,
       description: spawnAgentConfig.description || null,
+      // systemPrompt is no longer sent during spawn
     };
-    console.log('Variables being sent:', variables);
+    console.log('Variables being sent for spawn:', variables);
 
     try {
       const response = await axios.post('http://localhost:3000/graphql', {
         query: `
-          mutation SpawnKaAgent($model: String, $systemPrompt: String, $apiBaseUrl: String, $port: Int, $name: String, $description: String) {
-            spawnKaAgent(model: $model, systemPrompt: $systemPrompt, apiBaseUrl: $apiBaseUrl, port: $port, name: $name, description: $description) {
+          mutation SpawnKaAgent($model: String, $apiBaseUrl: String, $port: Int, $name: String, $description: String) {
+            spawnKaAgent(model: $model, apiBaseUrl: $apiBaseUrl, port: $port, name: $name, description: $description) {
               id
               url
               name
@@ -89,28 +74,162 @@ Example for list_files:
       const spawnedAgent = response.data.data.spawnKaAgent;
       if (spawnedAgent && spawnedAgent.id) {
         console.log('Agent spawned successfully:', spawnedAgent);
-        // Redirect to agent list on success
-        navigate('/agents');
-        // No need to set status message or fetch logs here anymore
+        setSpawnedAgentId(spawnedAgent.id);
+        setStatusMessage(`Agent "${spawnedAgent.name}" spawned successfully! Fetching available tools...`);
+        setMessageType('success');
+        // Proceed to fetch tools
+        fetchAvailableTools(spawnedAgent.id);
       } else {
         const errorMessage = response.data.errors?.[0]?.message || 'Failed to spawn agent or received invalid data.';
         console.error('Failed to spawn agent:', spawnAgentConfig, response.data);
-        setSpawnStatusMessage(`Error: ${errorMessage}`);
-        setSpawnMessageType('error');
-        setIsSpawning(false); // Stop loading on error
+        setStatusMessage(`Error: ${errorMessage}`);
+        setMessageType('error');
+        setIsSpawning(false);
       }
     } catch (error: any) {
       console.error('Error spawning agent:', error);
       const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
-      setSpawnStatusMessage(`Error: ${message}`);
-      setSpawnMessageType('error');
-      setIsSpawning(false); // Stop loading on spawn error
+      setStatusMessage(`Error: ${message}`);
+      setMessageType('error');
+      setIsSpawning(false);
     }
   };
 
+  const fetchAvailableTools = async (agentId: string) => {
+    setIsFetchingTools(true);
+    setStatusMessage(`Fetching available tools for agent ${agentId}...`);
+    setMessageType('info');
+    try {
+      const response = await axios.post('http://localhost:3000/graphql', {
+        query: `
+          query AvailableTools($agentId: ID!) {
+            availableTools(agentId: $agentId) {
+              name
+              description
+            }
+          }
+        `,
+        variables: { agentId },
+      });
+      const tools = response.data.data.availableTools;
+      if (Array.isArray(tools)) {
+        console.log('Available tools fetched:', tools);
+        setAvailableTools(tools);
+        setStatusMessage(`Successfully fetched ${tools.length} available tools.`);
+        setMessageType('success');
+      } else {
+        console.error('Failed to fetch available tools or received invalid data:', response.data);
+        setStatusMessage('Error: Failed to fetch available tools.');
+        setMessageType('error');
+      }
+    } catch (error: any) {
+      console.error('Error fetching available tools:', error);
+      const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
+      setStatusMessage(`Error fetching tools: ${message}`);
+      setMessageType('error');
+    } finally {
+      setIsFetchingTools(false);
+      setIsSpawning(false); // Spawning process is complete after fetching tools
+    }
+  };
+
+  const handleToolSelection = (toolName: string) => {
+    setSelectedTools(prevSelected =>
+      prevSelected.includes(toolName)
+        ? prevSelected.filter(name => name !== toolName)
+        : [...prevSelected, toolName]
+    );
+  };
+
+  const handleComposePrompt = async () => {
+    if (!spawnedAgentId || selectedTools.length === 0) {
+      setStatusMessage('Please spawn an agent and select at least one tool.');
+      setMessageType('info');
+      return;
+    }
+
+    setIsComposingPrompt(true);
+    setStatusMessage(`Composing system prompt with ${selectedTools.length} selected tools...`);
+    setMessageType('info');
+
+    try {
+      const response = await axios.post('http://localhost:3000/graphql', {
+        query: `
+          mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!) {
+            composeSystemPrompt(agentId: $agentId, toolNames: $toolNames)
+          }
+        `,
+        variables: { agentId: spawnedAgentId, toolNames: selectedTools },
+      });
+      const composedPrompt = response.data.data.composeSystemPrompt;
+      if (typeof composedPrompt === 'string') {
+        console.log('System prompt composed:', composedPrompt);
+        setComposedSystemPrompt(composedPrompt);
+        setStatusMessage('System prompt composed successfully.');
+        setMessageType('success');
+      } else {
+        console.error('Failed to compose system prompt or received invalid data:', response.data);
+        setStatusMessage('Error: Failed to compose system prompt.');
+        setMessageType('error');
+      }
+    } catch (error: any) {
+      console.error('Error composing system prompt:', error);
+      const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
+      setStatusMessage(`Error composing prompt: ${message}`);
+      setMessageType('error');
+    } finally {
+      setIsComposingPrompt(false);
+    }
+  };
+
+  const handleUpdateAgentPrompt = async () => {
+    if (!spawnedAgentId || !composedSystemPrompt) {
+      setStatusMessage('Please compose a system prompt first.');
+      setMessageType('info');
+      return;
+    }
+
+    setIsUpdatingPrompt(true);
+    setStatusMessage('Updating agent system prompt...');
+    setMessageType('info');
+
+    try {
+      const response = await axios.post('http://localhost:3000/graphql', {
+        query: `
+          mutation UpdateAgentSystemPrompt($agentId: ID!, $systemPrompt: String!) {
+            updateAgentSystemPrompt(agentId: $agentId, systemPrompt: $systemPrompt) {
+              id
+              name
+            }
+          }
+        `,
+        variables: { agentId: spawnedAgentId, systemPrompt: composedSystemPrompt },
+      });
+      const updatedAgent = response.data.data.updateAgentSystemPrompt;
+      if (updatedAgent && updatedAgent.id) {
+        console.log('Agent system prompt updated:', updatedAgent);
+        setStatusMessage(`Agent "${updatedAgent.name}" system prompt updated successfully!`);
+        setMessageType('success');
+        // Optionally navigate or show a success message and allow further actions
+        // navigate('/agents'); // Maybe redirect after successful update?
+      } else {
+        console.error('Failed to update agent system prompt or received invalid data:', response.data);
+        setStatusMessage('Error: Failed to update agent system prompt.');
+        setMessageType('error');
+      }
+    } catch (error: any) {
+      console.error('Error updating agent system prompt:', error);
+      const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
+      setStatusMessage(`Error updating prompt: ${message}`);
+      setMessageType('error');
+    } finally {
+      setIsUpdatingPrompt(false);
+    }
+  };
+
+
   return (
     <div className={styles.container}>
-      {/* Back button removed */}
       <div className={styles.paper}>
         <form onSubmit={handleSpawnAgent} className={styles.form}>
           <div className={styles.formGrid}>
@@ -140,22 +259,6 @@ Example for list_files:
                  rows={3}
                  className={styles.formTextarea}
               />
-            </div>
-
-            {/* System Prompt */}
-            <div className={styles.formField}>
-              <label htmlFor="systemPrompt" className={styles.formLabel}>System Prompt</label>
-              <textarea
-                id="systemPrompt"
-                name="systemPrompt"
-                value={spawnAgentConfig.systemPrompt}
-                onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, systemPrompt: e.target.value })}
-                rows={8}
-                className={styles.formTextarea}
-              />
-              <p className={styles.captionText}>
-                Note: This prompt will be injected into every task sent to this agent.
-              </p>
             </div>
 
             {/* Show Advanced Checkbox */}
@@ -223,19 +326,12 @@ Example for list_files:
               </>
             )}
 
-            {/* Status Message */}
-            {spawnStatusMessage && (
-              <div className={`${styles.alert} ${spawnMessageType === 'success' ? styles.alertSuccess : spawnMessageType === 'error' ? styles.alertError : styles.alertInfo}`}>
-                {spawnStatusMessage}
-              </div>
-            )}
-
             {/* Submit Button */}
             <div className={styles.formField}>
               <button
                 type="submit"
                 className={`${styles.button} ${styles.buttonPrimary}`}
-                disabled={isSpawning}
+                disabled={isSpawning || isFetchingTools || isComposingPrompt || isUpdatingPrompt}
               >
                 {isSpawning && <div className={styles.spinner}></div>}
                 {isSpawning ? 'Spawning...' : 'Spawn Agent'}
@@ -244,7 +340,68 @@ Example for list_files:
           </div>
         </form>
 
-        {/* Removed Log Display Area */}
+        {/* Tool Selection and Prompt Composition */}
+        {spawnedAgentId && (
+          <div className={styles.toolSelectionSection}>
+            <h3>Available Tools for Agent {spawnedAgentId}</h3>
+            {isFetchingTools ? (
+              <p>Loading tools...</p>
+            ) : availableTools.length > 0 ? (
+              <div>
+                {availableTools.map(tool => (
+                  <div key={tool.name} className={styles.toolCheckbox}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={selectedTools.includes(tool.name)}
+                        onChange={() => handleToolSelection(tool.name)}
+                      />
+                      <strong>{tool.name}:</strong> {tool.description}
+                    </label>
+                  </div>
+                ))}
+                <button
+                  onClick={handleComposePrompt}
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  disabled={selectedTools.length === 0 || isComposingPrompt || isUpdatingPrompt}
+                >
+                  {isComposingPrompt && <div className={styles.spinner}></div>}
+                  {isComposingPrompt ? 'Composing...' : 'Compose System Prompt'}
+                </button>
+              </div>
+            ) : (
+              <p>No tools available for this agent.</p>
+            )}
+
+            {composedSystemPrompt && (
+              <div className={styles.composedPromptSection}>
+                <h4>Composed System Prompt:</h4>
+                <textarea
+                  value={composedSystemPrompt}
+                  readOnly
+                  rows={10}
+                  className={styles.formTextarea}
+                />
+                 <button
+                  onClick={handleUpdateAgentPrompt}
+                  className={`${styles.button} ${styles.buttonPrimary}`}
+                  disabled={isUpdatingPrompt}
+                >
+                  {isUpdatingPrompt && <div className={styles.spinner}></div>}
+                  {isUpdatingPrompt ? 'Updating Agent...' : 'Update Agent with this Prompt'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+
+        {/* Status Message */}
+        {statusMessage && (
+          <div className={`${styles.alert} ${messageType === 'success' ? styles.alertSuccess : messageType === 'error' ? styles.alertError : messageType === 'info' ? styles.alertInfo : ''}`}>
+            {statusMessage}
+          </div>
+        )}
 
       </div>
     </div>

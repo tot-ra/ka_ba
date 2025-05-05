@@ -1,11 +1,12 @@
 import { EventEmitter } from 'node:events';
-import { Agent, AgentRegistry } from './agentRegistry.js';
+import { Agent, AgentRegistry } from './agentRegistry.js'; // Import Agent from agentRegistry
 import { LocalAgentManager } from './localAgentManager.js';
 import { AgentDiscoveryService } from './agentDiscoveryService.js';
 import { AgentTaskService } from './agentTaskService.js';
 import { AgentSubscriptionService } from './agentSubscriptionService.js';
 import { LogManager } from './logManager.js';
 import { PortManager } from './portManager.js';
+import axios from 'axios'; // Import axios
 
 export class AgentManager {
   private agentRegistry: AgentRegistry;
@@ -80,6 +81,37 @@ export class AgentManager {
 
   public async findBestAgentForTask(taskPrompt: string): Promise<Agent | null> {
     return this.agentDiscoveryService.findBestAgentForTask(taskPrompt);
+  }
+
+  // New method to update a local agent's system prompt
+  public async updateAgentSystemPrompt(agentId: string, systemPrompt: string): Promise<Agent> {
+    const agent = this.agentRegistry.findAgent(agentId);
+    if (!agent) {
+      throw new Error(`Agent with ID ${agentId} not found.`);
+    }
+
+    if (!agent.isLocal) {
+      throw new Error(`Agent with ID ${agentId} is not a local agent and does not support system prompt updates via this method.`);
+    }
+
+    try {
+      const updateUrl = `${agent.url.replace(/\/+$/, '')}/system-prompt`; // Ensure no double slash
+      console.log(`[AgentManager] Updating system prompt for agent ${agentId} at ${updateUrl}`);
+      const response = await axios.put(updateUrl, { systemPrompt }); // Use PUT and send systemPrompt in body
+
+      if (response.status !== 200) {
+        console.error(`[AgentManager] Unexpected response status from agent ${agentId} /system-prompt endpoint: ${response.status}`);
+        throw new Error(`Agent ${agentId} returned unexpected status ${response.status} when updating system prompt.`);
+      }
+
+      console.log(`[AgentManager] System prompt updated successfully for agent ${agentId}.`);
+      // Optionally refetch agent capabilities/card if the update changes them
+      // this.agentDiscoveryService.fetchAgentCapabilities(agent);
+      return agent; // Return the updated agent object (or just the original one)
+    } catch (error: any) {
+      console.error(`[AgentManager] Error updating system prompt for agent ${agentId}:`, error);
+      throw new Error(`Failed to update system prompt for agent ${agentId}: ${error.message}`);
+    }
   }
 
   public async getAgentTasks(agentId: string): Promise<any[]> {
