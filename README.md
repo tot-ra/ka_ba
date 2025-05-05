@@ -4,13 +4,6 @@ AI Agent Runtime (`ka`) and UI (`ba`).
 
 Status: `early prototype`
 
-<img width="1287" alt="Screenshot 2025-05-03 at 02 26 30" src="https://github.com/user-attachments/assets/e586c9f1-8dec-4cbd-846b-08adec0656c3" />
-
-
-## Naming
-> *ka* (𓂓) - is the ancient Egyptian concept of the soul manifestation, the "vital essence".
-> *ba* (𓅽) - is the ancient Egyptian concept of the soul manifestation, the "personality".
-
 ## Architecture
 
 Kaba is a project combining two main components:
@@ -30,6 +23,9 @@ ka .-> filesystem
 ## `ba` - A2A Agent UI, Control, and Orchestration Layer (`src/`)
 
 `ba` is a web application built with Vite and React (located in the `src/` directory), designed to serve as a user interface, control panel, and orchestration layer for Agent-to-Agent (A2A) compliant AI agents. It aims to provide a unified interface for interacting with various agents, including the local [`ka`](#ka---ai-agent-runtime-ka) agent runtime.
+
+
+<img width="1287" alt="Screenshot 2025-05-03 at 02 26 30" src="https://github.com/user-attachments/assets/e586c9f1-8dec-4cbd-846b-08adec0656c3" />
 
 
 ## Purpose
@@ -250,3 +246,8 @@ KA_TASK_STORE_PATH="./_ka_tasks"
 *   More robust error handling and input validation.
 *   Comprehensive unit and integration tests.
 *   Containerization improvements (health checks, etc.).
+
+## Naming
+> *ka* (𓂓) - is the ancient Egyptian concept of the soul manifestation, the "vital essence".
+> *ba* (𓅽) - is the ancient Egyptian concept of the soul manifestation, the "personality".
+
