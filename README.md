@@ -17,9 +17,13 @@ Kaba is a project combining two main components:
 
 1.  **`ka`**: (Located in `ka/`) A Go-based AI agent runtime compatible with the Agent-to-Agent (A2A) communication protocol. It provides a CLI and an HTTP server for task management.
 2.  **`ba`**: (Located in `src/`) A web-based UI (Vite/React) acting as a control layer for A2A agents, including `ka`.
-3.  **`backend`**: (Located in `backend/`) A potential backend service for `ba`, intended for spawning local `ka` instances. *Note: As of this writing, the backend implementation is pending.*
+3.  **`backend`**: (Located in `backend/`) A potential backend service for `ba`, intended for spawning local `ka` instances.
 
-This README provides details for both `ka` and `ba`.
+
+```mermaid
+flowchart LR
+ba["ba UI"] --"graphql, subscriptions"--> backend --"spawn, create tasks"--> ka
+```
 
 
 ## `ba` - A2A Agent UI, Control, and Orchestration Layer (`src/`)
