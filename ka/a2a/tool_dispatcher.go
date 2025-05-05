@@ -30,53 +30,39 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 	var toolResult interface{}
 	var toolErr error
 
-	// Parse arguments JSON string
-	var argsMap map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &argsMap); err != nil {
-		toolErr = fmt.Errorf("failed to parse tool arguments JSON: %w", err)
-		log.Printf("[Task %s] Error parsing tool arguments for %s: %v", taskID, toolCall.Function.Name, toolErr)
-		// Fall through to error handling below
-	} else {
-		// Dispatch based on tool name
-		switch toolCall.Function.Name {
-		case "list_files":
-			var path string
-			var recursive bool = false // Default to non-recursive
+	// Arguments are now expected as a string within the FunctionCall struct
+	argsString := toolCall.Function.Arguments
 
-			// Extract 'path' argument
-			if rawPath, ok := argsMap["path"]; ok {
-				if err := json.Unmarshal(rawPath, &path); err != nil {
-					toolErr = fmt.Errorf("failed to unmarshal 'path' argument: %w", err)
-				}
-			} else {
-				toolErr = fmt.Errorf("missing required argument 'path' for list_files")
-			}
-
-			// Extract 'recursive' argument if present
-			if rawRecursive, ok := argsMap["recursive"]; ok && toolErr == nil {
-				if err := json.Unmarshal(rawRecursive, &recursive); err != nil {
-					toolErr = fmt.Errorf("failed to unmarshal 'recursive' argument: %w", err)
-				}
-			}
-
-			if toolErr == nil {
-				// Execute the list_files tool
-				files, err := tools.ListFiles(path, recursive)
-				if err != nil {
-					toolErr = fmt.Errorf("list_files execution failed: %w", err)
-				} else {
-					toolResult = files // The result is the list of files
-				}
-			}
-
-		// Add cases for other tools here
-		// case "another_tool":
-		// ...
-
-		default:
-			toolErr = fmt.Errorf("unknown tool: %s", toolCall.Function.Name)
+	// Dispatch based on tool name
+	switch toolCall.Function.Name {
+	case "list_files":
+		// For list_files, the arguments string is expected to be a JSON object
+		var args struct {
+			Path string `json:"path"`
+			Recursive bool `json:"recursive,omitempty"` // Optional
 		}
+
+		if err := json.Unmarshal([]byte(argsString), &args); err != nil {
+			toolErr = fmt.Errorf("failed to parse list_files arguments JSON: %w", err)
+			log.Printf("[Task %s] Error parsing list_files arguments: %v. Raw args: %s", taskID, toolErr, argsString)
+		} else {
+			// Execute the list_files tool
+			files, err := tools.ListFiles(args.Path, args.Recursive)
+			if err != nil {
+				toolErr = fmt.Errorf("list_files execution failed: %w", err)
+			} else {
+				toolResult = files // The result is the list of files
+			}
+		}
+
+	// Add cases for other tools here
+	// case "another_tool":
+	// ...
+
+	default:
+		toolErr = fmt.Errorf("unknown tool: %s", toolCall.Function.Name)
 	}
+
 
 	// Construct the tool message response
 	toolMessage := Message{
