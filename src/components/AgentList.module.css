@@ -1,0 +1,103 @@
+/* Add styles for the AgentList component here */
+.leftPane {
+  width: 300px; /* Adjust as needed */
+  padding: 20px;
+  border-right: 1px solid #ccc;
+  overflow-y: auto; /* Add scroll if list is long */
+}
+
+.title {
+  font-size: 1.5em;
+  margin-bottom: 20px;
+}
+
+.buttonContainer {
+  margin-bottom: 20px;
+}
+
+.button {
+  padding: 10px 15px;
+  margin-right: 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.buttonPrimary {
+  background-color: #007bff;
+  color: white;
+}
+
+.buttonSecondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.buttonDanger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.agentListContainer {
+  /* Add styles if needed */
+}
+
+.agentList {
+  list-style: none;
+  padding: 0;
+}
+
+.agentListItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+
+.agentListItemSelected {
+  background-color: #e9e9e9; /* Highlight selected item */
+}
+
+.agentInfo {
+  display: flex;
+  align-items: center;
+  flex-grow: 1; /* Allow info to take available space */
+}
+
+.agentRadio {
+  margin-right: 10px;
+}
+
+.agentLabel {
+  flex-grow: 1; /* Allow label to take available space */
+  cursor: pointer; /* Keep cursor pointer on label */
+}
+
+.agentNameContainer {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.agentNameLink {
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.agentUrl {
+  font-size: 0.9em;
+  color: #555;
+  text-decoration: none;
+}
+
+.agentUrl:hover {
+  text-decoration: underline;
+}
+
+.agentPid {
+  font-size: 0.8em;
+  color: #777;
+  margin-left: 5px;
+}

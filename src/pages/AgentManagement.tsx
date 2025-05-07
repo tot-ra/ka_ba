@@ -5,6 +5,7 @@ import AgentInteraction from './AgentInteraction'; // Import AgentInteraction
 import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import { useNavigate } from 'react-router-dom';
 import styles from './AgentManagement.module.css'; // Import the CSS module
+import AgentList from '../components/AgentList'; // Import the new AgentList component
 
 interface Agent {
   id: string;
@@ -63,60 +64,12 @@ const AgentManagement: React.FC = () => {
   return (
     <div className={styles.splitContainer}> {/* Use a new class for the split layout */}
       {/* Left Pane: Agent List and Add Agent Buttons */}
-      <div className={styles.leftPane}>
-        <h1 className={styles.title}>Agents</h1>
-
-        {/* Add Agent Buttons */}
-        <div className={styles.buttonContainer}>
-          <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={() => navigate('/add-local-agent')}>
-            Spawn Local Agent
-          </button>
-          <button className={`${styles.button} ${styles.buttonSecondary}`} onClick={() => navigate('/add-external-agent')}>
-            Add External Agent
-          </button>
-        </div>
-
-        {/* Agent List */}
-        <div className={styles.agentListContainer}>
-          <ul className={styles.agentList}>
-            {agents.map(agent => (
-                <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
-                  <div className={styles.agentInfo}>
-                    <input
-                      type="radio"
-                      id={`agent-${agent.id}`}
-                      name="selectedAgent"
-                      value={agent.id}
-                      checked={selectedAgentId === agent.id}
-                      onChange={() => handleSelectAgent(agent.id)}
-                      className={styles.agentRadio}
-                    />
-                    <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
-                      <div className={styles.agentNameContainer}>
-                        <span className={styles.agentNameLink}>{agent.name || 'Unnamed Agent'}</span>
-                        <a className={styles.agentUrl} 
-                        href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer">
-                        ({agent.url})
-                        </a>
-                        {agent.pid && <span className={styles.agentPid}> (PID: {agent.pid})</span>} {/* Display PID */}
-                      </div>
-                      {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
-                    </label>
-                  </div>
-                  {/* Show stop button only for locally spawned agents */}
-                  {agent.isLocal && (
-                    <button
-                      onClick={() => handleStopAgent(agent.id)}
-                      className={styles.buttonDanger}
-                    >
-                      Stop
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-        </div>
-      </div>
+      <AgentList
+        agents={agents}
+        selectedAgentId={selectedAgentId}
+        handleSelectAgent={handleSelectAgent}
+        handleStopAgent={handleStopAgent}
+      />
 
       {/* Right Pane: Agent Interaction (Tasks/Logs/Task Details) */}
       <div className={styles.rightPane}>
