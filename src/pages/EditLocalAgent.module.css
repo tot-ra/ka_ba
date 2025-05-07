@@ -1,0 +1,156 @@
+/* Layout for the split view */
+.splitViewContainer {
+  display: flex;
+  flex-direction: column; /* Stack columns by default (mobile) */
+  height: auto; /* Auto height for stacking */
+  min-height: calc(100vh - 60px); /* Ensure minimum height, adjust based on header/footer */
+}
+
+.agentListPane { /* Agent list pane on the left */
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 20px; /* Add padding */
+  border-right: none; /* No border on mobile */
+  border-bottom: 1px solid #ccc; /* Add bottom border on mobile */
+}
+
+.editFormPane { /* Edit form pane on the right */
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 20px; /* Add padding */
+}
+
+/* Desktop layout */
+@media (min-width: 1200px) { /* Adjust breakpoint as needed to match AgentManagement */
+  .splitViewContainer {
+    flex-direction: row; /* Arrange columns in a row */
+    height: calc(100vh - 60px); /* Fixed height for desktop */
+    min-height: 0; /* Reset min-height */
+  }
+
+  .agentListPane {
+    flex: 0 0 400px; /* Fixed width for agent list pane */
+    border-right: 1px solid #ccc; /* Separator line */
+    border-bottom: none; /* No bottom border on desktop */
+  }
+
+  .editFormPane {
+    flex: 1; /* Edit form pane takes remaining space */
+  }
+}
+
+/* Styles for the content within the left pane (reusing some from AddLocalAgent) */
+.paper {
+  background-color: #fff;
+  padding: 24px;
+  margin-top: 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 1px -1px rgba(0,0,0,0.2), 0 1px 1px 0 rgba(0,0,0,0.14), 0 1px 3px 0 rgba(0,0,0,0.12); /* MUI Paper elevation 1 */
+}
+
+.title {
+  font-size: 1.75rem; /* Approximating h4 */
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+
+.captionText {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 4px;
+  display: block;
+}
+
+/* Form */
+.form {
+  border: 1px solid #e0e0e0;
+  padding: 24px;
+  border-radius: 4px;
+}
+
+.formGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px; /* Spacing between items */
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px; /* Space between label and input */
+}
+
+.formLabel {
+  font-size: 0.875rem;
+  color: #333;
+  margin-bottom: 4px; /* Space below label */
+}
+
+.formInput,
+.formTextarea {
+  width: 100%;
+  padding: 10px 14px; /* Approximating MUI small size */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+}
+
+.formTextarea {
+  resize: vertical; /* Allow vertical resizing */
+  min-height: 60px; /* Default min height */
+}
+
+/* Tool Selection and Prompt Composition */
+.toolSelectionSection {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
+}
+
+.toolCheckbox {
+  margin-bottom: 8px;
+}
+
+.composedPromptSection {
+  margin-top: 24px;
+}
+
+/* Spinner */
+.spinner {
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 3px solid #fff;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Alert */
+.alert {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-top: 16px;
+  font-size: 0.875rem;
+}
+
+.alertInfo {
+  background-color: #e3f2fd; /* Light blue */
+  color: #0d47a1; /* Dark blue */
+  border: 1px solid #bbdefb;
+}
+
+.alertSuccess {
+  background-color: #e8f5e9; /* Light green */
+  color: #1b5e20; /* Dark green */
+  border: 1px solid #c8e6c9;
+}
+
+.alertError {
+  background-color: #ffebee; /* Light red */
+  color: #b71c1c; /* Dark red */
+  border: 1px solid #ffcdd2;
+}

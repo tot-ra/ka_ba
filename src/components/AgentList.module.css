@@ -1,8 +1,7 @@
 /* Add styles for the AgentList component here */
-.leftPane {
-  width: 300px; /* Adjust as needed */
-  padding: 20px;
-  border-right: 1px solid #ccc;
+.agentListContent { /* Use a class for the content within the panel */
+  /* No fixed width or borders here, handled by the parent container */
+  /* padding: 20px; Remove padding from here, handled by the parent container */
   overflow-y: auto; /* Add scroll if list is long */
 }
 
@@ -11,15 +10,9 @@
   margin-bottom: 20px;
 }
 
-.buttonContainer {
-  margin-bottom: 20px;
-  display: flex; /* Align buttons on the same line */
-  gap: 10px; /* Add space between buttons */
-}
+/* Button container styles are now handled by the parent view */
 
-/* Button styles moved to Button.module.css */
-
-.agentListContainer {
+.listWrapper { /* Wrapper for the actual list */
   /* Add styles if needed */
 }
 

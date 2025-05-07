@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom'; // Keep useNavigate for the Edit button
 import styles from './AgentList.module.css'; // Use a new CSS module
 import Button from './Button'; // Import the new Button component
 
@@ -17,6 +17,7 @@ interface AgentListProps {
   selectedAgentId: string | null;
   handleSelectAgent: (agentId: string) => void;
   handleStopAgent: (agentId: string) => Promise<void>;
+  // Removed showAddButtons prop - buttons are handled by parent
 }
 
 const AgentList: React.FC<AgentListProps> = ({
@@ -25,24 +26,16 @@ const AgentList: React.FC<AgentListProps> = ({
   handleSelectAgent,
   handleStopAgent,
 }) => {
-  const navigate = useNavigate(); // useNavigate is used within the component for the buttons
+  const navigate = useNavigate(); // Keep useNavigate for the Edit button
 
   return (
-    <div className={styles.leftPane}> {/* Use a new class for the split layout */}
+    <div className={styles.agentListContent}> {/* Use a class for the content within the panel */}
       <h1 className={styles.title}>Agents</h1>
 
-      {/* Add Agent Buttons */}
-      <div className={styles.buttonContainer}>
-        <Button variant="primary" onClick={() => navigate('/add-local-agent')}>
-          Spawn Local Agent
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/add-external-agent')}>
-          Add External Agent
-        </Button>
-      </div>
+      {/* Add Agent Buttons - Removed from here, handled by parent */}
 
       {/* Agent List */}
-      <div className={styles.agentListContainer}>
+      <div className={styles.listWrapper}> {/* Added a wrapper for the actual list */}
         <ul className={styles.agentList}>
           {agents.map(agent => (
               <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>

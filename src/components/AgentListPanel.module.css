@@ -1,0 +1,19 @@
+/* Styles for the reusable Agent List Panel container */
+.agentListPane {
+  overflow-y: auto; /* Add scroll if content overflows */
+  padding: 20px; /* Add padding */
+  border-right: 1px solid #ccc; /* Separator line */
+  /* Mobile styles (stacked) */
+  border-bottom: 1px solid #ccc; /* Add bottom border on mobile */
+}
+
+/* Desktop layout */
+@media (min-width: 1200px) { /* Adjust breakpoint as needed */
+  .agentListPane {
+    flex: 0 0 400px; /* Fixed width for agent list pane */
+    border-bottom: none; /* No bottom border on desktop */
+  }
+}
+
+/* Styles for the content within the panel (AgentList component) */
+/* These styles are now in AgentList.module.css */
