@@ -1,6 +1,7 @@
 import React from 'react'; // Removed useState, useEffect
 // Import shared types needed by this component
 import { Task } from '../types'; // Removed TaskHistory
+import Button from './Button';
 
 interface TaskListProps {
   agentId: string | null; // Still needed to know *which* agent's tasks are shown
@@ -114,25 +115,25 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
 
             {/* Right Section */}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '10px', marginRight: '10px' }}>
-              <button
+              <Button
                 onClick={() => onDuplicateTask(agentId!, task.id)} // Call the prop with agentId and taskId
-                style={{ padding: '3px 8px', fontSize: '0.8em', cursor: 'pointer' }}
                 title="Duplicate Task" // Updated title
               >
                 Duplicate
-              </button>
+              </Button>
               {/* Delete Button */}
-              <button
+              <Button
                 onClick={() => {
                   if (window.confirm(`Are you sure you want to delete task ${task.id}?`)) {
                     onDeleteTask(task.id); // Use destructured prop directly
                   }
                 }}
-                style={{ padding: '3px 8px', fontSize: '0.8em', cursor: 'pointer', color: 'red', marginTop: '5px' }}
+                variant="danger"
+                style={{ marginTop: '5px' }} // Keep margin top for spacing
                 title="Delete Task"
               >
                 Delete
-              </button>
+              </Button>
             </div>
           </li>
         ))}
