@@ -130,3 +130,43 @@
   word-break: break-word;
   margin: 0;
 }
+
+/* New styles for think blocks */
+.thinkBlockContainer {
+  margin-top: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #f0f0f0;
+  overflow: hidden; /* Hide content when collapsed */
+}
+
+.thinkBlockHeader {
+  padding: 5px 8px; /* Reduced padding */
+  background-color: #e0e0e0;
+  cursor: pointer;
+  font-weight: normal; /* Less bold */
+  display: flex;
+  align-items: center;
+}
+
+.thinkBlockToggle {
+  margin-right: 8px;
+  transition: transform 0.2s ease-in-out;
+}
+
+.thinkBlockToggle.collapsed {
+  transform: rotate(0deg);
+}
+
+.thinkBlockToggle.expanded {
+  transform: rotate(90deg);
+}
+
+.thinkBlockContent {
+  padding: 8px; /* Slightly reduced padding */
+  background-color: #f9f9f9;
+  border-top: 1px solid #ccc;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0; /* Remove default pre margin */
+}
