@@ -5,6 +5,7 @@ type Agent {
   description: String
   isLocal: Boolean!
   pid: Int # Process ID, only available for local agents
+  systemPrompt: String # Add systemPrompt field
 }
 
 # --- Tool Related Types ---
@@ -94,6 +95,7 @@ type LogEntry {
 
 type Query {
   agents: [Agent!]!
+  agent(id: ID!): Agent # Add query to fetch a single agent by ID
   agentLogs(agentId: ID!): [String!]
   listTasks(agentId: ID!): [Task!]! # Added query to list tasks for an agent
   availableTools(agentId: ID!): [ToolDefinition!]! # Query to list available tools for an agent

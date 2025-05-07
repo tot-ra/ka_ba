@@ -340,62 +340,6 @@ const AddLocalAgent: React.FC = () => {
           </div>
         </form>
 
-        {/* Tool Selection and Prompt Composition */}
-        {spawnedAgentId && (
-          <div className={styles.toolSelectionSection}>
-            <h3>Available Tools for Agent {spawnedAgentId}</h3>
-            {isFetchingTools ? (
-              <p>Loading tools...</p>
-            ) : availableTools.length > 0 ? (
-              <div>
-                {availableTools.map(tool => (
-                  <div key={tool.name} className={styles.toolCheckbox}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={selectedTools.includes(tool.name)}
-                        onChange={() => handleToolSelection(tool.name)}
-                      />
-                      <strong>{tool.name}:</strong> {tool.description}
-                    </label>
-                  </div>
-                ))}
-                <button
-                  onClick={handleComposePrompt}
-                  className={`${styles.button} ${styles.buttonSecondary}`}
-                  disabled={selectedTools.length === 0 || isComposingPrompt || isUpdatingPrompt}
-                >
-                  {isComposingPrompt && <div className={styles.spinner}></div>}
-                  {isComposingPrompt ? 'Composing...' : 'Compose System Prompt'}
-                </button>
-              </div>
-            ) : (
-              <p>No tools available for this agent.</p>
-            )}
-
-            {composedSystemPrompt && (
-              <div className={styles.composedPromptSection}>
-                <h4>Composed System Prompt:</h4>
-                <textarea
-                  value={composedSystemPrompt}
-                  readOnly
-                  rows={10}
-                  className={styles.formTextarea}
-                />
-                 <button
-                  onClick={handleUpdateAgentPrompt}
-                  className={`${styles.button} ${styles.buttonPrimary}`}
-                  disabled={isUpdatingPrompt}
-                >
-                  {isUpdatingPrompt && <div className={styles.spinner}></div>}
-                  {isUpdatingPrompt ? 'Updating Agent...' : 'Update Agent with this Prompt'}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-
         {/* Status Message */}
         {statusMessage && (
           <div className={`${styles.alert} ${messageType === 'success' ? styles.alertSuccess : messageType === 'error' ? styles.alertError : messageType === 'info' ? styles.alertInfo : ''}`}>

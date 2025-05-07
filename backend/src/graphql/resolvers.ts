@@ -51,6 +51,17 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
       agents: (_parent: any, _args: any, context: ApolloContext, _info: any): Agent[] => {
         return context.agentManager.getAgents();
       },
+      // Resolver to fetch a single agent by ID
+      agent: (_parent: any, { id }: { id: string }, context: ApolloContext, _info: any): Agent | undefined => {
+        console.log(`[Resolver agent] Fetching agent with ID: ${id}`);
+        const agent = context.agentManager.getAgents().find((a: Agent) => a.id === id);
+        if (!agent) {
+          console.warn(`[Resolver agent] Agent with ID ${id} not found.`);
+        } else {
+          console.log(`[Resolver agent] Found agent: ${agent.name}`);
+        }
+        return agent;
+      },
       agentLogs: (_parent: any, { agentId }: { agentId: string }, context: ApolloContext, _info: any): string[] | null => {
         // This query remains for fetching historical logs if needed, but real-time is via subscription
         const logs = context.agentManager.getAgentLogs(agentId);

@@ -67,14 +67,22 @@ const AgentList: React.FC<AgentListProps> = ({
                     {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
                   </label>
                 </div>
-                {/* Show stop button only for locally spawned agents */}
+                {/* Show buttons only for locally spawned agents */}
                 {agent.isLocal && (
-                  <button
-                    onClick={() => handleStopAgent(agent.id)}
-                    className={styles.buttonDanger}
-                  >
-                    Stop
-                  </button>
+                  <div className={styles.agentActions}>
+                    <button
+                      onClick={() => navigate(`/agents/edit/${agent.id}`)}
+                      className={`${styles.button} ${styles.buttonSecondary}`}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleStopAgent(agent.id)}
+                      className={styles.buttonDanger}
+                    >
+                      Stop
+                    </button>
+                  </div>
                 )}
               </li>
             ))}
