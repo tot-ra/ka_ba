@@ -1,0 +1,132 @@
+.taskDetailsContainer {
+  font-family: sans-serif;
+  padding: 0;
+}
+
+.taskStatusSection {
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 0.25em 0.6em;
+  font-size: 75%;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.25rem;
+}
+
+.statusSubmitted,
+.statusUnknown {
+  background-color: #d3d3d3;
+  color: #333;
+}
+
+.statusWorking {
+  background-color: #cfe2ff;
+  color: #004085;
+}
+
+.statusInputRequired {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.statusCompleted {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.statusCanceled,
+.statusFailed {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.errorText {
+  color: red;
+  margin-top: 5px;
+}
+
+.duplicateButton {
+  margin-top: 10px;
+  padding: 5px 10px;
+}
+
+.duplicateButton:disabled {
+  cursor: not-allowed;
+}
+
+.taskHistorySection {
+  margin-bottom: 20px;
+}
+
+.messageContainer {
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.userMessage {
+  background: #eef;
+}
+
+.agentMessage {
+  background: #f8f8f8;
+}
+
+.messageRole {
+  text-transform: capitalize;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.messagePartPre {
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f9f9f9;
+  padding: 8px;
+  margin: 5px 0 0 0;
+  border-radius: 4px;
+}
+
+.dataArtifactContainer {
+  margin-top: 5px;
+}
+
+.dataArtifactPre {
+  font-size: 0.9em;
+  background: #f0f0f0;
+  padding: 5px;
+  margin: 5px 0 0 0;
+  border-radius: 4px;
+}
+
+.uriArtifactContainer {
+    margin-top: 5px;
+}
+
+.fileArtifactContainer {
+  margin-top: 5px;
+}
+
+.liveOutputStreamSection {
+  margin-bottom: 20px;
+  border: 1px solid #ccc;
+  padding: 15px;
+  border-radius: 4px;
+  background: #fff9e6;
+}
+
+.liveOutputStreamPre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
