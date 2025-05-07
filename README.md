@@ -4,6 +4,15 @@ AI Agent Runtime (`ka`) and UI (`ba`).
 
 Status: `early prototype`
 
+## Goals
+- Multiagent orchestration of tasks with multiple agents
+- Custom LLM per agent with ratelimiting
+- Multitasking
+- Autonomous tasks (allow all) with docker sandbox
+- Automatic discovery (DNS/k8s)
+- Permanent thinking agent (Sentry mode, watching filesystem)
+
+
 ## Architecture
 
 Kaba is a project combining two main components:
