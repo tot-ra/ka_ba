@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom'; // Import useParams and useNavigate
+import { useSubscription } from '@apollo/client';
+
+
 import { useAgent } from '../contexts/AgentContext';
 import AgentLogs from '../components/AgentLogs';
 import TaskInputForm from '../components/TaskInputForm';
-import { useSubscription } from '@apollo/client';
 import { DELETE_TASK_MUTATION, TASK_UPDATES_SUBSCRIPTION, LIST_TASKS_QUERY, CREATE_TASK_MUTATION } from '../graphql/agentTaskQueries';
 import TaskList from '../components/TaskList';
 import { sendGraphQLRequest } from '../utils/graphqlClient';
-import { Task, Artifact, TaskInputState as TaskInput, InputMessage, InputPart, Message, MessagePart } from '../types';
+import { Task, Artifact, TaskInputState as TaskInput, InputMessage, InputPart } from '../types';
 import TaskDetails from '../components/TaskDetails'; // Import TaskDetails directly
 import styles from './AgentInteraction.module.css'; // Import the CSS module
 
