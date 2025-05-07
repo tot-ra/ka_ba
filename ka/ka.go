@@ -35,6 +35,9 @@ func main() {
 	apiKeysFlag := flag.String("api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
 	// Removed systemPromptFlag as prompt is now composed dynamically
 
+	// Redirect standard log output to stdout
+	log.SetOutput(os.Stdout)
+
 	flag.Parse()
 
 	// Load all available tools
