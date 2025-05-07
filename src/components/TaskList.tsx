@@ -36,23 +36,6 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
     return <div style={{ color: 'red' }}>Error loading tasks: {error}</div>;
   }
 
-  // Helper to get first text part from input messages
-  const getFirstInputText = (task: Task): string => {
-    if (task.input && task.input.length > 0) {
-      const firstMessage = task.input[0];
-      if (firstMessage.parts && firstMessage.parts.length > 0) {
-        // Find the first part that looks like a text part
-        // Need to cast p to any because parts is [JSONObject!]!
-        const textPart = firstMessage.parts.find((p: any) => typeof p === 'object' && p !== null && p.type === 'text' && typeof p.text === 'string');
-        if (textPart) {
-          // Cast textPart to the expected structure
-          return (textPart as any).text.substring(0, 100) + ((textPart as any).text.length > 100 ? '...' : ''); // Truncate long text
-        }
-      }
-    }
-    return 'N/A';
-  };
-
   // Helper to calculate duration
   const getDurationInSeconds = (start: string, end: string): string => {
     try {
@@ -91,7 +74,7 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
                 style={{ marginTop: '5px', display: 'block', cursor: 'pointer', textDecoration: 'underline', color: '#007bff', wordBreak: 'break-word' }}
                 title="View Details" // Updated title
               >
-                {getFirstInputText(task)}
+                {task.name || 'Unnamed Task'} {/* Use task.name */}
               </a>
               {/* Duration */}
               <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>

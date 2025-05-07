@@ -212,16 +212,25 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		log.Printf("[TaskSendSubscribe] Received valid input message. Validation successful.")
 
+		// Extract task name from the first text part of the input message
+		taskName := "Unnamed Task" // Default name
+		for _, part := range params.Message.Parts {
+			if textPart, ok := part.(TextPart); ok {
+				taskName = textPart.Text
+				break // Use the first text part found as the name
+			}
+		}
+
 		// Create task using the single message, wrapped in a slice for CreateTask
-		// Pass the current system prompt from the LLMClient to CreateTask
-		task, err := taskExecutor.TaskStore.CreateTask(taskExecutor.LLMClient.SystemMessage, []Message{params.Message})
+		// Pass the task name, current system prompt from the LLMClient, and the input message
+		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, []Message{params.Message})
 		if err != nil {
 			log.Printf("[TaskSendSubscribe] Error creating task: %v", err)
 			http.Error(w, "Internal Server Error: Failed to create task", http.StatusInternalServerError)
 			return
 		}
 		taskID := task.ID
-		log.Printf("[Task %s] Received sendSubscribe request\n", taskID)
+		log.Printf("[Task %s] Received sendSubscribe request (Name: %s)\n", taskID, taskName)
 
 		sseWriter, err := NewSSEWriter(w, r.Context())
 		if err != nil {

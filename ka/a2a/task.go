@@ -208,6 +208,7 @@ type Artifact struct {
 
 type Task struct {
 	ID           string               `json:"id"`
+	Name         string               `json:"name,omitempty"` // Added Name field for task list display
 	State        TaskState            `json:"state"`
 	SystemPrompt string               `json:"system_prompt,omitempty"` // Added SystemPrompt field
 	Input        []Message            `json:"input,omitempty"`
@@ -227,7 +228,8 @@ func NewInMemoryTaskStore() *InMemoryTaskStore {
 	return &InMemoryTaskStore{tasks: make(map[string]*Task)}
 }
 
-func (s *InMemoryTaskStore) CreateTask(systemPrompt string, inputMessages []Message) (*Task, error) {
+// CreateTask creates a new task with the given name, system prompt, and input messages.
+func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMessages []Message) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -236,6 +238,7 @@ func (s *InMemoryTaskStore) CreateTask(systemPrompt string, inputMessages []Mess
 
 	task := &Task{
 		ID:           id,
+		Name:         name, // Set the task name
 		State:        TaskStateSubmitted,
 		SystemPrompt: systemPrompt, // Store the provided system prompt
 		Input:        inputMessages,
@@ -244,7 +247,7 @@ func (s *InMemoryTaskStore) CreateTask(systemPrompt string, inputMessages []Mess
 		Artifacts:    make(map[string]*Artifact),
 	}
 	s.tasks[id] = task
-	fmt.Printf("[TaskStore] Created Task: %s\n", id)
+	fmt.Printf("[TaskStore] Created Task: %s (Name: %s)\n", id, name)
 	return task, nil
 }
 
@@ -356,7 +359,7 @@ func (s *InMemoryTaskStore) DeleteTask(taskID string) error {
 }
 
 type TaskStore interface {
-	CreateTask(systemPrompt string, inputMessages []Message) (*Task, error) // Updated signature
+	CreateTask(name string, systemPrompt string, inputMessages []Message) (*Task, error) // Updated signature to include name
 	GetTask(taskID string) (*Task, error)
 	UpdateTask(taskID string, updateFn func(*Task) error) (*Task, error)
 	SetState(taskID string, state TaskState) error

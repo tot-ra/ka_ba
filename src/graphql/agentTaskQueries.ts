@@ -26,6 +26,7 @@ export const LIST_TASKS_QUERY = gql`
     listTasks(agentId: $agentId) {
       id
       state
+      name
       input { role parts }
       output { role parts }
       error

@@ -77,7 +77,8 @@ func (fts *FileTaskStore) loadTask(taskID string) (*Task, error) {
 	return &task, nil
 }
 
-func (fts *FileTaskStore) CreateTask(systemPrompt string, initialMessages []Message) (*Task, error) {
+// CreateTask creates a new task with the given name, system prompt, and input messages.
+func (fts *FileTaskStore) CreateTask(name string, systemPrompt string, initialMessages []Message) (*Task, error) {
 	fts.mu.Lock()
 	defer fts.mu.Unlock()
 
@@ -85,6 +86,7 @@ func (fts *FileTaskStore) CreateTask(systemPrompt string, initialMessages []Mess
 	now := time.Now().UTC()
 	task := &Task{
 		ID:           taskID,
+		Name:         name, // Store the provided name
 		State:        TaskStateSubmitted,
 		SystemPrompt: systemPrompt, // Store the provided system prompt
 		Input:        initialMessages,
@@ -94,13 +96,13 @@ func (fts *FileTaskStore) CreateTask(systemPrompt string, initialMessages []Mess
 		UpdatedAt:    now,
 	}
 
-	log.Printf("[FileTaskStore CreateTask] Attempting to save task %s...", taskID) // Added log
+	log.Printf("[FileTaskStore CreateTask] Attempting to save task %s (Name: %s)...", taskID, name) // Added log
 	err := fts.saveTask(task)
 	if err != nil {
 		log.Printf("[FileTaskStore CreateTask] Error saving task %s: %v", taskID, err) // Added log
 		return nil, fmt.Errorf("failed to save new task %s: %w", taskID, err)
 	}
-	log.Printf("[FileTaskStore CreateTask] Successfully saved task %s.", taskID) // Added log
+	log.Printf("[FileTaskStore CreateTask] Successfully saved task %s (Name: %s).", taskID, name) // Added log
 
 	return task, nil
 }

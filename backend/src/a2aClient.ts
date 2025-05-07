@@ -110,6 +110,7 @@ export interface TaskSendParams { // Export TaskSendParams
   // endpoint likely expects the message and other params, not a pre-defined ID.
   // Adjusting the client or the usage might be needed later.
   id?: string; // Making ID optional for now, assuming agent generates it if missing.
+  name?: string; // Add name field
   sessionId?: string;
   systemPrompt?: string; // Added systemPrompt field
   message: Message;

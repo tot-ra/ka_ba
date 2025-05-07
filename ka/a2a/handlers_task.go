@@ -144,10 +144,19 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		// 4. Execute the business logic (create and start task)
 		// We need to wrap the single message in an array for CreateTask if it still expects []Message
 		// TODO: Refactor CreateTask to accept a single Message or adjust here.
-		// Assuming CreateTask needs []Message for now:
+		// Extract task name from the first text part of the input message
+		taskName := "Unnamed Task" // Default name
+		for _, part := range params.Message.Parts {
+			if textPart, ok := part.(TextPart); ok {
+				taskName = textPart.Text
+				break // Use the first text part found as the name
+			}
+		}
+
+		// We need to wrap the single message in an array for CreateTask if it still expects []Message
 		inputMessages := []Message{params.Message}
-		// Pass the current system prompt from the LLMClient to CreateTask
-		task, err := taskExecutor.TaskStore.CreateTask(taskExecutor.LLMClient.SystemMessage, inputMessages)
+		// Pass the task name, current system prompt from the LLMClient, and the input message
+		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, inputMessages)
 		if err != nil {
 			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})

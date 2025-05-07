@@ -41,6 +41,7 @@ export type MessagePart = TextPart | FilePart | DataPart | UriPart | { type: str
 // and used by both AgentInteraction and TaskList.
 export interface Task {
   id: string;
+  name?: string; // Add name field
   state: TaskState;
   input?: Message[];
   output?: Message[];

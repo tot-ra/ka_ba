@@ -50,6 +50,10 @@ const AgentInteraction: React.FC = () => {
         throw new Error('Invalid data format received from server.');
       }
       console.log(`[AgentInteraction] Received ${data.length} tasks.`);
+      // Log the received data to inspect the 'input' field for each task
+      data.forEach(task => {
+          console.log(`[AgentInteraction fetchTasks] Task ${task.id} input:`, task.input);
+      });
       const sortedTasks = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setTasks(sortedTasks);
       console.log('[AgentInteraction fetchTasks] Tasks state updated:', sortedTasks);
@@ -69,11 +73,17 @@ const AgentInteraction: React.FC = () => {
       const updatedTask = data?.data?.taskUpdates;
       if (updatedTask) {
         console.log('[AgentInteraction useSubscription] Received task update:', updatedTask);
+        // Log the input field received in the subscription update
+        console.log('[AgentInteraction useSubscription] Received task update input:', updatedTask.input);
+
         setTasks(prevTasks => {
           const existingTaskIndex = prevTasks.findIndex(task => task.id === updatedTask.id);
           if (existingTaskIndex > -1) {
             const newTasks = [...prevTasks];
-            newTasks[existingTaskIndex] = updatedTask;
+            // Merge the updated task data, preserving the input if the update doesn't include it
+            // This assumes the subscription might not always send the full task object including input
+            const mergedTask = { ...newTasks[existingTaskIndex], ...updatedTask, input: newTasks[existingTaskIndex].input || updatedTask.input };
+            newTasks[existingTaskIndex] = mergedTask;
             console.log('[AgentInteraction useSubscription] Updated existing task in list:', updatedTask.id);
             return newTasks;
           } else {
@@ -84,7 +94,14 @@ const AgentInteraction: React.FC = () => {
 
         if (selectedTask && selectedTask.id === updatedTask.id) {
             console.log('[AgentInteraction useSubscription] Updating selected task details with new data for task:', updatedTask.id);
-            setSelectedTask(updatedTask);
+            // Merge the updated task data into the selected task state
+            setSelectedTask(prevSelectedTask => {
+                if (!prevSelectedTask) return updatedTask; // Should not happen if selectedTask is not null
+                const mergedSelectedTask = { ...prevSelectedTask, ...updatedTask, input: prevSelectedTask.input || updatedTask.input };
+                console.log('[AgentInteraction useSubscription] Merged selected task input:', mergedSelectedTask.input);
+                return mergedSelectedTask;
+            });
+
             console.log('[AgentInteraction useSubscription] Updated selected task output:', updatedTask.output);
             // Assuming streaming output comes in parts and needs to be appended
             if (updatedTask.output && updatedTask.output.length > 0) {
@@ -313,31 +330,9 @@ const AgentInteraction: React.FC = () => {
         console.log('Task created:', createdTask);
         setError(null);
 
-        const uiInputMessage: Message = {
-            role: variables.message.role,
-            parts: variables.message.parts.map(part => {
-                if (part.type === 'text') {
-                    return { type: 'text', text: part.content.text, metadata: part.metadata };
-                }
-                console.warn(`Mapping not fully implemented for input part type: ${part.type}. Adding raw content.`);
-                return { type: part.type, ...part.content, metadata: part.metadata };
-            }) as MessagePart[],
-            metadata: variables.message.metadata,
-        };
-
-        const uiTask: Task = {
-            id: createdTask.id,
-            state: createdTask.state,
-            input: [uiInputMessage],
-            output: createdTask.output,
-            error: createdTask.error,
-            createdAt: createdTask.createdAt,
-            updatedAt: createdTask.updatedAt,
-            artifacts: createdTask.artifacts,
-        };
-
-        setTasks(prevTasks => [uiTask, ...prevTasks]);
-        console.log('[AgentInteraction handleSendTask] Added new task with input to list state:', uiTask.id, uiTask.input);
+        // Use the task object returned by the mutation directly, which includes the input
+        setTasks(prevTasks => [createdTask, ...prevTasks]);
+        console.log('[AgentInteraction handleSendTask] Added new task with input from mutation response to list state:', createdTask.id, createdTask.input);
 
       } else {
         console.error('[GraphQL createTask] Unexpected GraphQL response structure:', response);

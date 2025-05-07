@@ -84,6 +84,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
           // Use the shared mapMessages helper function
           const mappedTasks = validTasks.map((task: any) => ({
             id: task.id,
+            name: task.name, // Include the task name
             state: task.state.toUpperCase(), // Convert state to uppercase
             input: mapMessages(task.history), // Map history to input? Check schema/logic
             output: mapMessages(task.output), // Map output messages
@@ -280,6 +281,9 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
         // --- 2. Transform Input Message ---
         // Basic transformation assuming input Part.content structure matches output Part structure
         // Force the role to 'user' for the initial message sent to the agent.
+        // Extract task name from the first text part of the input message
+        const taskName = inputMessage.parts.find(part => part.type === 'text')?.content?.text || 'Unnamed Task';
+
         const taskMessage: Message = {
           role: 'user', // Force role to 'user'
           parts: inputMessage.parts.map(part => ({
@@ -294,10 +298,11 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
 
         // --- 3. Dispatch Task to Selected Agent ---
         try {
-          console.log(`[GraphQL createTask] Dispatching task to agent ${selectedAgent.id} (${selectedAgent.name}) at ${selectedAgent.url}`);
+          console.log(`[GraphQL createTask] Dispatching task "${taskName}" to agent ${selectedAgent.id} (${selectedAgent.name}) at ${selectedAgent.url}`);
           const a2aClient = new A2AClient(selectedAgent.url);
 
           const paramsToSend: TaskSendParams = {
+            name: taskName, // Include the extracted task name
             sessionId,
             systemPrompt, // Include the systemPrompt from arguments
             message: taskMessage,

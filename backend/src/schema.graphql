@@ -71,6 +71,7 @@ type Artifact {
 
 type Task {
   id: ID!
+  name: String # Add task name
   state: TaskState!
   input: [Message!]
   output: [Message!]
