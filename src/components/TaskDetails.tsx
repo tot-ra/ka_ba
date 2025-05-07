@@ -1,24 +1,15 @@
 import React from 'react';
 import styles from './TaskDetails.module.css';
 
-import { MessageRole, Message, MessagePart } from '../types';
+import { MessageRole, Message, MessagePart, Task } from '../types'; // Import Task type
 
 interface TaskDetailsProps {
-  currentTask: {
-    id: string;
-    state: string;
-    input?: any[] | null;
-    output?: any[] | null;
-    error?: string | null;
-    createdAt?: string | null;
-    updatedAt?: string | null;
-    artifacts?: Record<string, { id: string; type: string; filename?: string | null }> | null;
-  } | null;
+  currentTask: Task | null; // Use the updated Task type
   streamingOutput: string;
   onDuplicateClick: () => void;
 }
 
-const renderMessagePart = (part: MessagePart, index: number, taskArtifacts: Record<string, { id: string; type: string; filename?: string | null }> | null | undefined) => {
+const renderMessagePart = (part: MessagePart, index: number, taskArtifacts: Task['artifacts']) => { // Use Task['artifacts'] for type safety
   if (typeof part !== 'object' || part === null || !part.type) {
     return <pre key={index} className={styles.messagePartPre}>Unsupported part structure: {JSON.stringify(part, null, 2)}</pre>;
   }
@@ -103,17 +94,16 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
   streamingOutput,
   onDuplicateClick,
 }) => {
-  const historyMessages: Message[] = [
-    ...(currentTask?.input || []),
-    ...(currentTask?.output || []),
-  ];
+  // Use the messages array from the currentTask
+  const historyMessages: Message[] = currentTask?.messages || [];
 
   if (!currentTask && !streamingOutput && historyMessages.length === 0) {
     return null;
   }
 
-  const canDuplicate = !!currentTask?.input;
-  const duplicateTitle = !canDuplicate ? 'Duplication logic needs update based on GraphQL schema' : 'Duplicate Task (copies prompt to input)';
+  // Update duplication logic to use the first message in the combined history
+  const canDuplicate = historyMessages.length > 0 && historyMessages[0].role === 'USER';
+  const duplicateTitle = !canDuplicate ? 'Cannot duplicate: No user input found in history' : 'Duplicate Task (copies prompt to input)';
 
   return (
     <div className={styles.taskDetailsContainer}>
@@ -144,6 +134,8 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
           {historyMessages.map((message, msgIndex) => (
             <div key={msgIndex} className={`${styles.messageContainer} ${message.role === 'USER' ? styles.userMessage : styles.agentMessage}`}>
               <strong className={styles.messageRole}>{message.role.toLowerCase()}</strong>
+              {/* Optionally display timestamp */}
+              {message.timestamp && <span className={styles.messageTimestamp}>{new Date(message.timestamp).toLocaleString()}</span>}
               {message.parts.map((part, partIndex) => renderMessagePart(part, partIndex, currentTask?.artifacts))}
             </div>
           ))}

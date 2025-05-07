@@ -43,8 +43,7 @@ export interface Task {
   id: string;
   name?: string; // Add name field
   state: TaskState;
-  input?: Message[];
-  output?: Message[];
+  messages?: Message[]; // Replace input/output with messages
   error?: string;
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
@@ -62,6 +61,7 @@ export interface Message {
   toolCalls?: any; // Placeholder
   toolCallId?: string;
   metadata?: any; // Added metadata
+  timestamp: string; // Add timestamp
 }
 
 

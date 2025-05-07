@@ -1,8 +1,7 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
 import { EventEmitter } from 'node:events'; // Import EventEmitter
 import { AgentManager } from '../services/agentManager.js';
 import { Agent } from '../services/agentRegistry.js'; // Import Agent from agentRegistry
-import { A2AClient, TaskSendParams, Task, Message, Part } from '../a2aClient.js';
+import { A2AClient, TaskSendParams, Task as A2ATask, Message as A2AMessage, Part as A2APart } from '../a2aClient.js'; // Alias A2A types
 import { JSONObjectResolver, DateTimeResolver } from 'graphql-scalars';
 import { GraphQLError } from 'graphql';
 import { ApolloContext } from './server.js';
@@ -44,6 +43,17 @@ interface ToolDefinition {
 
 // Update function signature to accept eventEmitter
 export function createResolvers(agentManager: AgentManager, eventEmitter: EventEmitter) {
+// Helper function to map messages and convert roles (Define once here)
+function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use A2AMessage type
+  if (!messages) return [];
+  return messages.map((msg: A2AMessage) => ({ // Explicitly cast msg to A2AMessage
+    ...msg,
+    role: msg.role?.toUpperCase(), // Convert role to uppercase
+    timestamp: msg.timestamp, // Include timestamp
+    // Keep parts as is for now, assuming GraphQL handles JSONObject
+  }));
+}
+
   return {
     JSONObject: JSONObjectResolver,
     DateTime: DateTimeResolver,
@@ -72,7 +82,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
         }
         return logs;
       },
-      listTasks: async (_parent: any, { agentId }: { agentId: string }, context: ApolloContext, _info: any): Promise<any[]> => {
+      listTasks: async (_parent: any, { agentId }: { agentId: string }, context: ApolloContext, _info: any): Promise<any[]> => { // Changed return type to any[]
         // Using any[] for now to match AgentManager method, refine later if needed
         try {
           const rawTasks = await context.agentManager.getAgentTasks(agentId);
@@ -81,19 +91,26 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
           // Filter tasks to ensure they have a valid state before mapping
           const validTasks = rawTasks.filter((task: any) => task?.state); // Check top-level state
 
-          // Use the shared mapMessages helper function
-          const mappedTasks = validTasks.map((task: any) => ({
-            id: task.id,
-            name: task.name, // Include the task name
-            state: task.state.toUpperCase(), // Convert state to uppercase
-            input: mapMessages(task.history), // Map history to input? Check schema/logic
-            output: mapMessages(task.output), // Map output messages
-            error: task.error,
-            createdAt: task.created_at,
-            updatedAt: task.updated_at,
-            artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
-            agentId: agentId, // Add agentId from the query arguments
-          }));
+          // Map tasks to the GraphQL Task type, combining and sorting messages
+          const mappedTasks = validTasks.map((task: any) => {
+            // Combine input and output messages and sort by timestamp
+            // NOTE: After ka agent changes, task should have a 'messages' array directly.
+            // We'll use that if available, otherwise fallback to combining input/output.
+            const combinedMessages: A2AMessage[] = task.messages || [...(task.input || []), ...(task.output || [])]; // Explicitly type combinedMessages
+            combinedMessages.sort((a: A2AMessage, b: A2AMessage) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // Add type annotations
+
+            return {
+              id: task.id,
+              name: task.name, // Include the task name
+              state: task.state.toUpperCase(), // Convert state to uppercase
+              messages: mapMessages(combinedMessages), // Use the combined and sorted messages
+              error: task.error,
+              createdAt: task.created_at,
+              updatedAt: task.updated_at,
+              artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
+              agentId: agentId, // Add agentId from the query arguments
+            };
+          });
 
           console.log(`[Resolver listTasks] Mapped tasks for agent ${agentId}:`, mappedTasks);
           return mappedTasks;
@@ -226,7 +243,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
            });
          }
       },
-      createTask: async (_parent: any, args: CreateTaskArgs, context: ApolloContext, _info: any): Promise<Task> => {
+      createTask: async (_parent: any, args: CreateTaskArgs, context: ApolloContext, _info: any): Promise<any> => { // Changed return type to any
         // Destructure context as well
         const { agentId, sessionId, systemPrompt, message: inputMessage, pushNotification, historyLength, metadata } = args; // Include systemPrompt
         const { agentManager, eventEmitter } = context; // Get eventEmitter from context
@@ -284,15 +301,16 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
         // Extract task name from the first text part of the input message
         const taskName = inputMessage.parts.find(part => part.type === 'text')?.content?.text || 'Unnamed Task';
 
-        const taskMessage: Message = {
+        const taskMessage: A2AMessage = { // Use A2AMessage alias
           role: 'user', // Force role to 'user'
           parts: inputMessage.parts.map(part => ({
             type: part.type, // Pass type through
             // Spread the content object directly; assumes keys match (e.g., { type: 'text', content: { text: 'hello' } })
             ...(part.content as object),
             metadata: part.metadata,
-          })) as Part[], // Cast needed here, potentially unsafe depending on input validation
+          })) as A2APart[], // Use A2APart alias and cast
           metadata: inputMessage.metadata,
+          timestamp: new Date().toISOString(), // Add current timestamp
         };
 
 
@@ -311,7 +329,7 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             metadata
           };
 
-          const initialTask: Task | null = await a2aClient.sendTask(paramsToSend);
+          const initialTask: A2ATask | null = await a2aClient.sendTask(paramsToSend); // Use A2ATask alias
 
           if (initialTask) {
             // Validate that the agent returned a status with a state
@@ -326,14 +344,18 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             const uppercaseState = initialTask.status.state.toUpperCase();
 
             // Map the structure for the GraphQL response.
+            // Combine history and status.message (if present) and map to messages
+            const combinedMessages: A2AMessage[] = [...(initialTask.history || []), ...(initialTask.status?.message ? [initialTask.status.message] : [])]; // Explicitly type combinedMessages
+             // Sort by timestamp (assuming timestamp is now present in A2AMessage due to ka agent changes)
+            combinedMessages.sort((a: A2AMessage, b: A2AMessage) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // Add type annotations
+
+
             const mappedInitialTask = {
               id: initialTask.id,
               state: uppercaseState, // Use the validated and converted state
-              input: mapMessages(initialTask.history), // Map history to input? Check schema/logic
-              output: [], // Output likely comes from updates, not initial response
-              // Safely access text part for error message
+              messages: mapMessages(combinedMessages), // Use the combined and sorted messages
               error: initialTask.status?.state === 'failed' && initialTask.status?.message?.parts?.[0]?.type === 'text'
-                     ? (initialTask.status.message.parts[0] as any).text // Cast needed after type check
+                     ? (initialTask.status.message.parts[0] as any).text // Access error message from status.message
                      : undefined,
               createdAt: initialTask.status?.timestamp, // Map timestamp
               updatedAt: initialTask.status?.timestamp, // Map timestamp
@@ -444,15 +466,20 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
             const topic = taskId ? `TASK_UPDATE_${agentId}_${taskId}` : `TASK_UPDATE_${agentId}_ALL`;
             console.log(`[Resolver taskUpdates subscribe] Client subscribing to event topic: ${topic}`);
 
-            return new Repeater<Task>(async (push, stop) => {
-              const listener = (payload: Task) => {
+            return new Repeater<any>(async (push, stop) => { // Changed Repeater type to any
+              const listener = (payload: A2ATask) => { // Listener receives A2ATask payload
                 console.log(`[Resolver taskUpdates listener] Event received on topic ${topic}:`, payload);
-                // Use the shared mapMessages helper function
+
+                // Combine history and status.message (if present) and map to messages
+                const combinedMessages: A2AMessage[] = [...(payload.history || []), ...(payload.status?.message ? [payload.status.message] : [])]; // Explicitly type combinedMessages
+                // Sort by timestamp (assuming timestamp is now present in A2AMessage due to ka agent changes)
+                combinedMessages.sort((a: A2AMessage, b: A2AMessage) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // Add type annotations
+
+                // Map the structure for the GraphQL response.
                 const mappedTask = {
                   id: payload.id, // Assuming ID is top-level
                   state: payload.status?.state?.toUpperCase(), // Access state from status and convert to uppercase
-                  input: mapMessages(payload.history), // Map history to input
-                  output: mapMessages(payload.status?.message ? [payload.status.message] : []), // Map status.message to output (assuming it's the latest output)
+                  messages: mapMessages(combinedMessages), // Use the combined and sorted messages
                   error: payload.status?.state === 'failed' && payload.status?.message?.parts?.[0]?.type === 'text'
                          ? (payload.status.message.parts[0] as any).text // Access error message from status.message
                          : undefined,
@@ -474,21 +501,11 @@ export function createResolvers(agentManager: AgentManager, eventEmitter: EventE
               console.log(`[Resolver taskUpdates subscribe] Removed listener from topic ${topic} on disconnect`);
             });
           },
-          resolve: (payload: Task) => {
+          resolve: (payload: any) => { // Changed resolve payload type to any
             // The payload is already mapped in the subscribe function
             return payload;
           },
         },
       },
     };
-
-    // Helper function to map messages and convert roles (Define once here)
-    function mapMessages(messages: any[] | undefined | null): any[] {
-      if (!messages) return [];
-      return messages.map(msg => ({
-        ...msg,
-        role: msg.role?.toUpperCase(), // Convert role to uppercase
-        // Keep parts as is for now, assuming GraphQL handles JSONObject
-      }));
-    }
 }

@@ -116,7 +116,7 @@ func handleLLMExecution(
 	// Update the task with the assistant message including parsed tool calls
 	_, updateErr := taskStore.UpdateTask(taskID, func(task *Task) error { // Use local Task
 		// Append the assistant message with the parsed tool calls
-		task.Output = append(task.Output, assistantMessage)
+		task.Messages = append(task.Messages, assistantMessage) // Use Messages field
 		task.Error = "" // Clear any previous error
 		return nil
 	})
@@ -167,14 +167,14 @@ func handleLLMExecutionStream(
 		taskStore.UpdateTask(taskID, func(task *Task) error { task.Error = errMsg; return nil }) // Use local Task
 		setStateErr := taskStore.SetState(taskID, finalState)
 
-		if setStateErr == nil && finalState == TaskStateFailed { // Use local TaskStateFailed
-			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": errMsg}) // Use local TaskStateFailed
-			sseWriter.SendEvent("state", string(failedStateData))
-		} else if setStateErr != nil {
-			log.Printf("[Task %s Stream] Failed to set final task state to %s after LLM error: %v\n", taskID, finalState, setStateErr)
-		}
-		return "", inputTokens, completionTokens, false, llmErr
+	if setStateErr == nil && finalState == TaskStateFailed { // Use local TaskStateFailed
+		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": errMsg}) // Use local TaskStateFailed
+		sseWriter.SendEvent("state", string(failedStateData))
+	} else if setStateErr != nil {
+		log.Printf("[Task %s Stream] Failed to set final task state to %s after LLM error: %v\n", taskID, finalState, setStateErr)
 	}
+	return "", inputTokens, completionTokens, false, llmErr
+}
 
 	// Log token usage on success
 	fmt.Printf("[Task %s Stream] LLM Success. Input Tokens: %d, Completion Tokens: %d\n", taskID, inputTokens, completionTokens)

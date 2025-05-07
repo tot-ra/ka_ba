@@ -70,6 +70,7 @@ type Message struct {
 	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
 	// ToolCallID is used in a tool message to indicate which tool call this message is a response to.
 	ToolCallID string `json:"tool_call_id,omitempty"`
+	Timestamp  time.Time `json:"timestamp"` // Add timestamp to message
 }
 
 // ToolCall represents a single tool call parsed from the XML structure.
@@ -211,8 +212,7 @@ type Task struct {
 	Name         string               `json:"name,omitempty"` // Added Name field for task list display
 	State        TaskState            `json:"state"`
 	SystemPrompt string               `json:"system_prompt,omitempty"` // Added SystemPrompt field
-	Input        []Message            `json:"input,omitempty"`
-	Output       []Message            `json:"output,omitempty"`
+	Messages     []Message            `json:"messages,omitempty"` // Replace Input/Output with a single Messages array
 	Error        string               `json:"error,omitempty"`
 	CreatedAt    time.Time            `json:"created_at"`
 	UpdatedAt    time.Time            `json:"updated_at"`
@@ -236,12 +236,21 @@ func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMe
 	id := fmt.Sprintf("task-%s", time.Now().Format(time.RFC3339Nano))
 	now := time.Now()
 
+	// Initialize messages with timestamps for InMemoryTaskStore
+	messagesWithTimestamps := make([]Message, len(inputMessages))
+	// 'now' is already declared above, use '=' for assignment
+	now = time.Now()
+	for i, msg := range inputMessages {
+		msg.Timestamp = now // Add timestamp to initial messages
+		messagesWithTimestamps[i] = msg
+	}
+
 	task := &Task{
 		ID:           id,
 		Name:         name, // Set the task name
 		State:        TaskStateSubmitted,
 		SystemPrompt: systemPrompt, // Store the provided system prompt
-		Input:        inputMessages,
+		Messages:     messagesWithTimestamps, // Use the new Messages field
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		Artifacts:    make(map[string]*Artifact),
@@ -296,7 +305,8 @@ func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error
 
 func (s *InMemoryTaskStore) AddMessage(taskID string, message Message) error {
 	_, err := s.UpdateTask(taskID, func(task *Task) error {
-		task.Output = append(task.Output, message)
+		message.Timestamp = time.Now() // Add timestamp when message is added
+		task.Messages = append(task.Messages, message) // Append to the single Messages array
 		return nil
 	})
 	return err

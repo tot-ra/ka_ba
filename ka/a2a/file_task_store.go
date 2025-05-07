@@ -84,13 +84,19 @@ func (fts *FileTaskStore) CreateTask(name string, systemPrompt string, initialMe
 
 	taskID := uuid.NewString()
 	now := time.Now().UTC()
+	// Initialize messages with timestamps
+	messagesWithTimestamps := make([]Message, len(initialMessages))
+	for i, msg := range initialMessages {
+		msg.Timestamp = now // Add timestamp to initial messages
+		messagesWithTimestamps[i] = msg
+	}
+
 	task := &Task{
 		ID:           taskID,
 		Name:         name, // Store the provided name
 		State:        TaskStateSubmitted,
 		SystemPrompt: systemPrompt, // Store the provided system prompt
-		Input:        initialMessages,
-		Output:       []Message{},
+		Messages:     messagesWithTimestamps, // Use the new Messages field
 		Artifacts:    make(map[string]*Artifact),
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -152,7 +158,8 @@ func (fts *FileTaskStore) SetState(taskID string, state TaskState) error {
 
 func (fts *FileTaskStore) AddMessage(taskID string, message Message) error {
 	_, err := fts.UpdateTask(taskID, func(task *Task) error {
-		task.Output = append(task.Output, message)
+		message.Timestamp = time.Now().UTC() // Add timestamp when message is added
+		task.Messages = append(task.Messages, message) // Append to the single Messages array
 		return nil
 	})
 	return err

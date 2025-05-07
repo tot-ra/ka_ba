@@ -15,7 +15,7 @@
 - When writing new code, consider moving it to a new file if current file is getting too big (> 500 lines)
 - When writing tests, create new small tests. Do not add multiple cases in one test, do not use parametric tests.
 
-## At the end of th task
+## Optional. If you did major backend changes, at the end of th task
 - `make build` and fix issues
 - `make test` and fix tests/code
 - update TODO.md with new sub-tasks you think are needed

@@ -50,6 +50,7 @@ export interface Message { // Export Message
   role: 'user' | 'agent';
   parts: Part[];
   metadata?: any;
+  timestamp: string; // Add timestamp field
 }
 
 export interface TaskStatus { // Export TaskStatus

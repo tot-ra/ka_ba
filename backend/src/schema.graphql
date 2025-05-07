@@ -60,6 +60,7 @@ type Message {
   parts: [JSONObject!]! # Simplified to JSONObject for now
   toolCalls: JSONObject # Placeholder
   toolCallId: String
+  timestamp: String! # Add timestamp to Message type
 }
 
 type Artifact {
@@ -73,8 +74,7 @@ type Task {
   id: ID!
   name: String # Add task name
   state: TaskState!
-  input: [Message!]
-  output: [Message!]
+  messages: [Message!] # Replace input/output with messages
   error: String
   createdAt: String! # Using String for ISO date format
   updatedAt: String! # Using String for ISO date format

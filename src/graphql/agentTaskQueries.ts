@@ -11,8 +11,11 @@ export const TASK_UPDATES_SUBSCRIPTION = gql`
     taskUpdates(agentId: $agentId) {
       id
       state
-      input { role parts }
-      output { role parts }
+      messages { # Use the new messages field
+        role
+        parts
+        timestamp # Include timestamp
+      }
       error
       createdAt
       updatedAt
@@ -27,8 +30,11 @@ export const LIST_TASKS_QUERY = gql`
       id
       state
       name
-      input { role parts }
-      output { role parts }
+      messages { # Use the new messages field
+        role
+        parts
+        timestamp # Include timestamp
+      }
       error
       createdAt
       updatedAt
@@ -42,8 +48,13 @@ export const CREATE_TASK_MUTATION = gql`
     createTask(agentId: $agentId, message: $message) {
       id
       state
-      input { role parts toolCalls toolCallId }
-      output { role parts toolCalls toolCallId }
+      messages { # Use the new messages field
+        role
+        parts
+        toolCalls
+        toolCallId
+        timestamp # Include timestamp
+      }
       error
       createdAt
       updatedAt

@@ -153,10 +153,10 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 			}
 		}
 
-		// We need to wrap the single message in an array for CreateTask if it still expects []Message
-		inputMessages := []Message{params.Message}
-		// Pass the task name, current system prompt from the LLMClient, and the input message
-		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, inputMessages)
+		// Pass the task name, current system prompt from the LLMClient, and the initial message
+		// CreateTask now expects []Message for initial messages
+		initialMessages := []Message{params.Message}
+		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, initialMessages)
 		if err != nil {
 			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})
@@ -285,8 +285,8 @@ func TasksInputHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		// Update task with new input
 		_, updateErr := taskExecutor.TaskStore.UpdateTask(params.TaskID, func(task *Task) error {
-			// Assuming task.Input is []Message, append the new message
-			task.Input = append(task.Input, params.Input)
+			// Append the new message to the Messages array
+			task.Messages = append(task.Messages, params.Input) // Use Messages field
 			task.Error = "" // Clear previous error if any
 			return nil
 		})

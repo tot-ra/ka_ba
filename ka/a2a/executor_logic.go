@@ -166,8 +166,8 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		return false, nil // Not an error, but stop processing
 	}
 
-	// Build messages for the LLM using the helper function, using the task's SystemPrompt
-	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input, currentTask.SystemPrompt) // Use currentTask.SystemPrompt
+	// Build messages for the LLM using the helper function, using the task's SystemPrompt and all messages
+	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Messages, currentTask.SystemPrompt) // Use currentTask.Messages
 	if extractErr != nil {
 		te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 			task.Error = extractErr.Error()
@@ -219,9 +219,9 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 
 	// Find the last message from the assistant (which should contain tool_calls if any)
 	var lastAssistantMessage *Message
-	for i := len(updatedTask.Output) - 1; i >= 0; i-- {
-		if updatedTask.Output[i].Role == RoleAssistant {
-			lastAssistantMessage = &updatedTask.Output[i]
+	for i := len(updatedTask.Messages) - 1; i >= 0; i-- { // Look in Messages
+		if updatedTask.Messages[i].Role == RoleAssistant {
+			lastAssistantMessage = &updatedTask.Messages[i]
 			break
 		}
 	}
@@ -244,11 +244,9 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 			toolResults = append(toolResults, toolResultMsg)
 		}
 
-		// Append tool results to the task's input for the next LLM iteration
+		// Append tool results to the task's messages for the next LLM iteration
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Input = append(task.Input, toolResults...) // Append all tool result messages
-			// Clear output after processing tool calls, as the next iteration starts with new input
-			task.Output = []Message{}
+			task.Messages = append(task.Messages, toolResults...) // Append all tool result messages to Messages
 			task.Error = "" // Clear any previous error
 			return nil
 		})
@@ -258,7 +256,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 			return false, updateErr                      // Stop processing
 		}
 
-		log.Printf("[Task %s] Appended %d tool result messages to input. Continuing loop.", t.ID, len(toolResults))
+		log.Printf("[Task %s] Appended %d tool result messages to messages. Continuing loop.", t.ID, len(toolResults))
 		// Set state back to Working before the next iteration
 		if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
 			log.Printf("[Task %s] Failed to set state back to Working after tool calls: %v", t.ID, err)
@@ -272,7 +270,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
 
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Output = append(task.Output, outputMessage)
+			task.Messages = append(task.Messages, outputMessage) // Append to Messages
 			task.Error = "" // Clear any previous error
 			return nil
 		})
@@ -313,9 +311,9 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		log.Printf("[Task %s] Task completed normally (no input required, no tool calls).", t.ID)
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
 
-		// Update task output
+		// Update task messages
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Output = append(task.Output, outputMessage)
+			task.Messages = append(task.Messages, outputMessage) // Append to Messages
 			task.Error = "" // Clear any previous error
 			return nil
 		})
@@ -363,8 +361,8 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		return false, nil // Stop processing
 	}
 
-	// Build messages for the LLM using the helper function, using the task's SystemPrompt
-	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Input, currentTask.SystemPrompt) // Use currentTask.SystemPrompt
+	// Build messages for the LLM using the helper function, using the task's SystemPrompt and all messages
+	llmMessages, contentFound, extractErr := buildPromptFromInput(t.ID, currentTask.Messages, currentTask.SystemPrompt) // Use currentTask.Messages
 	if extractErr != nil {
 		te.TaskStore.UpdateTask(t.ID, func(task *Task) error { task.Error = extractErr.Error(); return nil })
 		te.TaskStore.SetState(t.ID, TaskStateFailed)
@@ -416,9 +414,9 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 
 	// Find the last message from the assistant (which should contain tool_calls if any)
 	var lastAssistantMessage *Message
-	for i := len(updatedTask.Output) - 1; i >= 0; i-- {
-		if updatedTask.Output[i].Role == RoleAssistant {
-			lastAssistantMessage = &updatedTask.Output[i]
+	for i := len(updatedTask.Messages) - 1; i >= 0; i-- { // Look in Messages
+		if updatedTask.Messages[i].Role == RoleAssistant {
+			lastAssistantMessage = &updatedTask.Messages[i]
 			break
 		}
 	}
@@ -441,11 +439,9 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 			toolResults = append(toolResults, toolResultMsg)
 		}
 
-		// Append tool results to the task's input for the next LLM iteration
+		// Append tool results to the task's messages for the next LLM iteration
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Input = append(task.Input, toolResults...) // Append all tool result messages
-			// Clear output after processing tool calls, as the next iteration starts with new input
-			task.Output = []Message{}
+			task.Messages = append(task.Messages, toolResults...) // Append all tool result messages to Messages
 			task.Error = "" // Clear any previous error
 			return nil
 		})
@@ -477,7 +473,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
 
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Output = append(task.Output, outputMessage)
+			task.Messages = append(task.Messages, outputMessage) // Append to Messages
 			task.Error = ""
 			return nil
 		})
@@ -520,7 +516,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 
 		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Output = append(task.Output, outputMessage)
+			task.Messages = append(task.Messages, outputMessage) // Append to Messages
 			task.Error = ""
 			return nil
 		})
