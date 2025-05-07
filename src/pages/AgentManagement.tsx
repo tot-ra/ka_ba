@@ -6,7 +6,6 @@ import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import { useNavigate } from 'react-router-dom';
 import styles from './AgentManagement.module.css'; // Import the CSS module
 import AgentList from '../components/AgentList'; // Import the new AgentList component
-import AgentListPanel from '../components/AgentListPanel'; // Import AgentListPanel
 import Button from '../components/Button'; // Import Button for the add buttons
 
 interface Agent {
@@ -65,23 +64,19 @@ const AgentManagement: React.FC = () => {
 
   return (
     <div className={styles.splitContainer}> {/* Use a new class for the split layout */}
-      {/* Left Pane: Agent List Panel */}
-      <AgentListPanel>
-        {/* Agent List */}
-        {loadingAgents ? (
-          <p>Loading agents...</p>
-        ) : agentError ? (
-          <p className={styles.alertError}>{agentError}</p>
-        ) : (
-          <AgentList
-            agents={agents}
-            selectedAgentId={selectedAgentId}
-            handleSelectAgent={handleSelectAgent}
-            handleStopAgent={handleStopAgent}
-          />
-        )}
-      </AgentListPanel>
-
+      {/* Left Pane: Agent List */}
+      {loadingAgents ? (
+        <p>Loading agents...</p>
+      ) : agentError ? (
+        <p className={styles.alertError}>{agentError}</p>
+      ) : (
+        <AgentList
+          agents={agents}
+          selectedAgentId={selectedAgentId}
+          handleSelectAgent={handleSelectAgent}
+          handleStopAgent={handleStopAgent}
+        />
+      )}
 
       {/* Right Pane: Agent Interaction (Tasks/Logs/Task Details) */}
       <div className={styles.rightPane}>

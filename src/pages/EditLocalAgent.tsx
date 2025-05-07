@@ -3,7 +3,6 @@ import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import styles from './EditLocalAgent.module.css'; // Use the new CSS module
 import AgentList from '../components/AgentList'; // Import AgentList
-import AgentListPanel from '../components/AgentListPanel'; // Import AgentListPanel
 
 type MessageType = 'success' | 'error' | 'info' | null;
 
@@ -264,20 +263,18 @@ const EditLocalAgent: React.FC = () => {
 
   return (
     <div className={styles.splitViewContainer}>
-      <AgentListPanel> {/* Use AgentListPanel */}
-        {isLoadingAgents ? (
-          <p>Loading agent list...</p>
-        ) : errorLoadingAgents ? (
-          <p className={styles.alertError}>{errorLoadingAgents}</p>
-        ) : (
-          <AgentList
-            agents={allAgents}
-            selectedAgentId={agentId || null} // Highlight the currently edited agent
-            handleSelectAgent={handleSelectAgent}
-            handleStopAgent={handleStopAgent} // Use placeholder for now
-          />
-        )}
-      </AgentListPanel>
+      {isLoadingAgents ? (
+        <p>Loading agent list...</p>
+      ) : errorLoadingAgents ? (
+        <p className={styles.alertError}>{errorLoadingAgents}</p>
+      ) : (
+        <AgentList
+          agents={allAgents}
+          selectedAgentId={agentId || null} // Highlight the currently edited agent
+          handleSelectAgent={handleSelectAgent}
+          handleStopAgent={handleStopAgent} // Use placeholder for now
+        />
+      )}
       <div className={styles.editFormPane}> {/* Edit form on the right */}
         <div className={styles.paper}>
           <h2>Edit Local Agent: {agentDetails.name}</h2>

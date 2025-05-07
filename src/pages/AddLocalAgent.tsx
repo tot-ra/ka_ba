@@ -74,11 +74,13 @@ const AddLocalAgent: React.FC = () => {
       const spawnedAgent = response.data.data.spawnKaAgent;
       if (spawnedAgent && spawnedAgent.id) {
         console.log('Agent spawned successfully:', spawnedAgent);
+        console.log('Agent spawned successfully:', spawnedAgent);
         setSpawnedAgentId(spawnedAgent.id);
-        setStatusMessage(`Agent "${spawnedAgent.name}" spawned successfully! Fetching available tools...`);
+        setStatusMessage(`Agent "${spawnedAgent.name}" spawned successfully! Redirecting to edit view...`);
         setMessageType('success');
-        // Proceed to fetch tools
-        fetchAvailableTools(spawnedAgent.id);
+        // Redirect immediately after successful spawn
+        navigate(`/agents/edit/${spawnedAgent.id}`);
+        // No longer proceeding to fetch tools or update prompt automatically after spawn
       } else {
         const errorMessage = response.data.errors?.[0]?.message || 'Failed to spawn agent or received invalid data.';
         console.error('Failed to spawn agent:', spawnAgentConfig, response.data);
@@ -211,7 +213,7 @@ const AddLocalAgent: React.FC = () => {
         setStatusMessage(`Agent "${updatedAgent.name}" system prompt updated successfully!`);
         setMessageType('success');
         // Optionally navigate or show a success message and allow further actions
-        // navigate('/agents'); // Maybe redirect after successful update?
+        // Redirect is now handled after spawn
       } else {
         console.error('Failed to update agent system prompt or received invalid data:', response.data);
         setStatusMessage('Error: Failed to update agent system prompt.');

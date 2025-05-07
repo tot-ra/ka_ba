@@ -29,7 +29,7 @@ const AgentList: React.FC<AgentListProps> = ({
   const navigate = useNavigate(); // Keep useNavigate for the Edit button
 
   return (
-    <div className={styles.agentListContent}> {/* Use a class for the content within the panel */}
+    <div className={styles.agentListContainer}> {/* Use a class for the main container */}
       <h1 className={styles.title}>Agents</h1>
 
       {/* Add Agent Buttons - Removed from here, handled by parent */}
