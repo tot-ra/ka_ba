@@ -74,6 +74,13 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {tasks.map(task => (
           <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            {/* State Indicator */}
+            <div style={{ marginRight: '10px', marginTop:'10px', fontSize: '1.2em' }}>
+              {task.state === 'SUBMITTED' && '⏳'} {/* Loader indicator */}
+              {task.state === 'INPUT_REQUIRED' && '🟡'} {/* Question emoji */}
+              {task.state === 'FAILED' && '🛑'} {/* Question emoji */}
+              {task.state === 'COMPLETED' && '✅'} {/* Green check emoji */}
+            </div>
             {/* Left Section */}
             <div style={{ flexGrow: 1, marginRight: '15px' }}>
               {/* Input Text Link - Now calls onViewTaskDetails */}
@@ -89,7 +96,7 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
               <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>
                 Duration: {getDurationInSeconds(task.createdAt, task.updatedAt)}s
               </div>
-              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>ID: <code style={{ fontSize: '1em' }}>{task.id}</code></div>
+              
             </div>
 
             {/* Middle Section (Buttons) */}
@@ -97,10 +104,10 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
             <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '150px' }}> {/* Added minWidth for better alignment */}
               <div>
                 {task.error && <div style={{ color: 'red', marginTop: '5px' }}><strong>Error:</strong> {task.error}</div>}
-                <strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span>
+                {/* <strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span> */}
               </div>
               <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>Updated: {new Date(task.updatedAt).toLocaleString()}</div>
-
+              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>ID: <code style={{ fontSize: '1em' }}>{task.id}</code></div>
 
             </div>
 
