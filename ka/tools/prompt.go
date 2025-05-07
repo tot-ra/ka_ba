@@ -28,16 +28,7 @@ You have access to the following tools:
 	// Add tool call instruction block
 	toolDefinitionsXML.WriteString(`
 When you need to use a tool, output an XML block like this:
-<tool_code>
-  <tool_call id="call_abc" type="function">
-    <function>
-      <name>tool_name</name>
-      <arguments>
-        {"param1": "value1", "param2": "value2"}
-      </arguments>
-    </function>
-  </tool_call>
-</tool_code>
+<tool id="tool_name">{"param1": "value1", "param2": "value2"}</tool>
 
 Think step by step and provide clear instructions to the user or use tools when necessary.
 `)

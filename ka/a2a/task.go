@@ -2,11 +2,10 @@ package a2a
 
 import (
 	"encoding/json" // Manually added back
-	"encoding/xml" // Import the XML package
 	"errors" // Manually added back
 	"fmt"
 	"log"
-	"strings"
+	"regexp" // Import regexp for finding tool tags
 	"sync"
 	"time"
 )
@@ -65,6 +64,7 @@ type Message struct {
 	Role  MessageRole `json:"role"`
 	Parts []Part      `json:"parts"`
 	// RawToolCallsXML stores the raw XML string containing tool calls extracted from the LLM response.
+	// It now stores the full LLM response string which might contain multiple <tool> tags.
 	RawToolCallsXML string `json:"-"` // Ignore this field during standard JSON marshalling
 	// ParsedToolCalls is populated after parsing RawToolCallsXML.
 	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
@@ -73,17 +73,17 @@ type Message struct {
 	Timestamp  time.Time `json:"timestamp"` // Add timestamp to message
 }
 
-// ToolCall represents a single tool call parsed from the XML structure.
+// ToolCall represents a single tool call parsed from the simplified XML structure.
 type ToolCall struct {
-	ID       string       `xml:"id,attr"`   // Tool call ID from XML attribute
-	Type     string       `xml:"type,attr"` // Tool type from XML attribute (e.g., "function")
-	Function FunctionCall `xml:"function"`
+	ID       string       // Tool call ID from XML attribute
+	Type     string       // Tool type (hardcoded to "function" for now)
+	Function FunctionCall
 }
 
 // FunctionCall represents the details of a function tool call parsed from XML.
 type FunctionCall struct {
-	Name      string `xml:"name"`      // Function name from XML element
-	Arguments string `xml:"arguments"` // Arguments as a string from XML element
+	Name      string // Function name from the tool id attribute
+	Arguments string // Arguments as a string from the content between tags
 }
 
 // MarshalJSON implements the json.Marshaler interface for Message.
@@ -170,33 +170,54 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ParseToolCallsFromXML attempts to find and parse tool calls from the RawToolCallsXML field.
+// Regex to find the <tool> XML block(s) - Duplicated here for ParseToolCallsFromXML
+// This regex captures the tool name in group 1 and the arguments in group 2.
+var parseToolCallRegex = regexp.MustCompile(`(?s)<tool\s+id="([^"]+?)">(.*?)</tool>`)
+
+// ParseToolCallsFromXML attempts to find and parse tool calls from the RawToolCallsXML field
+// using the simplified <tool id="tool_name">{json_arguments}</tool> structure.
 func (m *Message) ParseToolCallsFromXML() error {
 	if m.Role != RoleAssistant || m.RawToolCallsXML == "" {
 		m.ParsedToolCalls = nil // Ensure it's nil if not an assistant message or no XML
 		return nil
 	}
 
-	// Define the structure to unmarshal the XML into
-	type ToolCallsXML struct {
-		XMLName   xml.Name   `xml:"tool_code"` // Expecting a root tag like <tool_code>
-		ToolCalls []ToolCall `xml:"tool_call"` // Expecting multiple <tool_call> tags
+	// Find all matches of the simplified tool tag
+	matches := parseToolCallRegex.FindAllStringSubmatch(m.RawToolCallsXML, -1)
+
+	if len(matches) == 0 {
+		m.ParsedToolCalls = nil // No tool calls found
+		log.Printf("No simplified <tool> tags found in LLM response.")
+		return nil
 	}
 
-	var toolCallsXML ToolCallsXML
-	// Use a decoder with Strict set to false to ignore unknown fields and allow comments
-	decoder := xml.NewDecoder(strings.NewReader(m.RawToolCallsXML))
-	decoder.Strict = false
+	m.ParsedToolCalls = make([]ToolCall, 0, len(matches))
+	for _, match := range matches {
+		if len(match) == 3 {
+			toolID := match[1]      // Captured group 1: tool name from id attribute
+			arguments := match[2] // Captured group 2: content between tags (JSON arguments)
 
-	if err := decoder.Decode(&toolCallsXML); err != nil {
-		// Log the error but don't necessarily fail the whole task, just this parsing step
-		log.Printf("Warning: Failed to parse XML tool calls for task message: %v. Raw XML: %s", err, m.RawToolCallsXML)
-		m.ParsedToolCalls = nil // Ensure it's nil on parsing failure
-		return fmt.Errorf("failed to parse XML tool calls: %w", err)
+			// Create a new ToolCall struct
+			toolCall := ToolCall{
+				// Generate a unique ID for this tool call instance if needed, or use toolID
+				// For simplicity, let's use a combination of task message timestamp and toolID
+				// A more robust approach might involve a counter or UUID.
+				// Let's use a simple counter for uniqueness within this message.
+				ID: fmt.Sprintf("%s-%d", toolID, len(m.ParsedToolCalls)), // Simple unique ID
+				Type: "function", // Hardcoded type as per the new structure
+				Function: FunctionCall{
+					Name: toolID, // Tool name is the id attribute
+					Arguments: arguments, // Arguments are the content
+				},
+			}
+			m.ParsedToolCalls = append(m.ParsedToolCalls, toolCall)
+			log.Printf("Parsed tool call: ID=%s, Name=%s, Arguments=%s", toolCall.ID, toolCall.Function.Name, toolCall.Function.Arguments)
+		} else {
+			log.Printf("Warning: Regex match did not capture expected groups. Match: %v", match)
+		}
 	}
 
-	m.ParsedToolCalls = toolCallsXML.ToolCalls
-	log.Printf("Successfully parsed %d tool calls from XML.", len(m.ParsedToolCalls))
+	log.Printf("Successfully parsed %d tool calls from simplified XML.", len(m.ParsedToolCalls))
 	return nil
 }
 

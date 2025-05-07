@@ -393,12 +393,14 @@ func startHTTPServer(
 			type ToolDefinition struct {
 				Name        string `json:"name"`
 				Description string `json:"description"`
+				XMLDefinition string `json:"xml_definition"` // Add XMLDefinition field
 			}
 			var toolList []ToolDefinition
 			for _, tool := range availableTools {
 				toolList = append(toolList, ToolDefinition{
 					Name:        tool.GetName(),
 					Description: tool.GetDescription(),
+					XMLDefinition: tool.GetXMLDefinition(), // Include the XML definition
 				})
 			}
 

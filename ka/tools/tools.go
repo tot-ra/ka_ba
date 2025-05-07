@@ -32,18 +32,7 @@ func (t *ListFilesTool) GetDescription() string {
 }
 
 func (t *ListFilesTool) GetXMLDefinition() string {
-	return `
-<tool_code>
-  <tool_call id="call_abc" type="function">
-    <function>
-      <name>list_files</name>
-      <arguments>
-        {"path": ".", "recursive": false}
-      </arguments>
-    </function>
-  </tool_call>
-</tool_code>
-`
+	return `<tool id="list_files">{"path": ".", "recursive": false}</tool>`
 }
 
 func (t *ListFilesTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {

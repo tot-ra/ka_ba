@@ -7,15 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"regexp" // Import regexp for finding XML block
 	"strings"
 
 	// No import for "kaba/ka/a2a" needed here
 	"ka/llm"
 )
-
-// Regex to find the <tool_code> XML block
-var toolCodeRegex = regexp.MustCompile(`(?s)<tool_code>(.*?)</tool_code>`)
 
 // handleLLMExecution calls the LLM, manages first-write state update, and handles results/errors.
 // It now extracts and parses XML tool calls from the full response string.
@@ -87,25 +83,17 @@ func handleLLMExecution(
 	fmt.Printf("[Task %s] LLM Stream Success. Input Tokens: %d, Completion Tokens: %d\n", taskID, inputTokens, completionTokens)
 
 	// --- Extract and Parse XML Tool Calls ---
-	xmlMatch := toolCodeRegex.FindStringSubmatch(fullResultString)
-	var rawToolCallsXML string
-	if len(xmlMatch) > 1 {
-		rawToolCallsXML = xmlMatch[0] // Capture the full matched XML block including tags
-		log.Printf("[Task %s] Found XML tool_code block:\n%s\n", taskID, rawToolCallsXML)
-		// Optionally remove the XML block from the fullResultString if you don't want it in the final text output
-		// fullResultString = strings.ReplaceAll(fullResultString, rawToolCallsXML, "")
-	} else {
-		log.Printf("[Task %s] No XML tool_code block found in LLM response.", taskID)
-	}
+	// The raw XML is now the full result string, which might contain multiple <tool> tags
+	rawToolCallsXML := fullResultString
 
 	// Create a Message object to hold the raw XML and parse it
 	assistantMessage := Message{ // Use local Message
 		Role:            RoleAssistant, // Use local RoleAssistant
-		RawToolCallsXML: rawToolCallsXML,
+		RawToolCallsXML: rawToolCallsXML, // Store the full response for parsing
 		Parts:           []Part{TextPart{Type: "text", Text: fullResultString}}, // Use local Part, TextPart
 	}
 
-	// Parse the XML tool calls
+	// Parse the XML tool calls from the RawToolCallsXML field
 	parseErr := assistantMessage.ParseToolCallsFromXML() // Call the method on the Message object
 	if parseErr != nil {
 		log.Printf("[Task %s] Error parsing XML tool calls: %v", taskID, parseErr)

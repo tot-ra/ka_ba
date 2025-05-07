@@ -27,7 +27,7 @@ func NewToolDispatcher(store TaskStore, availableTools map[string]tools.Tool) *T
 // DispatchToolCall takes a ToolCall and executes the corresponding tool function.
 // It returns a Message with RoleTool containing the result, or an error.
 func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, toolCall ToolCall) (Message, error) {
-	log.Printf("[Task %s] Dispatching tool call: %s", taskID, toolCall.Function.Name)
+	log.Printf("[Task %s] Dispatching tool call: %s (ID: %s)", taskID, toolCall.Function.Name, toolCall.ID)
 
 	// Find the tool implementation by name
 	tool, ok := td.availableTools[toolCall.Function.Name]
@@ -60,7 +60,7 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 			ToolCallID: toolCall.ID,
 			Parts: []Part{TextPart{
 				Type: "text",
-				Text: fmt.Sprintf("Error parsing arguments for tool '%s': Invalid JSON format. Expected a JSON object.", toolCall.Function.Name),
+				Text: fmt.Sprintf("Error parsing arguments for tool '%s': Invalid JSON format. Expected a JSON object. Raw arguments: %s", toolCall.Function.Name, argsString),
 			}},
 		}
 		return toolMessage, toolErr // Return the message and the error
@@ -78,10 +78,10 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 
 	if toolErr != nil {
 		// If there was an error executing the tool, return an error message
-		log.Printf("[Task %s] Tool execution failed for %s: %v", taskID, toolCall.Function.Name, toolErr)
+		log.Printf("[Task %s] Tool execution failed for %s (ID: %s): %v", taskID, toolCall.Function.Name, toolCall.ID, toolErr)
 		toolMessage.Parts = append(toolMessage.Parts, TextPart{
 			Type: "text",
-			Text: fmt.Sprintf("Error executing tool %s: %v", toolCall.Function.Name, toolErr),
+			Text: fmt.Sprintf("Error executing tool %s (ID: %s): %v", toolCall.Function.Name, toolCall.ID, toolErr),
 		})
 	} else {
 		// If tool execution was successful, add the result as a text part
@@ -89,7 +89,7 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 			Type: "text",
 			Text: toolResultString, // Use the string result directly
 		})
-		log.Printf("[Task %s] Tool %s executed successfully. Result: %s", taskID, toolCall.Function.Name, toolResultString)
+		log.Printf("[Task %s] Tool %s (ID: %s) executed successfully. Result: %s", taskID, toolCall.Function.Name, toolCall.ID, toolResultString)
 	}
 
 	// Return the constructed tool message and the original tool error (if any)
