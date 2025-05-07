@@ -17,31 +17,25 @@ function App() {
         <div>
 
           <nav style={{display:'flex', justifyContent:'space-between', padding:'0px 20px', backgroundColor:'#f0f0f0'}}>
-            <h1>🦚 BA</h1>
+            <h1>🙌🏻 ka_ba 🦚</h1>
 
             <ul  style={{ flexGrow: 1, marginLeft: '20px'}}>
 
               <li>
                 <Link to="/agents">Agents</Link>
               </li>
-              {/* Removed Orchestration link */}
-              {/* Removed Define Workflow link */}
-              {/* Add other navigation links here */}
             </ul>
           </nav>
 
           <Routes>
             <Route path="/agents" element={<AgentManagement />} />
-            <Route path="/add-local-agent" element={<AddLocalAgent />} /> {/* Route for adding local agent */}
-            <Route path="/add-external-agent" element={<AddExternalAgent />} /> {/* Route for adding external agent */}
-            <Route path="/agents/edit/:agentId" element={<EditLocalAgent />} /> {/* Route for editing local agent */}
-            <Route path="/agent/view/:agentId" element={<AgentManagement />}> {/* Route for viewing agent tasks */}
-              <Route path="task/:taskId" element={<AgentManagement />} /> {/* Nested route for viewing specific task chat details */}
+            <Route path="/add-local-agent" element={<AddLocalAgent />} />
+            <Route path="/add-external-agent" element={<AddExternalAgent />} />
+            <Route path="/agents/edit/:agentId" element={<EditLocalAgent />} />
+            <Route path="/agent/view/:agentId" element={<AgentManagement />}>
+              <Route path="task/:taskId" element={<AgentManagement />} />
             </Route>
-            {/* Removed Orchestration route */}
-            {/* Removed Define Workflow route */}
-            {/* Add other routes here */}
-            <Route path="/" element={<AgentManagement />} /> {/* Default to Agent Management */}
+            <Route path="/" element={<AgentManagement />} />
           </Routes>
         </div>
       </Router>
