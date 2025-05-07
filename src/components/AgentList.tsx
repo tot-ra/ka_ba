@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import styles from './AgentList.module.css'; // Use a new CSS module
+import Button from './Button'; // Import the new Button component
 
 interface Agent {
   id: string;
@@ -32,12 +33,12 @@ const AgentList: React.FC<AgentListProps> = ({
 
       {/* Add Agent Buttons */}
       <div className={styles.buttonContainer}>
-        <button className={`${styles.button} ${styles.buttonPrimary}`} onClick={() => navigate('/add-local-agent')}>
+        <Button variant="primary" onClick={() => navigate('/add-local-agent')}>
           Spawn Local Agent
-        </button>
-        <button className={`${styles.button} ${styles.buttonSecondary}`} onClick={() => navigate('/add-external-agent')}>
+        </Button>
+        <Button variant="secondary" onClick={() => navigate('/add-external-agent')}>
           Add External Agent
-        </button>
+        </Button>
       </div>
 
       {/* Agent List */}
@@ -70,18 +71,18 @@ const AgentList: React.FC<AgentListProps> = ({
                 {/* Show buttons only for locally spawned agents */}
                 {agent.isLocal && (
                   <div className={styles.agentActions}>
-                    <button
+                    <Button
                       onClick={() => navigate(`/agents/edit/${agent.id}`)}
-                      className={`${styles.button} ${styles.buttonSecondary}`}
+                      variant="secondary"
                     >
                       Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={() => handleStopAgent(agent.id)}
-                      className={styles.buttonDanger}
+                      variant="danger"
                     >
                       Stop
-                    </button>
+                    </Button>
                   </div>
                 )}
               </li>

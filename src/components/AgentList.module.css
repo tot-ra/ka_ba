@@ -13,30 +13,11 @@
 
 .buttonContainer {
   margin-bottom: 20px;
+  display: flex; /* Align buttons on the same line */
+  gap: 10px; /* Add space between buttons */
 }
 
-.button {
-  padding: 10px 15px;
-  margin-right: 10px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.buttonPrimary {
-  background-color: #007bff;
-  color: white;
-}
-
-.buttonSecondary {
-  background-color: #6c757d;
-  color: white;
-}
-
-.buttonDanger {
-  background-color: #dc3545;
-  color: white;
-}
+/* Button styles moved to Button.module.css */
 
 .agentListContainer {
   /* Add styles if needed */
@@ -50,7 +31,7 @@
 .agentListItem {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: center; /* Align items to the center */
   padding: 10px 0;
   border-bottom: 1px solid #eee;
   cursor: pointer;
@@ -76,8 +57,7 @@
 }
 
 .agentNameContainer {
-  display: flex;
-  align-items: center;
+  display: block; /* Change to block to move URL to next line */
   margin-bottom: 5px;
 }
 
@@ -90,6 +70,7 @@
   font-size: 0.9em;
   color: #555;
   text-decoration: none;
+  display: block; /* Move URL to the next line */
 }
 
 .agentUrl:hover {
@@ -100,4 +81,18 @@
   font-size: 0.8em;
   color: #777;
   margin-left: 5px;
+}
+
+.agentActions {
+  display: flex;
+  flex-direction: column; /* Stack buttons vertically */
+  gap: 5px; /* Add space between vertical buttons */
+  align-items: flex-start; /* Align buttons to the start */
+}
+
+/* Adjust button margin within agent actions */
+.agentActions .button {
+  margin-right: 0;
+  width: 60px; /* Give buttons a fixed width for similar size */
+  text-align: center;
 }
