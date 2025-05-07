@@ -115,7 +115,7 @@ const AgentLogs: React.FC<AgentLogsProps> = ({ agentId }) => {
        <div
          ref={logContainerRef}
          style={{
-           height: '500px',
+           height: '80vh',
            overflowY: 'scroll',
            padding: '0',
            fontFamily: 'monospace',

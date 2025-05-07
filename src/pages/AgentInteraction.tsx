@@ -471,8 +471,7 @@ const AgentInteraction: React.FC = () => {
             </div>
           </div>
 
-          <div className={styles.rightPane}> {/* Apply rightPane class */}
-            {selectedTask ? (
+          {selectedTask && (<div className={styles.rightPane}>
               <TaskDetails
                 currentTask={selectedTask} // Pass selectedTask
                 streamingOutput={streamingOutput} // Pass streamingOutput state
@@ -481,10 +480,7 @@ const AgentInteraction: React.FC = () => {
                   setSelectedTask(null); // Close details after duplicating
                 }}
               />
-            ) : (
-              <p>Select a task from the list to view details.</p>
-            )}
-          </div>
+          </div>)}
         </>
       ) : (
         <p>Please select an agent from the Agent Management page.</p>
