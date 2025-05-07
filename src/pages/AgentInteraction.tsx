@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom'; // Import useParams and useNavigate
 import { useAgent } from '../contexts/AgentContext';
 import AgentLogs from '../components/AgentLogs';
 import TaskInputForm from '../components/TaskInputForm';
@@ -11,14 +12,17 @@ import TaskDetails from '../components/TaskDetails'; // Import TaskDetails direc
 import styles from './AgentInteraction.module.css'; // Import the CSS module
 
 const AgentInteraction: React.FC = () => {
-  const { selectedAgentId } = useAgent();
+  const { agentId: urlAgentId, taskId: urlTaskId } = useParams<{ agentId: string; taskId?: string }>(); // Get agentId and taskId from URL
+  const { selectedAgentId, setSelectedAgentId } = useAgent(); // Also get setSelectedAgentId from context
+  const navigate = useNavigate(); // Get navigate hook
 
   const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' });
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'logs' | 'tasks'>('tasks');
+  const [activeTab, setActiveTab] = useState<'logs' | 'tasks'>('tasks'); // Default to tasks tab
+
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(false);
@@ -28,17 +32,17 @@ const AgentInteraction: React.FC = () => {
   const [streamingOutput, setStreamingOutput] = useState<string>(''); // State for streaming output
 
 
-  const fetchTasks = useCallback(async () => {
-    if (!selectedAgentId) {
+  const fetchTasks = useCallback(async (agentIdToFetch: string) => { // Accept agentId as parameter
+    if (!agentIdToFetch) {
       setTasks([]);
       setListError(null);
       return;
     }
     setListLoading(true);
     setListError(null);
-    console.log(`[AgentInteraction] Fetching tasks for agent: ${selectedAgentId}`);
+    console.log(`[AgentInteraction] Fetching tasks for agent: ${agentIdToFetch}`);
     try {
-      const response = await sendGraphQLRequest<{ listTasks: Task[] }>(LIST_TASKS_QUERY.loc!.source.body, { agentId: selectedAgentId });
+      const response = await sendGraphQLRequest<{ listTasks: Task[] }>(LIST_TASKS_QUERY.loc!.source.body, { agentId: agentIdToFetch });
 
       if (response.errors) {
         console.error("[AgentInteraction] GraphQL errors fetching list:", response.errors);
@@ -57,6 +61,17 @@ const AgentInteraction: React.FC = () => {
       const sortedTasks = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setTasks(sortedTasks);
       console.log('[AgentInteraction fetchTasks] Tasks state updated:', sortedTasks);
+      // After fetching tasks, check if a taskId is in the URL and select that task
+      if (urlTaskId) {
+        const taskFromUrl = sortedTasks.find(task => task.id === urlTaskId);
+        if (taskFromUrl) {
+          setSelectedTask(taskFromUrl);
+          console.log(`[AgentInteraction fetchTasks] Selected task from URL: ${urlTaskId}`);
+        } else {
+          console.warn(`[AgentInteraction fetchTasks] Task with ID ${urlTaskId} not found for agent ${agentIdToFetch}.`);
+          // Optionally navigate away or show an error if task not found
+        }
+      }
     } catch (err: any) {
       console.error("[AgentInteraction] Error fetching tasks:", err);
       setListError(err.message);
@@ -64,11 +79,11 @@ const AgentInteraction: React.FC = () => {
     } finally {
       setListLoading(false);
     }
-  }, [selectedAgentId]);
+  }, [urlTaskId]); // Add urlTaskId to dependencies
 
   useSubscription(TASK_UPDATES_SUBSCRIPTION, {
-    variables: { agentId: selectedAgentId },
-    skip: !selectedAgentId,
+    variables: { agentId: urlAgentId }, // Use agentId from URL for subscription
+    skip: !urlAgentId, // Skip if no agentId in URL
     onData: ({ data }) => {
       const updatedTask = data?.data?.taskUpdates;
       if (updatedTask) {
@@ -76,12 +91,12 @@ const AgentInteraction: React.FC = () => {
         // Log the input field received in the subscription update
         console.log('[AgentInteraction useSubscription] Received task update input:', updatedTask.input);
 
+        // Update the tasks list
         setTasks(prevTasks => {
           const existingTaskIndex = prevTasks.findIndex(task => task.id === updatedTask.id);
           if (existingTaskIndex > -1) {
             const newTasks = [...prevTasks];
             // Merge the updated task data, preserving the input if the update doesn't include it
-            // This assumes the subscription might not always send the full task object including input
             const mergedTask = { ...newTasks[existingTaskIndex], ...updatedTask, input: newTasks[existingTaskIndex].input || updatedTask.input };
             newTasks[existingTaskIndex] = mergedTask;
             console.log('[AgentInteraction useSubscription] Updated existing task in list:', updatedTask.id);
@@ -92,11 +107,12 @@ const AgentInteraction: React.FC = () => {
           }
         });
 
+        // If the updated task is the currently selected task, update its details
         if (selectedTask && selectedTask.id === updatedTask.id) {
             console.log('[AgentInteraction useSubscription] Updating selected task details with new data for task:', updatedTask.id);
             // Merge the updated task data into the selected task state
             setSelectedTask(prevSelectedTask => {
-                if (!prevSelectedTask) return updatedTask; // Should not happen if selectedTask is not null
+                if (!prevSelectedTask) return updatedTask;
                 const mergedSelectedTask = { ...prevSelectedTask, ...updatedTask, input: prevSelectedTask.input || updatedTask.input };
                 console.log('[AgentInteraction useSubscription] Merged selected task input:', mergedSelectedTask.input);
                 return mergedSelectedTask;
@@ -104,6 +120,7 @@ const AgentInteraction: React.FC = () => {
 
             console.log('[AgentInteraction useSubscription] Updated selected task output:', updatedTask.output);
             // Assuming streaming output comes in parts and needs to be appended
+            // This part might need refinement based on how streaming output is structured in updates
             if (updatedTask.output && updatedTask.output.length > 0) {
                 const latestOutput = updatedTask.output[updatedTask.output.length - 1];
                 if (latestOutput.parts && latestOutput.parts.length > 0) {
@@ -122,29 +139,68 @@ const AgentInteraction: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    // On component mount or urlAgentId change, update context and fetch tasks
+    if (urlAgentId) {
+      console.log(`[AgentInteraction useEffect] URL agentId detected: ${urlAgentId}. Updating context and fetching tasks.`);
+      setSelectedAgentId(urlAgentId); // Update context
+      fetchTasks(urlAgentId); // Fetch tasks for the agent in the URL
+    } else if (selectedAgentId) {
+       // If no agentId in URL but one is in context, fetch tasks for context agent
+       console.log(`[AgentInteraction useEffect] No URL agentId, but context agentId exists: ${selectedAgentId}. Fetching tasks.`);
+       fetchTasks(selectedAgentId);
+    } else {
+       // No agentId in URL or context
+       console.log('[AgentInteraction useEffect] No agentId in URL or context. Clearing tasks.');
+       setTasks([]);
+    }
+  }, [urlAgentId, selectedAgentId, fetchTasks, setSelectedAgentId]); // Add dependencies
+
+  // Effect to select task when tasks list or urlTaskId changes
+  useEffect(() => {
+    if (urlTaskId && tasks.length > 0) {
+      const taskFromUrl = tasks.find(task => task.id === urlTaskId);
+      if (taskFromUrl) {
+        setSelectedTask(taskFromUrl);
+        console.log(`[AgentInteraction useEffect] Selected task from URL after tasks loaded: ${urlTaskId}`);
+      } else {
+         console.warn(`[AgentInteraction useEffect] Task with ID ${urlTaskId} not found in loaded tasks.`);
+         // Optionally handle task not found (e.g., navigate away)
+      }
+    } else if (!urlTaskId) {
+       // If urlTaskId is removed, deselect the task
+       setSelectedTask(null);
+       setStreamingOutput(''); // Clear streaming output
+       console.log('[AgentInteraction useEffect] urlTaskId removed, deselecting task.');
+    }
+  }, [urlTaskId, tasks]); // Depend on urlTaskId and tasks list
 
   const handleSelectTask = (task: Task) => {
     setSelectedTask(task);
+    // Navigate to the task URL when a task is selected
+    if (urlAgentId) {
+      navigate(`/agent/view/${urlAgentId}/task/${task.id}`);
+    }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    if (!selectedAgentId) {
+    // Use urlAgentId for the mutation
+    if (!urlAgentId) {
       setError('Cannot delete task: No agent selected.');
       return;
     }
 
     if (selectedTask && selectedTask.id === taskId) {
         setSelectedTask(null); // Close details if the deleted task was open
+        // Also navigate back to the agent view if the selected task is deleted
+        navigate(`/agent/view/${urlAgentId}`);
     }
 
-    console.log(`[AgentInteraction] Attempting to delete task ${taskId} for agent ${selectedAgentId}`);
+    console.log(`[AgentInteraction] Attempting to delete task ${taskId} for agent ${urlAgentId}`);
     setIsLoading(true);
     setError(null);
 
     try {
-      const variables = { agentId: selectedAgentId, taskId };
+      const variables = { agentId: urlAgentId, taskId };
       const response = await sendGraphQLRequest<{ deleteTask: boolean }>(DELETE_TASK_MUTATION.loc!.source.body, variables);
 
       if (response.errors) {
@@ -168,7 +224,8 @@ const AgentInteraction: React.FC = () => {
   };
 
   const handleDuplicateTask = async (agentId: string, taskId: string) => {
-    if (!agentId) {
+    // Use urlAgentId for the mutation
+    if (!urlAgentId) {
       setError('Cannot duplicate task: No agent selected.');
       return;
     }
@@ -231,11 +288,11 @@ const AgentInteraction: React.FC = () => {
       };
 
       const variables = {
-        agentId: agentId,
+        agentId: urlAgentId, // Use urlAgentId for the mutation
         message: newMessage,
       };
 
-      console.log(`[AgentInteraction] Creating new task by duplicating task ${taskId} with message:`, newMessage);
+      console.log(`[AgentInteraction] Creating new task by duplicating task ${taskId} for agent ${urlAgentId} with message:`, newMessage);
 
       const response = await sendGraphQLRequest<{ createTask: Task }>(CREATE_TASK_MUTATION.loc!.source.body, variables);
 
@@ -260,7 +317,8 @@ const AgentInteraction: React.FC = () => {
 
   const handleSendTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAgentId) {
+    // Use urlAgentId for the mutation
+    if (!urlAgentId) {
       setError('No agent selected.');
       return;
     }
@@ -310,7 +368,7 @@ const AgentInteraction: React.FC = () => {
     }
 
     const variables = {
-      agentId: selectedAgentId,
+      agentId: urlAgentId, // Use urlAgentId for the mutation
       message: {
         role: 'USER',
         parts: parts,
@@ -356,7 +414,7 @@ const AgentInteraction: React.FC = () => {
   };
 
   const fetchArtifacts = async (taskId: string) => {
-     if (!selectedAgentId) return;
+     if (!urlAgentId) return; // Use urlAgentId
      console.log("fetchArtifacts needs to be reimplemented with GraphQL query.");
      setError("Fetching artifacts not implemented yet.");
    };
@@ -415,7 +473,8 @@ const AgentInteraction: React.FC = () => {
   return (
     <div className={styles.splitContainer}> {/* Apply splitContainer class */}
 
-      {selectedAgentId ? (
+      {/* Use urlAgentId to determine if an agent is selected */}
+      {urlAgentId ? (
         <> {/* Use fragment for multiple top-level elements */}
           <div className={styles.leftPane}> {/* Apply leftPane class */}
             <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
@@ -435,18 +494,18 @@ const AgentInteraction: React.FC = () => {
 
             <div>
               {activeTab === 'logs' && (
-                <AgentLogs agentId={selectedAgentId} />
+                <AgentLogs agentId={urlAgentId} />
               )}
 
               {activeTab === 'tasks' && (
                 <>
                   <TaskList
-                    agentId={selectedAgentId}
+                    agentId={urlAgentId} // Use urlAgentId
                     tasks={tasks}
                     loading={listLoading}
                     error={listError}
                     onDeleteTask={handleDeleteTask}
-                    onViewTaskDetails={handleSelectTask} // Changed to handleSelectTask
+                    onViewTaskDetails={handleSelectTask}
                     onDuplicateTask={handleDuplicateTask}
                   />
 
@@ -471,7 +530,7 @@ const AgentInteraction: React.FC = () => {
                 currentTask={selectedTask} // Pass selectedTask
                 streamingOutput={streamingOutput} // Pass streamingOutput state
                 onDuplicateClick={() => {
-                  handleDuplicateTask(selectedAgentId!, selectedTask.id);
+                  handleDuplicateTask(urlAgentId!, selectedTask.id); // Use urlAgentId
                   setSelectedTask(null); // Close details after duplicating
                 }}
               />

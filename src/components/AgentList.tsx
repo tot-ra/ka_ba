@@ -46,7 +46,10 @@ const AgentList: React.FC<AgentListProps> = ({
                     name="selectedAgent"
                     value={agent.id}
                     checked={selectedAgentId === agent.id}
-                    onChange={() => handleSelectAgent(agent.id)}
+                    onChange={() => {
+                      handleSelectAgent(agent.id);
+                      navigate(`/agent/view/${agent.id}`); // Navigate to the agent view URL
+                    }}
                     className={styles.agentRadio}
                   />
                   <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>

@@ -4,6 +4,7 @@ import AgentManagement from './pages/AgentManagement';
 import AddLocalAgent from './pages/AddLocalAgent'; // Import the new local agent component
 import AddExternalAgent from './pages/AddExternalAgent'; // Import the new external agent component
 import EditLocalAgent from './pages/EditLocalAgent'; // Import the new edit local agent component
+import AgentInteraction from './pages/AgentInteraction'; // Import the AgentInteraction component
 // Removed OrchestrationManagement import
 // Removed WorkflowDefinition import
 import './App.css'; // Assuming a basic App.css might be needed
@@ -14,10 +15,10 @@ function App() {
     <AgentProvider>
       <Router>
         <div>
-          
+
           <nav style={{display:'flex', justifyContent:'space-between', padding:'0px 20px', backgroundColor:'#f0f0f0'}}>
             <h1>🦚 BA</h1>
-        
+
             <ul  style={{ flexGrow: 1, marginLeft: '20px'}}>
 
               <li>
@@ -34,6 +35,9 @@ function App() {
             <Route path="/add-local-agent" element={<AddLocalAgent />} /> {/* Route for adding local agent */}
             <Route path="/add-external-agent" element={<AddExternalAgent />} /> {/* Route for adding external agent */}
             <Route path="/agents/edit/:agentId" element={<EditLocalAgent />} /> {/* Route for editing local agent */}
+            <Route path="/agent/view/:agentId" element={<AgentManagement />}> {/* Route for viewing agent tasks */}
+              <Route path="task/:taskId" element={<AgentManagement />} /> {/* Nested route for viewing specific task chat details */}
+            </Route>
             {/* Removed Orchestration route */}
             {/* Removed Define Workflow route */}
             {/* Add other routes here */}
