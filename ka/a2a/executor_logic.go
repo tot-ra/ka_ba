@@ -202,7 +202,9 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 	fmt.Printf("[Task %s] Messages for LLM:\n---\n%s\n---\n", t.ID, logMessages)
 
 	// Call the extracted LLM execution handler
-	fullResultString, _, _, requiresInput, llmErr := handleLLMExecution(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages) // Pass messages slice
+	// Pass nil for sseWriter as this is the non-streaming path
+	// Pass the toolDispatcher
+	fullResultString, _, _, requiresInput, llmErr := HandleLLMExecution(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, nil, NewToolDispatcher(te.TaskStore, te.AvailableTools))
 
 	// Handle LLM error returned by the handler
 	if llmErr != nil {
@@ -395,7 +397,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 	fmt.Printf("[Task %s Stream] Messages for LLM:\n---\n%s\n---\n", t.ID, logMessages)
 
 	// Call the extracted LLM stream execution handler
-	fullResultString, _, _, requiresInput, llmErr := handleLLMExecutionStream(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, sseWriter) // Pass messages slice
+	fullResultString, _, _, requiresInput, llmErr := handleLLMExecutionStream(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, sseWriter, NewToolDispatcher(te.TaskStore, te.AvailableTools))
 
 	// Handle LLM error returned by the handler
 	if llmErr != nil {

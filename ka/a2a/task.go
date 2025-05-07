@@ -170,26 +170,42 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Regex to find the <tool> XML block(s) - Duplicated here for ParseToolCallsFromXML
+// Regex to find the <tool> XML block(s), handling escaped characters and optional whitespace.
 // This regex captures the tool name in group 1 and the arguments in group 2.
+// It looks for escaped characters \u003c (\u003e) for < (>) and \" for ".
+// It is also more flexible with quotes around the ID and whitespace.
 var parseToolCallRegex = regexp.MustCompile(`(?s)<tool\s+id="([^"]+?)">(.*?)</tool>`)
 
 // ParseToolCallsFromXML attempts to find and parse tool calls from the RawToolCallsXML field
-// using the simplified <tool id="tool_name">{json_arguments}</tool> structure.
+// using the simplified <tool id="tool_name">{json_arguments}</tool> structure,
+// handling potentially escaped XML characters and surrounding whitespace.
 func (m *Message) ParseToolCallsFromXML() error {
+	log.Printf("Parsing tool calls from raw XML: %s", m.RawToolCallsXML) // Add logging here
+
 	if m.Role != RoleAssistant || m.RawToolCallsXML == "" {
 		m.ParsedToolCalls = nil // Ensure it's nil if not an assistant message or no XML
 		return nil
 	}
 
-	// Find all matches of the simplified tool tag
+	// Find all matches of the simplified tool tag, using the regex that handles escaped characters
 	matches := parseToolCallRegex.FindAllStringSubmatch(m.RawToolCallsXML, -1)
 
 	if len(matches) == 0 {
-		m.ParsedToolCalls = nil // No tool calls found
-		log.Printf("No simplified <tool> tags found in LLM response.")
-		return nil
+		m.ParsedToolCalls = nil // Ensure it's nil if no matches are found
+		log.Printf("No simplified <tool> tags (escaped with optional whitespace) found in LLM response.")
+		// Also try the unescaped regex as a fallback, in case the LLM doesn't escape
+		unescapedMatches := regexp.MustCompile(`(?s)\s*<tool\s+id="([^"]+?)"\s*>(.*?)\s*</tool>\s*`).FindAllStringSubmatch(m.RawToolCallsXML, -1)
+		if len(unescapedMatches) > 0 {
+			log.Printf("Found %d unescaped <tool> tags (with optional whitespace).", len(unescapedMatches))
+			matches = unescapedMatches // Use unescaped matches if found
+		} else {
+			log.Printf("No unescaped <tool> tags (with optional whitespace) found either.")
+			return nil // No tool calls found at all
+		}
+	} else {
+		log.Printf("Found %d escaped <tool> tags (with optional whitespace).", len(matches))
 	}
+
 
 	m.ParsedToolCalls = make([]ToolCall, 0, len(matches))
 	for _, match := range matches {
@@ -217,7 +233,7 @@ func (m *Message) ParseToolCallsFromXML() error {
 		}
 	}
 
-	log.Printf("Successfully parsed %d tool calls from simplified XML.", len(m.ParsedToolCalls))
+	log.Printf("Successfully parsed %d tool calls from LLM response.", len(m.ParsedToolCalls))
 	return nil
 }
 
@@ -368,7 +384,7 @@ func (s *InMemoryTaskStore) GetArtifactData(taskID string, artifactID string) ([
 
 func (s *InMemoryTaskStore) ListTasks() ([]*Task, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	defer s.mu.Unlock()
 
 	taskList := make([]*Task, 0, len(s.tasks))
 	for _, task := range s.tasks {

@@ -13,14 +13,16 @@ import (
 	"ka/llm"
 )
 
-// handleLLMExecution calls the LLM, manages first-write state update, and handles results/errors.
+// HandleLLMExecution calls the LLM, manages first-write state update, and handles results/errors.
 // It now extracts and parses XML tool calls from the full response string.
-func handleLLMExecution(
+func HandleLLMExecution(
 	ctx context.Context,
 	taskID string,
 	llmClient *llm.LLMClient,
 	taskStore TaskStore, // Use local TaskStore
 	messages []llm.Message,
+	sseWriter *SSEWriter,
+	toolDispatcher *ToolDispatcher, // Add ToolDispatcher
 ) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, err error) {
 
 	var fullOutputBuffer bytes.Buffer
@@ -116,11 +118,17 @@ func handleLLMExecution(
 	// Check if the full response requires input (still check the full string before XML removal)
 	requiresInput = strings.Contains(fullResultString, "[INPUT_REQUIRED]")
 
-	// If tool calls were parsed, requiresInput is implicitly true for the next iteration
+	// Tool calls are handled by the calling loop, which checks assistantMessage.ParsedToolCalls
+	// requiresInput is true only if the LLM explicitly requested input using [INPUT_REQUIRED]
+
+	// If tool calls were parsed, the calling loop will handle dispatching them
+	// and adding results to messages in the next iteration.
+	// requiresInput is true if there are tool calls OR if the LLM explicitly requested input.
 	if len(assistantMessage.ParsedToolCalls) > 0 {
-		requiresInput = true
-		log.Printf("[Task %s] Tool calls detected, setting requiresInput to true for next iteration.", taskID)
+		requiresInput = true // Keep requiresInput true if tool calls are found, the calling loop will handle execution
+		log.Printf("[Task %s] Tool calls detected. requiresInput set to true for next iteration to allow dispatch.", taskID)
 	}
+
 
 	return fullResultString, inputTokens, completionTokens, requiresInput, nil
 }
@@ -135,6 +143,7 @@ func handleLLMExecutionStream(
 	taskStore TaskStore, // Use local TaskStore
 	messages []llm.Message,
 	sseWriter *SSEWriter,
+	toolDispatcher *ToolDispatcher, // Add ToolDispatcher
 ) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, err error) {
 
 	log.Printf("[Task %s Stream] Sending prompt to LLM for streaming...\n", taskID)
@@ -171,6 +180,10 @@ func handleLLMExecutionStream(
 	// in the main processTaskStreamIteration loop. We just return the full result string here.
 	// The requiresInput check based on [INPUT_REQUIRED] is still relevant for non-tool-call input requests.
 	requiresInput = strings.Contains(fullResultString, "[INPUT_REQUIRED]")
+
+	// For streaming, tool call parsing and execution happens after the full stream is received
+	// in the main processTaskStreamIteration loop. requiresInput is true only if the LLM
+	// explicitly requested input using [INPUT_REQUIRED].
 
 	return fullResultString, inputTokens, completionTokens, requiresInput, nil
 }
