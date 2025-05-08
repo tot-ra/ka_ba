@@ -29,18 +29,12 @@ func HandleLLMExecution(
 	signaller := newFirstWriteSignaller(&fullOutputBuffer)
 	stateUpdateCompleted := make(chan bool, 1)
 
-	// Goroutine to set state to COMPLETED on first write
+	// Goroutine to signal first write
 	go func() {
 		select {
 		case <-signaller.firstWriteCh:
-			log.Printf("[Task %s] First write detected by signaller. Setting state to COMPLETED.", taskID)
-			setStateErr := taskStore.SetState(taskID, TaskStateCompleted) // Use local TaskStateCompleted
-			if setStateErr != nil {
-				log.Printf("[Task %s] Error setting state to COMPLETED after first write: %v", taskID, setStateErr)
-				// Decide how to handle this - maybe log and continue?
-			} else {
-				log.Printf("[Task %s] State successfully set to COMPLETED.", taskID)
-			}
+			log.Printf("[Task %s] First write detected by signaller.", taskID)
+			// Do NOT set state to COMPLETED here. State transition is handled after LLM call returns.
 			stateUpdateCompleted <- true
 		case <-ctx.Done():
 			log.Printf("[Task %s] Context cancelled before first write detected.", taskID)
@@ -51,7 +45,7 @@ func HandleLLMExecution(
 	// Call LLM (Always Streaming Now)
 	fullResultString, inputTokens, completionTokens, llmErr := llmClient.Chat(ctx, messages, true, signaller)
 
-	// Ensure the state update goroutine has finished before proceeding
+	// Ensure the first write signal goroutine has finished before proceeding
 	<-stateUpdateCompleted
 
 	// Handle LLM Result
@@ -116,17 +110,35 @@ func HandleLLMExecution(
 	}
 
 	// Check if the full response requires input (still check the full string before XML removal)
-	requiresInput = strings.Contains(fullResultString, "[INPUT_REQUIRED]")
+	// requiresInput = strings.Contains(fullResultString, "[INPUT_REQUIRED]")
 
 	// Tool calls are handled by the calling loop, which checks assistantMessage.ParsedToolCalls
 	// requiresInput is true only if the LLM explicitly requested input using [INPUT_REQUIRED]
 
 	// If tool calls were parsed, the calling loop will handle dispatching them
 	// and adding results to messages in the next iteration.
-	// requiresInput is true if there are tool calls OR if the LLM explicitly requested input.
+	// requiresInput is true only if the LLM explicitly requested input using [INPUT_REQUIRED].
+
+	// Determine the final state based on parsed tool calls and input requirement
+	finalState := TaskStateCompleted // Assume completed by default
 	if len(assistantMessage.ParsedToolCalls) > 0 {
-		requiresInput = true // Keep requiresInput true if tool calls are found, the calling loop will handle execution
-		log.Printf("[Task %s] Tool calls detected. requiresInput set to true for next iteration to allow dispatch.", taskID)
+		// If tool calls were parsed, the task is still working, waiting for tool execution results
+		finalState = TaskStateWorking // Or a new state like TaskStateToolExecutionRequired
+		log.Printf("[Task %s] Parsed %d tool calls. Setting state back to WORKING for tool execution.", taskID, len(assistantMessage.ParsedToolCalls))
+	} else if requiresInput {
+		// If no tool calls but input is required, set state to INPUT_REQUIRED
+		finalState = TaskStateInputRequired
+		log.Printf("[Task %s] Input required. Setting state to INPUT_REQUIRED.", taskID)
+	} else {
+		// If no tool calls and no input required, the task is truly completed
+		log.Printf("[Task %s] No tool calls or input required. Setting state to COMPLETED.", taskID)
+	}
+
+	// Update the task state to the determined final state
+	setStateErr := taskStore.SetState(taskID, finalState)
+	if setStateErr != nil {
+		log.Printf("[Task %s] Failed to set final task state to %s after LLM success: %v", taskID, finalState, setStateErr)
+		// Decide how to handle this error - maybe return an error?
 	}
 
 
