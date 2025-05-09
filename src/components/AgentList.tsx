@@ -55,11 +55,6 @@ const AgentList: React.FC<AgentListProps> = ({
                   <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
                     <div className={styles.agentNameContainer}>
                       <span className={styles.agentNameLink}>{agent.name || 'Unnamed Agent'}</span>
-                      <a className={styles.agentUrl}
-                      href={agent.url + '/.well-known/agent.json'} target="_blank" rel="noopener noreferrer">
-                      ({agent.url})
-                      </a>
-                      {agent.pid && <span className={styles.agentPid}> (PID: {agent.pid})</span>} {/* Display PID */}
                     </div>
                     {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
                   </label>

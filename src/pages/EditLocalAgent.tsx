@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import styles from './EditLocalAgent.module.css'; // Use the new CSS module
 import AgentList from '../components/AgentList'; // Import AgentList
+import Button from '../components/Button';
 
 type MessageType = 'success' | 'error' | 'info' | null;
 
@@ -159,44 +160,75 @@ const EditLocalAgent: React.FC = () => {
     }
   };
 
-  const handleToolSelection = (toolName: string) => {
-    setSelectedTools(prevSelected =>
-      prevSelected.includes(toolName)
-        ? prevSelected.filter(name => name !== toolName)
-        : [...prevSelected, toolName]
-    );
-  };
-
-  const handleComposePrompt = async () => {
-    if (!agentDetails || selectedTools.length === 0) {
-      // Should not happen if button is disabled correctly, but good check
-      return;
-    }
-
-    setIsComposingPrompt(true);
-    try {
-      const response = await axios.post('http://localhost:3000/graphql', {
-        query: `
-          mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!) {
-            composeSystemPrompt(agentId: $agentId, toolNames: $toolNames)
+  // Add a new useEffect to automatically select all tools and compose prompt when tools are loaded
+  useEffect(() => {
+    if (availableTools.length > 0 && agentDetails?.id) {
+      // Select all tools automatically
+      setSelectedTools(availableTools.map(tool => tool.name));
+      
+      // Trigger prompt composition automatically
+      const composePromptWithAllTools = async () => {
+        setIsComposingPrompt(true);
+        try {
+          const response = await axios.post('http://localhost:3000/graphql', {
+            query: `
+              mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!) {
+                composeSystemPrompt(agentId: $agentId, toolNames: $toolNames)
+              }
+            `,
+            variables: { agentId: agentDetails.id, toolNames: availableTools.map(tool => tool.name) },
+          });
+          const composedPrompt = response.data.data.composeSystemPrompt;
+          if (typeof composedPrompt === 'string') {
+            setComposedSystemPrompt(composedPrompt);
           }
-        `,
-        variables: { agentId: agentDetails.id, toolNames: selectedTools },
-      });
-      const composedPrompt = response.data.data.composeSystemPrompt;
-      if (typeof composedPrompt === 'string') {
-        setComposedSystemPrompt(composedPrompt);
-      } else {
-        console.error('Failed to compose system prompt or received invalid data:', response.data);
-        // Optionally set an error message
-      }
-    } catch (error: any) {
-      console.error('Error composing system prompt:', error);
-      // Optionally set an error message
-    } finally {
-      setIsComposingPrompt(false);
+        } catch (error) {
+          console.error('Error auto-composing system prompt:', error);
+        } finally {
+          setIsComposingPrompt(false);
+        }
+      };
+      
+      composePromptWithAllTools();
     }
-  };
+  }, [availableTools, agentDetails?.id]);
+
+  const handleToolSelection = useCallback((toolName: string) => {
+    setSelectedTools(prevSelected => {
+      const newSelection = prevSelected.includes(toolName)
+        ? prevSelected.filter(name => name !== toolName)
+        : [...prevSelected, toolName];
+      
+      // Automatically recompose prompt when selection changes
+      if (agentDetails?.id) {
+        setIsComposingPrompt(true);
+        axios.post('http://localhost:3000/graphql', {
+          query: `
+            mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!) {
+              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames)
+            }
+          `,
+          variables: { agentId: agentDetails.id, toolNames: newSelection },
+        })
+        .then(response => {
+          const composedPrompt = response.data.data.composeSystemPrompt;
+          if (typeof composedPrompt === 'string') {
+            setComposedSystemPrompt(composedPrompt);
+          }
+        })
+        .catch(error => {
+          console.error('Error recomposing system prompt:', error);
+        })
+        .finally(() => {
+          setIsComposingPrompt(false);
+        });
+      }
+      
+      return newSelection;
+    });
+  }, [agentDetails?.id]);
+
+  // The handleComposePrompt function has been removed
 
   const handleUpdateAgentPrompt = async () => {
     if (!agentDetails || !composedSystemPrompt) {
@@ -278,11 +310,9 @@ const EditLocalAgent: React.FC = () => {
       <div className={styles.editFormPane}> {/* Edit form on the right */}
         <div className={styles.paper}>
           <h2>Edit Local Agent: {agentDetails.name}</h2>
-          <p>Agent ID: {agentDetails.id}</p>
-          <p>Agent URL: {agentDetails.url}</p>
-          {/* Basic agent info display - can add edit fields later if needed */}
+          <p>Agent PID: {agentDetails.pid}</p>
+          <p>Agent URL: <a target="_blank" href={agentDetails.url}>{agentDetails.url}</a></p>
 
-          {/* Tool Selection and Prompt Composition */}
           <div className={styles.toolSelectionSection}>
             <h3>Available Tools</h3>
             {isFetchingTools ? (
@@ -301,14 +331,6 @@ const EditLocalAgent: React.FC = () => {
                     </label>
                   </div>
                 ))}
-                <button
-                  onClick={handleComposePrompt}
-                  className={`${styles.button} ${styles.buttonSecondary}`}
-                  disabled={selectedTools.length === 0 || isComposingPrompt || isUpdatingPrompt}
-                >
-                  {isComposingPrompt && <div className={styles.spinner}></div>}
-                  {isComposingPrompt ? 'Composing...' : 'Compose System Prompt'}
-                </button>
               </div>
             ) : (
               <p>No tools available for this agent.</p>
@@ -316,21 +338,30 @@ const EditLocalAgent: React.FC = () => {
 
             {composedSystemPrompt && (
               <div className={styles.composedPromptSection}>
-                <h4>Composed System Prompt:</h4>
+                <h4>System Prompt:</h4>
                 <textarea
                   value={composedSystemPrompt}
-                  onChange={(e) => setComposedSystemPrompt(e.target.value)} // Allow editing the composed prompt
-                  rows={10}
+                  onChange={(e) => setComposedSystemPrompt(e.target.value)}
+                  rows={15}
                   className={styles.formTextarea}
                 />
-                 <button
+
+                <Button
+                    onClick={() => navigate('/agents')}
+                    variant="secondary"
+                    style={{ marginBottom: '16px' }}
+                >
+                  &larr; Back to Agent List
+                </Button>
+
+                <Button
                   onClick={handleUpdateAgentPrompt}
-                  className={`${styles.button} ${styles.buttonPrimary}`}
                   disabled={isUpdatingPrompt}
+                  variant="primary"
                 >
                   {isUpdatingPrompt && <div className={styles.spinner}></div>}
                   {isUpdatingPrompt ? 'Updating Agent...' : 'Update Agent with this Prompt'}
-                </button>
+                </Button>
               </div>
             )}
           </div>
