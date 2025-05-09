@@ -4,13 +4,21 @@ AI Agent Runtime (`ka`) and UI (`ba`).
 
 Status: `early prototype`
 
-## Goals
+## Goals and vision
+- Agent runtime
+    - Tools
+    - Modular
+    - MCP 
+    - Loop prevention
+    - Ratelimiting
 - Multiagent orchestration of tasks with multiple agents
+    - Sequential / parallel workflows
 - Custom LLM per agent with ratelimiting
 - Multitasking
 - Autonomous tasks (allow all) with docker sandbox
 - Automatic discovery (DNS/k8s)
 - Permanent thinking agent (Sentry mode, watching filesystem)
+- Agent instantiation by agents
 
 
 ## Architecture
