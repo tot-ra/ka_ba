@@ -1,6 +1,6 @@
 # 🙌🏻 ka_ba 🦚
 
-AI Agent Runtime (`ka`) and UI (`ba`).
+AI Agent Runtime (`ka`) and orchestration UI (`ba`).
 
 Status: `early prototype`
 
