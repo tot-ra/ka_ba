@@ -7,6 +7,7 @@ func GetAllTools() []Tool {
 		&GetTimeTool{},
 		&ReadFileTool{},
 		&WriteToFileTool{}, // Added the new WriteToFileTool
+		&SearchFilesTool{},
 		// Add instances of other tool implementations here as they are created.
 		// Example: &WriteFileTool{}, etc.
 	}
