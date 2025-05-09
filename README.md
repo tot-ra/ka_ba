@@ -16,32 +16,32 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 
 ## Goals and vision
 - Agent runtime
-    - Tools
+    - ☑️ Tools
     - Modular
     - MCP 
     - Loop prevention
-    - Ratelimiting
+    - Ratelimiting (max RPM to LLM)
+    - Max task processing
 - Multiagent orchestration of tasks with multiple agents
+    - Agent-to-Agent calls
+    - Automatic discovery (DNS/k8s)
     - Sequential / parallel workflows
 - Custom LLM per agent with ratelimiting
 - Multitasking
-- Autonomous tasks (allow all) with docker sandbox
-- Automatic discovery (DNS/k8s)
-- Permanent thinking agent (Sentry mode, watching filesystem)
-- Agent instantiation by agents
+    - ☑️ task duplication
+    - automatic task creation from other tasks
+- Permanent thinking agent
+    - Sentry mode (security, code style, refactoring, marketing)
+    - Watching filesystem
+- Security:
+    - limit agent access to specfic folders only
+    - add dockerization support
+    - detect unsafe commands
+- I/O
+    - push notifications
+    - multimodal inputs
+    - audio notes agent use-case
 - Composeable chat UI (place multiple agents into single chat on custom website and let them interact with each other)
-
-
-### TODO for ka agent
-
-*   Implement task resumption logic for `input-required` state.
-*   Full implementation of push notifications.
-*   Support for more `Part` types and URI schemes (e.g., `http://`, `data://`).
-*   Integration with MCP tools.
-*   More robust error handling and input validation.
-*   Comprehensive unit and integration tests.
-*   Containerization improvements (health checks, etc.).
-
 
 ## Architecture
 
