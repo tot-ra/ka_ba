@@ -1,6 +1,9 @@
 package tools
 
-import "context"
+import (
+	"context"
+	// "ka/a2a" // No longer needed as FunctionCall is in this package (tools)
+)
 
 // Tool is an interface that represents a tool available to the AI agent.
 type Tool interface {
@@ -11,5 +14,6 @@ type Tool interface {
 	// GetXMLDefinition returns the XML snippet describing how the LLM should call this tool.
 	GetXMLDefinition() string
 	// Execute performs the tool's action with the given arguments.
-	Execute(ctx context.Context, args map[string]interface{}) (string, error)
+	// The callDetails argument (type FunctionCall) is defined in common_types.go in this package.
+	Execute(ctx context.Context, callDetails FunctionCall) (string, error)
 }

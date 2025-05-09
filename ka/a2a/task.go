@@ -2,12 +2,17 @@ package a2a
 
 import (
 	"encoding/json" // Manually added back
-	"errors"        // Manually added back
+	"encoding/xml" // Added for XML parsing
+	"errors"       // Manually added back
 	"fmt"
+	"io" // Added for xml.NewDecoder
 	"log"
-	"regexp" // Import regexp for finding tool tags
+	"strings" // Added for strings.NewReader
 	"sync"
 	"time"
+	// "regexp" // No longer needed for parseToolCallRegex
+
+	"ka/tools" // Added to use tools.FunctionCall
 )
 
 var ErrTaskNotFound = errors.New("task not found")
@@ -75,16 +80,18 @@ type Message struct {
 
 // ToolCall represents a single tool call parsed from the simplified XML structure.
 type ToolCall struct {
-	ID       string // Tool call ID from XML attribute
-	Type     string // Tool type (hardcoded to "function" for now)
-	Function FunctionCall
+	ID       string            // Tool call ID from XML attribute
+	Type     string            // Tool type (hardcoded to "function" for now)
+	Function tools.FunctionCall // Use FunctionCall from the 'tools' package
 }
 
-// FunctionCall represents the details of a function tool call parsed from XML.
-type FunctionCall struct {
-	Name      string // Function name from the tool id attribute
-	Arguments string // Arguments as a string from the content between tags
-}
+// FunctionCall struct is now defined in the 'tools' package (tools.FunctionCall)
+// Removing local definition:
+// type FunctionCall struct {
+//	 Name       string            // Function name from the tool id attribute
+//	 Attributes map[string]string // Attributes from the tool tag
+//	 Content    string            // Content as a string from between tags (was Arguments)
+// }
 
 // MarshalJSON implements the json.Marshaler interface for Message.
 // This handles the serialization of the Part interface slice correctly.
@@ -195,69 +202,94 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Regex to find the <tool> XML block(s), handling escaped characters and optional whitespace.
-// This regex captures the tool name in group 1 and the arguments in group 2.
-// It looks for escaped characters \u003c (\u003e) for < (>) and \" for ".
-// It is also more flexible with quotes around the ID and whitespace.
-var parseToolCallRegex = regexp.MustCompile(`(?s)<tool\s+id="([^"]+?)">(.*?)</tool>`)
+// xmlToolCall is a helper struct for unmarshalling <tool> tags.
+type xmlToolCall struct {
+	XMLName xml.Name   `xml:"tool"`
+	ID      string     `xml:"id,attr"`
+	Attrs   []xml.Attr `xml:",any,attr"`
+	Content string     `xml:",chardata"`
+}
 
-// ParseToolCallsFromXML attempts to find and parse tool calls from the RawToolCallsXML field
-// using the simplified <tool id="tool_name">{json_arguments}</tool> structure,
-// handling potentially escaped XML characters and surrounding whitespace.
+// var parseToolCallRegex = regexp.MustCompile(`(?s)<tool\s+id="([^"]+?)">(.*?)</tool>`) // REMOVE this line or ensure it's commented
+
+// ParseToolCallsFromXML attempts to find and parse tool calls from the RawToolCallsXML field.
+// It now uses encoding/xml for more robust parsing of attributes and content.
 func (m *Message) ParseToolCallsFromXML() error {
-	log.Printf("Parsing tool calls from raw XML: %s", m.RawToolCallsXML) // Add logging here
+	log.Printf("Attempting to parse tool calls from raw XML: %s", m.RawToolCallsXML)
 
 	if m.Role != RoleAssistant || m.RawToolCallsXML == "" {
-		m.ParsedToolCalls = nil // Ensure it's nil if not an assistant message or no XML
+		m.ParsedToolCalls = nil
 		return nil
 	}
 
-	// Find all matches of the simplified tool tag, using the regex that handles escaped characters
-	matches := parseToolCallRegex.FindAllStringSubmatch(m.RawToolCallsXML, -1)
+	decoder := xml.NewDecoder(strings.NewReader(m.RawToolCallsXML))
+	decoder.Strict = false // Be lenient with XML structure, e.g. no root element
 
-	if len(matches) == 0 {
-		m.ParsedToolCalls = nil // Ensure it's nil if no matches are found
-		log.Printf("No simplified <tool> tags (escaped with optional whitespace) found in LLM response.")
-		// Also try the unescaped regex as a fallback, in case the LLM doesn't escape
-		unescapedMatches := regexp.MustCompile(`(?s)\s*<tool\s+id="([^"]+?)"\s*>(.*?)\s*</tool>\s*`).FindAllStringSubmatch(m.RawToolCallsXML, -1)
-		if len(unescapedMatches) > 0 {
-			log.Printf("Found %d unescaped <tool> tags (with optional whitespace).", len(unescapedMatches))
-			matches = unescapedMatches // Use unescaped matches if found
-		} else {
-			log.Printf("No unescaped <tool> tags (with optional whitespace) found either.")
-			return nil // No tool calls found at all
+	var parsedCalls []ToolCall
+	instanceCounter := 0 // To generate unique IDs for tool call instances
+
+	for {
+		// Find the next <tool> token
+		token, err := decoder.Token()
+		if err == io.EOF {
+			break // End of XML document
 		}
-	} else {
-		log.Printf("Found %d escaped <tool> tags (with optional whitespace).", len(matches))
-	}
+		if err != nil {
+			// This error might occur if the XML is malformed or if there's non-XML text
+			// between tool calls. We log it and try to continue to find more tool tags.
+			log.Printf("Error retrieving token from XML decoder (possibly non-XML data or malformed): %v. Raw XML: %s", err, m.RawToolCallsXML)
+			// Attempt to find the next start element to recover, if possible.
+			// This is a simple recovery; a more robust solution might involve skipping until next known tag.
+			continue
+		}
 
-	m.ParsedToolCalls = make([]ToolCall, 0, len(matches))
-	for _, match := range matches {
-		if len(match) == 3 {
-			toolID := match[1]    // Captured group 1: tool name from id attribute
-			arguments := match[2] // Captured group 2: content between tags (JSON arguments)
+		if startElement, ok := token.(xml.StartElement); ok && startElement.Name.Local == "tool" {
+			var currentTool xmlToolCall
+			// Decode the <tool> element itself
+			if err := decoder.DecodeElement(&currentTool, &startElement); err != nil {
+				log.Printf("Error decoding <tool> element: %v. XML around error: %s", err, m.RawToolCallsXML)
+				// Try to skip to the next token to recover
+				continue
+			}
 
-			// Create a new ToolCall struct
+			// Process the decoded tool
+			if currentTool.ID == "" {
+				log.Printf("Warning: <tool> tag found without 'id' attribute. Skipping. Decoded: %+v", currentTool)
+				continue
+			}
+
+			attributes := make(map[string]string)
+			for _, attr := range currentTool.Attrs {
+				// The 'id' attribute is already in currentTool.ID
+				if attr.Name.Local != "id" {
+					attributes[attr.Name.Local] = attr.Value
+				}
+			}
+
 			toolCall := ToolCall{
-				// Generate a unique ID for this tool call instance if needed, or use toolID
-				// For simplicity, let's use a combination of task message timestamp and toolID
-				// A more robust approach might involve a counter or UUID.
-				// Let's use a simple counter for uniqueness within this message.
-				ID:   fmt.Sprintf("%s-%d", toolID, len(m.ParsedToolCalls)), // Simple unique ID
-				Type: "function",                                           // Hardcoded type as per the new structure
-				Function: FunctionCall{
-					Name:      toolID,    // Tool name is the id attribute
-					Arguments: arguments, // Arguments are the content
+				ID:   fmt.Sprintf("%s-%d", currentTool.ID, instanceCounter), // Unique ID for this instance
+				Type: "function",                                           // Type is always "function"
+				Function: tools.FunctionCall{ // Use tools.FunctionCall here
+					Name:       currentTool.ID,
+					Attributes: attributes,
+					Content:    strings.TrimSpace(currentTool.Content),
 				},
 			}
-			m.ParsedToolCalls = append(m.ParsedToolCalls, toolCall)
-			log.Printf("Parsed tool call: ID=%s, Name=%s, Arguments=%s", toolCall.ID, toolCall.Function.Name, toolCall.Function.Arguments)
-		} else {
-			log.Printf("Warning: Regex match did not capture expected groups. Match: %v", match)
+			parsedCalls = append(parsedCalls, toolCall)
+			log.Printf("Parsed tool call: ID=%s, Name=%s, Attributes=%v, ContentLength=%d",
+				toolCall.ID, toolCall.Function.Name, toolCall.Function.Attributes, len(toolCall.Function.Content))
+			instanceCounter++
 		}
 	}
 
-	log.Printf("Successfully parsed %d tool calls from LLM response.", len(m.ParsedToolCalls))
+	if len(parsedCalls) > 0 {
+		m.ParsedToolCalls = parsedCalls
+		log.Printf("Successfully parsed %d tool calls from LLM response.", len(m.ParsedToolCalls))
+	} else {
+		m.ParsedToolCalls = nil // Ensure it's nil if no valid tools were parsed
+		log.Printf("No valid <tool> calls parsed from LLM response: %s", m.RawToolCallsXML)
+	}
+
 	return nil
 }
 

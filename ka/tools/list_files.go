@@ -1,11 +1,13 @@
 package tools
 
 import (
+	"context"
+	"encoding/json" // Added for parsing JSON from Content
 	"fmt"
 	"os"
-	"context"
-	"strings"
 	"path/filepath"
+	"strings"
+	// "ka/a2a" // No longer needed for FunctionCall
 )
 
 // ListFiles lists files and directories in the given path.
@@ -50,13 +52,18 @@ func (t *ListFilesTool) GetXMLDefinition() string {
 	return `<tool id="list_files">{"path": ".", "recursive": false}</tool>`
 }
 
-func (t *ListFilesTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
-	path, ok := args["path"].(string)
+func (t *ListFilesTool) Execute(ctx context.Context, callDetails FunctionCall) (string, error) {
+	var argsMap map[string]interface{}
+	if err := json.Unmarshal([]byte(callDetails.Content), &argsMap); err != nil {
+		return "", fmt.Errorf("failed to parse arguments JSON from Content for list_files: %w. Content: %s", err, callDetails.Content)
+	}
+
+	path, ok := argsMap["path"].(string)
 	if !ok || path == "" {
 		path = "." // Default to current directory if path is missing or empty
 	}
 
-	recursive, recursiveOk := args["recursive"].(bool)
+	recursive, recursiveOk := argsMap["recursive"].(bool)
 	if !recursiveOk {
 		recursive = false // Default to non-recursive
 	}

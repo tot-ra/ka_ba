@@ -25,11 +25,20 @@ You have access to the following tools:
 		}
 	}
 
-	// Add tool call instruction block
+	// Add tool call instruction block with specific formats for each tool
 	toolDefinitionsXML.WriteString(`
-When you need to use a tool, output an XML block like this:
-<tool id="tool_name">{"param1": "value1", "param2": "value2"}</tool>
+Tool Invocation Formats:
+You can invoke tools using the following XML formats. Use the specific format for each tool:
+`)
+	for _, toolName := range selectedToolNames {
+		if tool, ok := availableTools[toolName]; ok {
+			// It's good practice to ensure GetXMLDefinition() doesn't return empty or excessively long strings.
+			// For now, we assume it's well-behaved.
+			fmt.Fprintf(&toolDefinitionsXML, "\nFor tool '%s':\n%s\n", tool.GetName(), tool.GetXMLDefinition())
+		}
+	}
 
+	toolDefinitionsXML.WriteString(`
 Think step by step and provide clear instructions to the user or use tools when necessary.
 `)
 

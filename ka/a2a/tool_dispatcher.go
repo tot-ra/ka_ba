@@ -2,7 +2,7 @@ package a2a
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json" // No longer needed as JSON parsing is done by individual tools
 	"fmt"
 	"log"
 
@@ -46,28 +46,14 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 		return toolMessage, toolErr // Return the message and the error
 	}
 
-	// Arguments are expected as a string within the FunctionCall struct
-	argsString := toolCall.Function.Arguments
-	var argsMap map[string]interface{}
+	// The toolCall.Function (which is an a2a.FunctionCall struct) now contains
+	// Name, Attributes, and Content.
+	// Each tool's Execute method is responsible for interpreting these as needed.
+	// For tools expecting JSON arguments, they will parse toolCall.Function.Content.
+	log.Printf("[Task %s] Executing tool %s with Attributes: %v, ContentLength: %d", taskID, toolCall.Function.Name, toolCall.Function.Attributes, len(toolCall.Function.Content))
 
-	// Attempt to unmarshal the arguments string into a map
-	if err := json.Unmarshal([]byte(argsString), &argsMap); err != nil {
-		toolErr := fmt.Errorf("failed to parse arguments JSON for tool %s: %w", toolCall.Function.Name, err)
-		log.Printf("[Task %s] Error parsing arguments for tool %s: %v. Raw args: %s", taskID, toolCall.Function.Name, toolErr, argsString)
-		// Construct an error message for the LLM
-		toolMessage := Message{
-			Role:       RoleTool,
-			ToolCallID: toolCall.ID,
-			Parts: []Part{TextPart{
-				Type: "text",
-				Text: fmt.Sprintf("Error parsing arguments for tool '%s': Invalid JSON format. Expected a JSON object. Raw arguments: %s", toolCall.Function.Name, argsString),
-			}},
-		}
-		return toolMessage, toolErr // Return the message and the error
-	}
-
-	// Execute the tool's Execute method
-	toolResultString, toolErr := tool.Execute(ctx, argsMap)
+	// Execute the tool's Execute method, passing the entire FunctionCall detail
+	toolResultString, toolErr := tool.Execute(ctx, toolCall.Function)
 
 	// Construct the tool message response
 	toolMessage := Message{
