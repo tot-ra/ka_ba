@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useSubscription } from '@apollo/client';
 
 import { useAgent } from '../contexts/AgentContext';
-import AgentLogs from '../components/AgentLogs';
 import TaskInputForm from '../components/TaskInputForm';
 import { DELETE_TASK_MUTATION, TASK_UPDATES_SUBSCRIPTION, LIST_TASKS_QUERY, CREATE_TASK_MUTATION } from '../graphql/agentTaskQueries';
 import TaskList from '../components/TaskList';
@@ -22,7 +21,6 @@ const AgentInteraction: React.FC = () => {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'logs' | 'tasks'>('tasks');
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(false);
@@ -361,10 +359,10 @@ const AgentInteraction: React.FC = () => {
      const originalPart = originalMessage.parts[0];
 
      if (originalPart.type === 'text') {
-       setTaskInput({ type: 'text', content: (originalPart as TextPart).text || '' });
+       setTaskInput({ type: 'text', content: (originalPart as unknown as TextPart).text || '' });
      } else if (originalPart.type === 'data') {
        try {
-         setTaskInput({ type: 'data', content: JSON.stringify((originalPart as DataPart).data, null, 2) || '' });
+         setTaskInput({ type: 'data', content: JSON.stringify((originalPart as unknown as DataPart).data, null, 2) || '' });
        } catch (e) {
           setError('Failed to prepare original data prompt for duplication.');
        }
@@ -394,52 +392,26 @@ const AgentInteraction: React.FC = () => {
       {urlAgentId ? (
         <>
           <div className={styles.leftPane}>
-            <div style={{ marginBottom: '0px', borderBottom: '1px solid #ccc' }}>
-              <button
-                style={activeTab === 'tasks' ? activeTabStyle : tabStyle}
-                onClick={() => setActiveTab('tasks')}
-              >
-                Tasks
-              </button>
-              <button
-                style={activeTab === 'logs' ? activeTabStyle : tabStyle}
-                onClick={() => setActiveTab('logs')}
-              >
-                Logs
-              </button>
-            </div>
+              <TaskList
+                agentId={urlAgentId}
+                  tasks={tasks}
+                  loading={listLoading}
+                  error={listError}
+                  onDeleteTask={handleDeleteTask}
+                  onViewTaskDetails={handleSelectTask}
+                  onDuplicateTask={handleDuplicateTask}
+                />
 
-            <div>
-              {activeTab === 'logs' && (
-                <AgentLogs agentId={urlAgentId} />
-              )}
+                <TaskInputForm
+                  taskInput={taskInput}
+                  setTaskInput={setTaskInput}
+                  onSendTask={handleSendTask}
+                  onSendInput={handleInputRequired}
+                  isLoading={isLoading}
+                  currentTask={currentTask}
+                />
 
-              {activeTab === 'tasks' && (
-                <>
-                  <TaskList
-                    agentId={urlAgentId}
-                    tasks={tasks}
-                    loading={listLoading}
-                    error={listError}
-                    onDeleteTask={handleDeleteTask}
-                    onViewTaskDetails={handleSelectTask}
-                    onDuplicateTask={handleDuplicateTask}
-                  />
-
-                  <TaskInputForm
-                    taskInput={taskInput}
-                    setTaskInput={setTaskInput}
-                    onSendTask={handleSendTask}
-                    onSendInput={handleInputRequired}
-                    isLoading={isLoading}
-                    currentTask={currentTask}
-                  />
-
-                  {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
-
-                </>
-              )}
-            </div>
+                {error && <div style={{ color: 'red', marginBottom: '15px' }}>Error: {error}</div>}
           </div>
 
           {selectedTask && (<div className={styles.rightPane}>

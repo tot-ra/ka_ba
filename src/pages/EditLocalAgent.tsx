@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import styles from './EditLocalAgent.module.css'; // Use the new CSS module
 import AgentList from '../components/AgentList'; // Import AgentList
 import Button from '../components/Button';
+import AgentLogs from '../components/AgentLogs'; // Import AgentLogs
 
 type MessageType = 'success' | 'error' | 'info' | null;
 
@@ -41,6 +42,7 @@ const EditLocalAgent: React.FC = () => {
   const [isFetchingTools, setIsFetchingTools] = useState(false);
   const [isComposingPrompt, setIsComposingPrompt] = useState(false);
   const [isUpdatingPrompt, setIsUpdatingPrompt] = useState(false);
+  const [currentViewTab, setCurrentViewTab] = useState<'details' | 'logs'>('details'); // State for active tab
 
   // Fetch agent details on component mount
   useEffect(() => {
@@ -293,6 +295,25 @@ const EditLocalAgent: React.FC = () => {
   }
 
 
+  // Tab styles (can be moved to CSS module if preferred)
+  const tabStyle: React.CSSProperties = {
+    padding: '10px 15px',
+    cursor: 'pointer',
+    border: '1px solid #ccc',
+    borderBottom: 'none',
+    marginRight: '5px',
+    borderRadius: '4px 4px 0 0',
+    backgroundColor: '#f0f0f0', // Slightly different from AgentInteraction for distinction
+    opacity: 0.7,
+  };
+  const activeTabStyle: React.CSSProperties = {
+    ...tabStyle,
+    backgroundColor: '#fff',
+    borderBottom: '1px solid #fff',
+    fontWeight: 'bold',
+    opacity: 1,
+  };
+
   return (
     <div className={styles.splitViewContainer}>
       {isLoadingAgents ? (
@@ -308,65 +329,86 @@ const EditLocalAgent: React.FC = () => {
         />
       )}
       <div className={styles.editFormPane}> {/* Edit form on the right */}
-        <div className={styles.paper}>
-          <h2>Edit Local Agent: {agentDetails.name}</h2>
-          <p>Agent PID: {agentDetails.pid}</p>
-          <p>Agent URL: <a target="_blank" href={agentDetails.url}>{agentDetails.url}</a></p>
-
-          <div className={styles.toolSelectionSection}>
-            <h3>Available Tools</h3>
-            {isFetchingTools ? (
-              <p>Loading tools...</p>
-            ) : availableTools.length > 0 ? (
-              <div>
-                {availableTools.map(tool => (
-                  <div key={tool.name} className={styles.toolCheckbox}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={selectedTools.includes(tool.name)}
-                        onChange={() => handleToolSelection(tool.name)}
-                      />
-                      <strong>{tool.name}:</strong> {tool.description}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No tools available for this agent.</p>
-            )}
-
-            {composedSystemPrompt && (
-              <div className={styles.composedPromptSection}>
-                <h4>System Prompt:</h4>
-                <textarea
-                  value={composedSystemPrompt}
-                  onChange={(e) => setComposedSystemPrompt(e.target.value)}
-                  rows={15}
-                  className={styles.formTextarea}
-                />
-
-                <Button
-                    onClick={() => navigate('/agents')}
-                    variant="secondary"
-                    style={{ marginBottom: '16px' }}
-                >
-                  &larr; Back to Agent List
-                </Button>
-
-                <Button
-                  onClick={handleUpdateAgentPrompt}
-                  disabled={isUpdatingPrompt}
-                  variant="primary"
-                >
-                  {isUpdatingPrompt && <div className={styles.spinner}></div>}
-                  {isUpdatingPrompt ? 'Updating Agent...' : 'Update Agent with this Prompt'}
-                </Button>
-              </div>
-            )}
-          </div>
-
+        <div style={{ marginBottom: '1rem', borderBottom: '1px solid #ccc', paddingBottom: '0px' }}>
+          <button
+            style={currentViewTab === 'details' ? activeTabStyle : tabStyle}
+            onClick={() => setCurrentViewTab('details')}
+          >
+            Details
+          </button>
+          <button
+            style={currentViewTab === 'logs' ? activeTabStyle : tabStyle}
+            onClick={() => setCurrentViewTab('logs')}
+          >
+            Logs
+          </button>
         </div>
+
+        {currentViewTab === 'details' && (
+          <div className={styles.paper}>
+            <h2>Edit Local Agent: {agentDetails.name}</h2>
+            <p>Agent PID: {agentDetails.pid}</p>
+            <p>Agent URL: <a target="_blank" rel="noopener noreferrer" href={agentDetails.url}>{agentDetails.url}</a></p>
+
+            <div className={styles.toolSelectionSection}>
+              <h3>Available Tools</h3>
+              {isFetchingTools ? (
+                <p>Loading tools...</p>
+              ) : availableTools.length > 0 ? (
+                <div>
+                  {availableTools.map(tool => (
+                    <div key={tool.name} className={styles.toolCheckbox}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={selectedTools.includes(tool.name)}
+                          onChange={() => handleToolSelection(tool.name)}
+                        />
+                        <strong>{tool.name}:</strong> {tool.description}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>No tools available for this agent.</p>
+              )}
+
+              {composedSystemPrompt && (
+                <div className={styles.composedPromptSection}>
+                  <h4>System Prompt:</h4>
+                  <textarea
+                    value={composedSystemPrompt}
+                    onChange={(e) => setComposedSystemPrompt(e.target.value)}
+                    rows={15}
+                    className={styles.formTextarea}
+                  />
+
+                  <Button
+                      onClick={() => navigate('/agents')}
+                      variant="secondary"
+                      style={{ marginBottom: '16px', marginRight: '8px' }}
+                  >
+                    &larr; Back to Agent List
+                  </Button>
+
+                  <Button
+                    onClick={handleUpdateAgentPrompt}
+                    disabled={isUpdatingPrompt}
+                    variant="primary"
+                  >
+                    {isUpdatingPrompt && <div className={styles.spinner}></div>}
+                    {isUpdatingPrompt ? 'Updating Agent...' : 'Update Agent with this Prompt'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {currentViewTab === 'logs' && agentId && (
+          <div className={styles.logsPaper} style={{paddingTop: "10px"}}> {/* Added paddingTop to prevent overlap with tab border */}
+            <AgentLogs agentId={agentId} />
+          </div>
+        )}
       </div>
     </div>
   );
