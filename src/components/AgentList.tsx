@@ -29,58 +29,69 @@ const AgentList: React.FC<AgentListProps> = ({
   const navigate = useNavigate(); // Keep useNavigate for the Edit button
 
   return (
-    <div className={styles.agentListContainer}> {/* Use a class for the main container */}
-      <h1 className={styles.title}>Agents</h1>
+      <div className={styles.agentListContainer}> {/* Use a class for the main container */}
+        <h1 className={styles.title}>Agents</h1>
 
-      {/* Add Agent Buttons - Removed from here, handled by parent */}
+        {/* Add Agent Buttons - Removed from here, handled by parent */}
 
-      {/* Agent List */}
-      <div className={styles.listWrapper}> {/* Added a wrapper for the actual list */}
-        <ul className={styles.agentList}>
-          {agents.map(agent => (
-              <li key={agent.id} className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
-                <div className={styles.agentInfo}>
-                  <input
-                    type="radio"
-                    id={`agent-${agent.id}`}
-                    name="selectedAgent"
-                    value={agent.id}
-                    checked={selectedAgentId === agent.id}
-                    onChange={() => {
-                      handleSelectAgent(agent.id);
-                      navigate(`/agent/view/${agent.id}`); // Navigate to the agent view URL
-                    }}
-                    className={styles.agentRadio}
-                  />
-                  <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
-                    <div className={styles.agentNameContainer}>
-                      <span className={styles.agentNameLink}>{agent.name || 'Unnamed Agent'}</span>
-                    </div>
-                    {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
-                  </label>
-                </div>
-                {/* Show buttons only for locally spawned agents */}
-                {agent.isLocal && (
-                  <div className={styles.agentActions}>
-                    <Button
-                      onClick={() => navigate(`/agents/edit/${agent.id}`)}
-                      variant="secondary"
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      onClick={() => handleStopAgent(agent.id)}
-                      variant="danger"
-                    >
-                      Stop
-                    </Button>
+        {/* Agent List */}
+        <div className={styles.listWrapper}> {/* Added a wrapper for the actual list */}
+          <ul className={styles.agentList}>
+            {agents.map(agent => (
+                <li key={agent.id}
+                    className={`${styles.agentListItem} ${selectedAgentId === agent.id ? styles.agentListItemSelected : ''}`}>
+                  <div className={styles.agentInfo}>
+                    <input
+                        type="radio"
+                        id={`agent-${agent.id}`}
+                        name="selectedAgent"
+                        value={agent.id}
+                        checked={selectedAgentId === agent.id}
+                        onChange={() => {
+                          handleSelectAgent(agent.id);
+                          navigate(`/agent/view/${agent.id}`); // Navigate to the agent view URL
+                        }}
+                        className={styles.agentRadio}
+                    />
+                    <label htmlFor={`agent-${agent.id}`} className={styles.agentLabel}>
+                      <div className={styles.agentNameContainer}>
+                        <span className={styles.agentNameLink}>{agent.name || 'Unnamed Agent'}</span>
+                      </div>
+                      {agent.description && <div className={styles.agentDescription}>{agent.description}</div>}
+                    </label>
                   </div>
-                )}
-              </li>
+                  {/* Show buttons only for locally spawned agents */}
+                  {agent.isLocal && (
+                      <div className={styles.agentActions}>
+                        <Button
+                            onClick={() => navigate(`/agents/edit/${agent.id}`)}
+                            variant="secondary"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                            onClick={() => handleStopAgent(agent.id)}
+                            variant="danger"
+                        >
+                          Stop
+                        </Button>
+                      </div>
+                  )}
+                </li>
             ))}
           </ul>
+        </div>
+
+        <div className={styles.buttonContainer}>
+          <Button variant="primary" onClick={() => navigate('/add-local-agent')}>
+            Spawn Local Agent
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/add-external-agent')}>
+            Add External Agent
+          </Button>
+        </div>
+
       </div>
-    </div>
   );
 };
 

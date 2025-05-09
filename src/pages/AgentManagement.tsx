@@ -80,17 +80,6 @@ const AgentManagement: React.FC = () => {
 
       {/* Right Pane: Agent Interaction (Tasks/Logs/Task Details) */}
       <div className={styles.rightPane}>
-        {/* Add Agent Buttons */}
-        <div className={styles.buttonContainer}>
-          <Button variant="primary" onClick={() => navigate('/add-local-agent')}>
-            Spawn Local Agent
-          </Button>
-          <Button variant="secondary" onClick={() => navigate('/add-external-agent')}>
-            Add External Agent
-          </Button>
-        </div>
-
-
         {selectedAgentId ? (
           <AgentInteraction />
         ) : (
