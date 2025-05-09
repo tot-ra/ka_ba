@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time" // Added time import
 
 	// No import for "kaba/ka/a2a" needed here
 	"ka/llm"
@@ -23,8 +24,9 @@ func HandleLLMExecution(
 	messages []llm.Message,
 	sseWriter *SSEWriter,
 	toolDispatcher *ToolDispatcher, // Add ToolDispatcher
-) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, err error) {
+) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, assistantMessageSavedByHandler bool, err error) {
 
+	assistantMessageSavedByHandler = false // Initialize
 	var fullOutputBuffer bytes.Buffer
 	signaller := newFirstWriteSignaller(&fullOutputBuffer)
 	stateUpdateCompleted := make(chan bool, 1)
@@ -72,7 +74,7 @@ func HandleLLMExecution(
 		if setStateErr != nil {
 			log.Printf("[Task %s] Failed to set final task state to %s after LLM error: %v", taskID, finalState, setStateErr)
 		}
-		return "", inputTokens, completionTokens, false, llmErr
+		return "", inputTokens, completionTokens, false, false, llmErr // assistantMessageSavedByHandler is false
 	}
 
 	// LLM Call Succeeded
@@ -84,9 +86,10 @@ func HandleLLMExecution(
 
 	// Create a Message object to hold the raw XML and parse it
 	assistantMessage := Message{ // Use local Message
-		Role:            RoleAssistant, // Use local RoleAssistant
-		RawToolCallsXML: rawToolCallsXML, // Store the full response for parsing
+		Role:            RoleAssistant,                                          // Use local RoleAssistant
+		RawToolCallsXML: rawToolCallsXML,                                        // Store the full response for parsing
 		Parts:           []Part{TextPart{Type: "text", Text: fullResultString}}, // Use local Part, TextPart
+		Timestamp:       time.Now().UTC(),                                       // Added timestamp
 	}
 
 	// Parse the XML tool calls from the RawToolCallsXML field
@@ -101,12 +104,15 @@ func HandleLLMExecution(
 	_, updateErr := taskStore.UpdateTask(taskID, func(task *Task) error { // Use local Task
 		// Append the assistant message with the parsed tool calls
 		task.Messages = append(task.Messages, assistantMessage) // Use Messages field
-		task.Error = "" // Clear any previous error
+		task.Error = ""                                         // Clear any previous error
 		return nil
 	})
 	if updateErr != nil {
 		log.Printf("[Task %s] Failed to update task with assistant message and parsed tool calls: %v", taskID, updateErr)
+		// assistantMessageSavedByHandler remains false
 		// Consider setting state to failed here?
+	} else {
+		assistantMessageSavedByHandler = true // Assistant message was successfully saved
 	}
 
 	// Check if the full response requires input (still check the full string before XML removal)
@@ -141,8 +147,7 @@ func HandleLLMExecution(
 		// Decide how to handle this error - maybe return an error?
 	}
 
-
-	return fullResultString, inputTokens, completionTokens, requiresInput, nil
+	return fullResultString, inputTokens, completionTokens, requiresInput, assistantMessageSavedByHandler, nil
 }
 
 // handleLLMExecutionStream calls the LLM for streaming output directly to SSE.
@@ -156,8 +161,9 @@ func handleLLMExecutionStream(
 	messages []llm.Message,
 	sseWriter *SSEWriter,
 	toolDispatcher *ToolDispatcher, // Add ToolDispatcher
-) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, err error) {
+) (fullResultString string, inputTokens, completionTokens int, requiresInput bool, assistantMessageSavedByHandler bool, err error) {
 
+	assistantMessageSavedByHandler = false // This handler does not save the message itself
 	log.Printf("[Task %s Stream] Sending prompt to LLM for streaming...\n", taskID)
 	// The sseWriter will receive the raw stream, including any XML block.
 	fullResultString, inputTokens, completionTokens, llmErr := llmClient.Chat(ctx, messages, true, sseWriter)
@@ -176,14 +182,14 @@ func handleLLMExecutionStream(
 		taskStore.UpdateTask(taskID, func(task *Task) error { task.Error = errMsg; return nil }) // Use local Task
 		setStateErr := taskStore.SetState(taskID, finalState)
 
-	if setStateErr == nil && finalState == TaskStateFailed { // Use local TaskStateFailed
-		failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": errMsg}) // Use local TaskStateFailed
-		sseWriter.SendEvent("state", string(failedStateData))
-	} else if setStateErr != nil {
-		log.Printf("[Task %s Stream] Failed to set final task state to %s after LLM error: %v\n", taskID, finalState, setStateErr)
+		if setStateErr == nil && finalState == TaskStateFailed { // Use local TaskStateFailed
+			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": errMsg}) // Use local TaskStateFailed
+			sseWriter.SendEvent("state", string(failedStateData))
+		} else if setStateErr != nil {
+			log.Printf("[Task %s Stream] Failed to set final task state to %s after LLM error: %v\n", taskID, finalState, setStateErr)
+		}
+		return "", inputTokens, completionTokens, false, false, llmErr // assistantMessageSavedByHandler is false
 	}
-	return "", inputTokens, completionTokens, false, llmErr
-}
 
 	// Log token usage on success
 	fmt.Printf("[Task %s Stream] LLM Success. Input Tokens: %d, Completion Tokens: %d\n", taskID, inputTokens, completionTokens)
@@ -197,5 +203,5 @@ func handleLLMExecutionStream(
 	// in the main processTaskStreamIteration loop. requiresInput is true only if the LLM
 	// explicitly requested input using [INPUT_REQUIRED].
 
-	return fullResultString, inputTokens, completionTokens, requiresInput, nil
+	return fullResultString, inputTokens, completionTokens, requiresInput, false, nil // assistantMessageSavedByHandler is false
 }

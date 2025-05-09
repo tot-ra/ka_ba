@@ -71,7 +71,6 @@ func (te *TaskExecutor) ExecuteTaskStream(ctx context.Context, t *Task, sseWrite
 	workingStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateWorking)})
 	sseWriter.SendEvent("state", string(workingStateData))
 
-
 	// Get or create the resume channel for this task
 	resumeCh := te.getOrCreateResumeChannel(t.ID)
 	defer te.deleteResumeChannel(t.ID) // Clean up the channel when execution finishes
@@ -204,7 +203,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 	// Call the extracted LLM execution handler
 	// Pass nil for sseWriter as this is the non-streaming path
 	// Pass the toolDispatcher
-	fullResultString, _, _, requiresInput, llmErr := HandleLLMExecution(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, nil, NewToolDispatcher(te.TaskStore, te.AvailableTools))
+	fullResultString, _, _, requiresInput, assistantMessageSaved, llmErr := HandleLLMExecution(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, nil, NewToolDispatcher(te.TaskStore, te.AvailableTools))
 
 	// Handle LLM error returned by the handler
 	if llmErr != nil {
@@ -249,7 +248,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		// Append tool results to the task's messages for the next LLM iteration
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 			task.Messages = append(task.Messages, toolResults...) // Append all tool result messages to Messages
-			task.Error = "" // Clear any previous error
+			task.Error = ""                                       // Clear any previous error
 			return nil
 		})
 		if updateErr != nil {
@@ -269,16 +268,17 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 	} else if requiresInput {
 		// Process the result based on whether input is required (if no tool calls were made)
 		log.Printf("[Task %s] Input Required detected in full response (no tool calls).", t.ID)
-		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
-
-		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Messages = append(task.Messages, outputMessage) // Append to Messages
-			task.Error = "" // Clear any previous error
-			return nil
-		})
-		if updateErr != nil {
-			log.Printf("[Task %s] Failed to update task with input required output: %v", t.ID, updateErr)
-			// Consider setting state to failed here? For now, just log.
+		if !assistantMessageSaved { // Only add if HandleLLMExecution didn't already
+			outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+			_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
+				task.Messages = append(task.Messages, outputMessage) // Append to Messages
+				task.Error = ""                                      // Clear any previous error
+				return nil
+			})
+			if updateErr != nil {
+				log.Printf("[Task %s] Failed to update task with input required output: %v", t.ID, updateErr)
+				// Consider setting state to failed here? For now, just log.
+			}
 		}
 
 		// Revert state to InputRequired
@@ -311,17 +311,18 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 	} else {
 		// Task Completed Successfully (No Input Required and No Tool Calls)
 		log.Printf("[Task %s] Task completed normally (no input required, no tool calls).", t.ID)
-		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
-
-		// Update task messages
-		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Messages = append(task.Messages, outputMessage) // Append to Messages
-			task.Error = "" // Clear any previous error
-			return nil
-		})
-		if updateErr != nil {
-			log.Printf("[Task %s] Failed to update task with completed output: %v", t.ID, updateErr)
-			// State might already be COMPLETED, but log the error.
+		if !assistantMessageSaved { // Only add if HandleLLMExecution didn't already
+			outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+			// Update task messages
+			_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
+				task.Messages = append(task.Messages, outputMessage) // Append to Messages
+				task.Error = ""                                      // Clear any previous error
+				return nil
+			})
+			if updateErr != nil {
+				log.Printf("[Task %s] Failed to update task with completed output: %v", t.ID, updateErr)
+				// State might already be COMPLETED, but log the error.
+			}
 		}
 
 		// Add artifact
@@ -397,7 +398,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 	fmt.Printf("[Task %s Stream] Messages for LLM:\n---\n%s\n---\n", t.ID, logMessages)
 
 	// Call the extracted LLM stream execution handler
-	fullResultString, _, _, requiresInput, llmErr := handleLLMExecutionStream(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, sseWriter, NewToolDispatcher(te.TaskStore, te.AvailableTools))
+	fullResultString, _, _, requiresInput, assistantMessageSaved, llmErr := handleLLMExecutionStream(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, sseWriter, NewToolDispatcher(te.TaskStore, te.AvailableTools))
 
 	// Handle LLM error returned by the handler
 	if llmErr != nil {
@@ -444,7 +445,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		// Append tool results to the task's messages for the next LLM iteration
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 			task.Messages = append(task.Messages, toolResults...) // Append all tool result messages to Messages
-			task.Error = "" // Clear any previous error
+			task.Error = ""                                       // Clear any previous error
 			return nil
 		})
 		if updateErr != nil {
@@ -472,15 +473,16 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 	} else if requiresInput {
 		// Process the result based on whether input is required (if no tool calls were made)
 		log.Printf("[Task %s Stream] Input Required detected in full response (no tool calls).", t.ID)
-		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
-
-		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Messages = append(task.Messages, outputMessage) // Append to Messages
-			task.Error = ""
-			return nil
-		})
-		if updateErr != nil {
-			log.Printf("[Task %s Stream] Failed to update task with input required output: %v", t.ID, updateErr)
+		if !assistantMessageSaved { // Only add if handleLLMExecutionStream didn't already (it doesn't, but for consistency)
+			outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+			_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
+				task.Messages = append(task.Messages, outputMessage) // Append to Messages
+				task.Error = ""
+				return nil
+			})
+			if updateErr != nil {
+				log.Printf("[Task %s Stream] Failed to update task with input required output: %v", t.ID, updateErr)
+			}
 		}
 
 		setStateErr := te.TaskStore.SetState(t.ID, TaskStateInputRequired)
@@ -516,14 +518,16 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		// Task Completed Successfully (No Input Required and No Tool Calls)
 		log.Printf("[Task %s Stream] LLM streaming completed successfully.\n", t.ID)
 
-		outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
-		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
-			task.Messages = append(task.Messages, outputMessage) // Append to Messages
-			task.Error = ""
-			return nil
-		})
-		if updateErr != nil {
-			log.Printf("[Task %s Stream] Failed to update task with completed output: %v\n", t.ID, updateErr)
+		if !assistantMessageSaved { // Only add if handleLLMExecutionStream didn't already (it doesn't, but for consistency)
+			outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
+			_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
+				task.Messages = append(task.Messages, outputMessage) // Append to Messages
+				task.Error = ""
+				return nil
+			})
+			if updateErr != nil {
+				log.Printf("[Task %s Stream] Failed to update task with completed output: %v\n", t.ID, updateErr)
+			}
 		}
 
 		artifactErr := te.TaskStore.AddArtifact(t.ID, Artifact{Type: "text/plain", Filename: "llm_streamed_response.txt", Data: []byte(fullResultString)})

@@ -2,7 +2,7 @@ package a2a
 
 import (
 	"encoding/json" // Manually added back
-	"errors" // Manually added back
+	"errors"        // Manually added back
 	"fmt"
 	"log"
 	"regexp" // Import regexp for finding tool tags
@@ -69,14 +69,14 @@ type Message struct {
 	// ParsedToolCalls is populated after parsing RawToolCallsXML.
 	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
 	// ToolCallID is used in a tool message to indicate which tool call this message is a response to.
-	ToolCallID string `json:"tool_call_id,omitempty"`
+	ToolCallID string    `json:"tool_call_id,omitempty"`
 	Timestamp  time.Time `json:"timestamp"` // Add timestamp to message
 }
 
 // ToolCall represents a single tool call parsed from the simplified XML structure.
 type ToolCall struct {
-	ID       string       // Tool call ID from XML attribute
-	Type     string       // Tool type (hardcoded to "function" for now)
+	ID       string // Tool call ID from XML attribute
+	Type     string // Tool type (hardcoded to "function" for now)
 	Function FunctionCall
 }
 
@@ -167,6 +167,31 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 		m.Parts = append(m.Parts, part)
 	}
 
+	// If this is an assistant message, populate RawToolCallsXML from its TextPart(s)
+	// and then attempt to parse tool calls. This ensures that when a task is loaded,
+	// any tool calls embedded in assistant messages are readily available in ParsedToolCalls.
+	if m.Role == RoleAssistant {
+		// Populate m.RawToolCallsXML from the first TextPart found.
+		// HandleLLMExecution currently puts the full LLM response (which contains tool XML)
+		// into a single TextPart.
+		for _, part := range m.Parts {
+			if textPart, ok := part.(TextPart); ok {
+				m.RawToolCallsXML = textPart.Text
+				break // Found the first TextPart, assume it contains the raw XML.
+			}
+		}
+
+		if m.RawToolCallsXML != "" {
+			// Log the attempt to parse, similar to how ParseToolCallsFromXML does.
+			// log.Printf("Message UnmarshalJSON: Assistant message with RawToolCallsXML found, attempting to parse from TextPart: %s", m.RawToolCallsXML)
+			// No need to log here, ParseToolCallsFromXML already logs extensively.
+			if err := m.ParseToolCallsFromXML(); err != nil {
+				// Log error but don't fail unmarshalling, as ParseToolCallsFromXML itself handles logging.
+				log.Printf("Message UnmarshalJSON: Error during ParseToolCallsFromXML (called from UnmarshalJSON): %v", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -206,11 +231,10 @@ func (m *Message) ParseToolCallsFromXML() error {
 		log.Printf("Found %d escaped <tool> tags (with optional whitespace).", len(matches))
 	}
 
-
 	m.ParsedToolCalls = make([]ToolCall, 0, len(matches))
 	for _, match := range matches {
 		if len(match) == 3 {
-			toolID := match[1]      // Captured group 1: tool name from id attribute
+			toolID := match[1]    // Captured group 1: tool name from id attribute
 			arguments := match[2] // Captured group 2: content between tags (JSON arguments)
 
 			// Create a new ToolCall struct
@@ -219,10 +243,10 @@ func (m *Message) ParseToolCallsFromXML() error {
 				// For simplicity, let's use a combination of task message timestamp and toolID
 				// A more robust approach might involve a counter or UUID.
 				// Let's use a simple counter for uniqueness within this message.
-				ID: fmt.Sprintf("%s-%d", toolID, len(m.ParsedToolCalls)), // Simple unique ID
-				Type: "function", // Hardcoded type as per the new structure
+				ID:   fmt.Sprintf("%s-%d", toolID, len(m.ParsedToolCalls)), // Simple unique ID
+				Type: "function",                                           // Hardcoded type as per the new structure
 				Function: FunctionCall{
-					Name: toolID, // Tool name is the id attribute
+					Name:      toolID,    // Tool name is the id attribute
 					Arguments: arguments, // Arguments are the content
 				},
 			}
@@ -249,7 +273,7 @@ type Task struct {
 	Name         string               `json:"name,omitempty"` // Added Name field for task list display
 	State        TaskState            `json:"state"`
 	SystemPrompt string               `json:"system_prompt,omitempty"` // Added SystemPrompt field
-	Messages     []Message            `json:"messages,omitempty"` // Replace Input/Output with a single Messages array
+	Messages     []Message            `json:"messages,omitempty"`      // Replace Input/Output with a single Messages array
 	Error        string               `json:"error,omitempty"`
 	CreatedAt    time.Time            `json:"created_at"`
 	UpdatedAt    time.Time            `json:"updated_at"`
@@ -286,7 +310,7 @@ func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMe
 		ID:           id,
 		Name:         name, // Set the task name
 		State:        TaskStateSubmitted,
-		SystemPrompt: systemPrompt, // Store the provided system prompt
+		SystemPrompt: systemPrompt,           // Store the provided system prompt
 		Messages:     messagesWithTimestamps, // Use the new Messages field
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -342,7 +366,7 @@ func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error
 
 func (s *InMemoryTaskStore) AddMessage(taskID string, message Message) error {
 	_, err := s.UpdateTask(taskID, func(task *Task) error {
-		message.Timestamp = time.Now() // Add timestamp when message is added
+		message.Timestamp = time.Now()                 // Add timestamp when message is added
 		task.Messages = append(task.Messages, message) // Append to the single Messages array
 		return nil
 	})
