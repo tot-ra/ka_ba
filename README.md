@@ -2,6 +2,9 @@
 
 AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 
+<img width="1780" alt="Screenshot 2025-05-09 at 22 54 39" src="https://github.com/user-attachments/assets/46117831-bffb-431d-be7a-618f30f9ead6" />
+
+
 ## Naming
 > *ka* (𓂓) and *ba* (𓅽) - is the ancient Egyptian concept of the soul layers.
 > The "vital essence" and the "personality".
@@ -60,9 +63,6 @@ ka -."store task state as JSON file".-> disk
 ## `ba` - A2A Agent UI, Control, and Orchestration Layer (`src/`)
 
 `ba` is a web application built with Vite and React (located in the `src/` directory), designed to serve as a user interface, control panel, and orchestration layer for Agent-to-Agent (A2A) compliant AI agents. It aims to provide a unified interface for interacting with various agents, including the local [`ka`](#ka---ai-agent-runtime-ka) agent runtime.
-
-
-<img width="1287" alt="Screenshot 2025-05-03 at 02 26 30" src="https://github.com/user-attachments/assets/e586c9f1-8dec-4cbd-846b-08adec0656c3" />
 
 
 ## Purpose
