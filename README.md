@@ -264,6 +264,104 @@ KA_TASK_STORE_PATH="./_ka_tasks"
     *   `ai.go`: Implementation of the `ka ai` CLI command logic.
     *   `a2a/`: Package containing A2A protocol types (Task, Message, Part, Artifact), TaskStore interface/implementations, and HTTP handlers.
     *   `llm/`: Package for LLM client abstraction and interaction.
-*   **Building:** Navigate to `ka/` and run `make build` (outputs to `kaba/ka`).
-*   **Testing:** Navigate to `ka/` and run `make test` (or `go test ./...`).
-*   **TODO:** See the main project [TODO.md](../TODO.md) for the current implementation status and planned features for `ka`.
+
+## `ka` Agent Workflow
+
+The `ka` agent implements a sophisticated workflow for handling tasks and LLM interactions. Below is a detailed explanation of how tasks are processed, with a focus on the LLM execution flow.
+
+### Task Lifecycle
+
+```mermaid
+flowchart TD
+    Create[Task Created] --> Submit[Task Submitted]
+    Submit --> Working[Agent Working]
+    Working -->|Tool Calls Detected| Tools[Execute Tools]
+    Tools --> Working
+    Working -->|Input Needed| InputReq[Waiting for User Input]
+    InputReq -->|User Responds| Working
+    Working -->|Task Finished| Complete[Task Completed]
+    Working -->|Error Occurs| Failed[Task Failed]
+    Working -->|User Cancels| Canceled[Task Canceled]
+```
+
+Tasks in `ka` follow a state machine pattern:
+1. **submitted**: Initial state when a task is created
+2. **working**: The agent is actively processing the task
+3. **input-required**: The agent needs additional input from the user
+4. **completed**: The task has been successfully completed
+5. **failed**: An error occurred during task processing
+6. **canceled**: The task was canceled by the user or system
+
+### LLM Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant User as User/Client
+    participant Executor as Task Executor
+    participant LLMHandler as HandleLLMExecution
+    participant LLM as LLM Client
+    participant Store as Task Store
+    participant ToolMgr as Tool Dispatcher
+
+    User->>Executor: Submit Task
+    Executor->>Store: Create Task (submitted)
+    Executor->>Store: Update State (working)
+    Executor->>LLMHandler: Process Messages
+    
+    LLMHandler->>LLM: Stream Request
+    LLM-->>LLMHandler: Stream Response
+    
+    LLMHandler->>Store: Update with Assistant Message
+    
+    alt Tool Calls Detected
+        LLMHandler->>Store: Set State (working)
+        Executor->>ToolMgr: Execute Tool Calls
+        ToolMgr-->>Executor: Tool Results
+        Executor->>LLMHandler: Process with Tool Results
+    else Input Required
+        LLMHandler->>Store: Set State (input-required)
+        User->>Executor: Provide Input
+        Executor->>LLMHandler: Process with Input
+    else No More Work
+        LLMHandler->>Store: Set State (completed)
+    end
+    
+    Store-->>User: Return Final Result
+```
+
+### `HandleLLMExecution` Function
+
+The `HandleLLMExecution` function in `ka/a2a/executor_llm.go` is a core component that:
+
+1. **Streams LLM Responses**: Always uses streaming for real-time updates
+2. **Manages Task State**: Updates task state based on LLM response
+3. **Parses Tool Calls**: Extracts XML-formatted tool calls from LLM responses
+4. **Handles Errors**: Manages error conditions and state transitions
+
+Key processing steps:
+1. Sets up a buffer and signaller to detect the first write from the LLM
+2. Calls the LLM with streaming enabled
+3. Processes the full response, extracting any tool calls in XML format
+4. Updates the task with the assistant's message
+5. Determines the next state based on:
+   - Presence of tool calls (→ working)
+   - Need for user input (→ input-required)
+   - Completion with no further actions (→ completed)
+
+### Tool Execution Cycle
+
+```mermaid
+flowchart LR
+    Response[LLM Response] --> Parse[Extract XML Tool Calls]
+    Parse --> Dispatch[Route to Tools]
+    Dispatch --> Execute[Run Tool Functions]
+    Execute --> Results[Collect Tool Results]
+    Results --> NextCall[Next LLM Interaction]
+```
+
+When the LLM generates tool calls in XML format:
+1. The response is parsed to extract structured tool calls
+2. The `ToolDispatcher` handles routing to the appropriate tools
+3. Tool results are added to the conversation context
+4. The task remains in the "working" state for another LLM iteration
+5. This cycle continues until the LLM produces a final response with no tool calls
