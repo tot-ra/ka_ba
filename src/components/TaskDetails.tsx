@@ -177,6 +177,7 @@ const getStatusClassName = (state: string | undefined | null): string => {
             <strong>Status:</strong>{' '}
             <span className={`${styles.statusBadge} ${getStatusClassName(currentTask.state)}`}>{currentTask.state}</span>
           </div>
+          <div><strong>ID:</strong> {currentTask.id}</div>
           {currentTask.createdAt && <div><strong>Created:</strong> {new Date(currentTask.createdAt).toLocaleString()}</div>}
           {currentTask.updatedAt && <div><strong>Updated:</strong> {new Date(currentTask.updatedAt).toLocaleString()}</div>}
           {currentTask.error && <div className={styles.errorText}><strong>Error:</strong> {currentTask.error}</div>}

@@ -93,7 +93,6 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
                 {/* <strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span> */}
               </div>
               <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>Updated: {new Date(task.updatedAt).toLocaleString()}</div>
-              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>ID: <code style={{ fontSize: '1em' }}>{task.id}</code></div>
 
             </div>
 
