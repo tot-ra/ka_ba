@@ -48,7 +48,6 @@ export interface Task {
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
   artifacts?: { [key: string]: Artifact }; // Map of artifact ID to Artifact (as fetched by listTasks)
-  input?: InputMessage[]; // Added based on usage in AgentInteraction.tsx
   // Add other potential fields if needed by components, ensuring consistency with GraphQL schema
   sessionId?: string | null;
   metadata?: any;

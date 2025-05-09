@@ -73,7 +73,7 @@ const AgentInteraction: React.FC = () => {
           const existingTaskIndex = prevTasks.findIndex(task => task.id === updatedTask.id);
           if (existingTaskIndex > -1) {
             const newTasks = [...prevTasks];
-            const mergedTask = { ...newTasks[existingTaskIndex], ...updatedTask, input: newTasks[existingTaskIndex].input || updatedTask.input };
+            const mergedTask = { ...newTasks[existingTaskIndex], ...updatedTask };
             newTasks[existingTaskIndex] = mergedTask;
             return newTasks;
           } else {
@@ -84,7 +84,7 @@ const AgentInteraction: React.FC = () => {
         if (selectedTask && selectedTask.id === updatedTask.id) {
             setSelectedTask(prevSelectedTask => {
                 if (!prevSelectedTask) return updatedTask;
-                const mergedSelectedTask = { ...prevSelectedTask, ...updatedTask, input: prevSelectedTask.input || updatedTask.input };
+                const mergedSelectedTask = { ...prevSelectedTask, ...updatedTask };
                 return mergedSelectedTask;
             });
 
@@ -185,15 +185,16 @@ const AgentInteraction: React.FC = () => {
     try {
       const taskToDuplicate = tasks.find(task => task.id === taskId);
 
-      if (!taskToDuplicate || !taskToDuplicate.input || taskToDuplicate.input.length === 0) {
-        setError(`Cannot duplicate task ${taskId}: Task not found or has no input.`);
+      if (!taskToDuplicate || !taskToDuplicate.messages || taskToDuplicate.messages.length === 0) {
+        setError(`Cannot duplicate task ${taskId}: Task not found or has no messages.`);
         setIsLoading(false);
         return;
       }
 
-      const originalMessage = taskToDuplicate.input[0];
-      if (originalMessage.role !== 'USER' || !originalMessage.parts || originalMessage.parts.length === 0) {
-        setError(`Cannot duplicate task ${taskId}: First input message is not a valid user prompt.`);
+      const originalMessage = taskToDuplicate.messages.find(msg => msg.role === 'USER');
+
+      if (!originalMessage || !originalMessage.parts || originalMessage.parts.length === 0) {
+        setError(`Cannot duplicate task ${taskId}: Original user input message not found or is empty.`);
         setIsLoading(false);
         return;
       }
@@ -345,14 +346,14 @@ const AgentInteraction: React.FC = () => {
    };
 
    const handleDuplicateClick = () => {
-     if (!currentTask || !currentTask.input || currentTask.input.length === 0) {
-       setError('Cannot duplicate: Task input not available.');
+     if (!currentTask || !currentTask.messages || currentTask.messages.length === 0) {
+       setError('Cannot duplicate: Task messages not available.');
        return;
      }
 
-     const originalMessage = currentTask.input[0];
-     if (originalMessage.role !== 'USER' || !originalMessage.parts || originalMessage.parts.length === 0) {
-       setError('Cannot duplicate: First input message is not a valid user prompt.');
+     const originalMessage = currentTask.messages.find(msg => msg.role === 'USER');
+     if (!originalMessage || !originalMessage.parts || originalMessage.parts.length === 0) {
+       setError('Cannot duplicate: Original user input message not found or is empty.');
        return;
      }
 
