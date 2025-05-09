@@ -1,8 +1,15 @@
 # 🙌🏻 ka_ba 🦚
 
-AI Agent Runtime (`ka`) and orchestration UI (`ba`).
+AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 
-Status: `early prototype`
+## Naming
+> *ka* (𓂓) and *ba* (𓅽) - is the ancient Egyptian concept of the soul layers.
+> The "vital essence" and the "personality".
+> 
+> kaaba - "House of God"
+> 
+> baka (jap. バカ) - "fool"
+
 
 ## Goals and vision
 - Agent runtime
@@ -19,6 +26,17 @@ Status: `early prototype`
 - Automatic discovery (DNS/k8s)
 - Permanent thinking agent (Sentry mode, watching filesystem)
 - Agent instantiation by agents
+
+
+### TODO for ka agent
+
+*   Implement task resumption logic for `input-required` state.
+*   Full implementation of push notifications.
+*   Support for more `Part` types and URI schemes (e.g., `http://`, `data://`).
+*   Integration with MCP tools.
+*   More robust error handling and input validation.
+*   Comprehensive unit and integration tests.
+*   Containerization improvements (health checks, etc.).
 
 
 ## Architecture
@@ -151,21 +169,15 @@ The primary goal is to create a flexible and extensible runtime that can manage 
 *   Go (version 1.22 or later recommended)
 *   [LM Studio](https://lmstudio.ai/) installed and running (`lms server start`) or another OpenAI-compatible API endpoint accessible for LLM interaction.
 
-### Building `ka`
+### Building & testing `ka`
 
 *Note: These commands should be run from the `ka/` directory.*
 
-1.  Navigate to the `ka` directory:
-    ```bash
-    cd ka
-    ```
-2.  Build the executable:
-    ```bash
-    make build
-    # Or directly:
-    # go build -o ../ka .
-    ```
-    This creates the `ka` executable in the project root (`kaba/`).
+```bash
+cd ka
+make build
+make test
+```
 
 ### Running the `ka` A2A Server
 
@@ -255,18 +267,3 @@ KA_TASK_STORE_PATH="./_ka_tasks"
 *   **Building:** Navigate to `ka/` and run `make build` (outputs to `kaba/ka`).
 *   **Testing:** Navigate to `ka/` and run `make test` (or `go test ./...`).
 *   **TODO:** See the main project [TODO.md](../TODO.md) for the current implementation status and planned features for `ka`.
-
-## Future Work
-
-*   Implement task resumption logic for `input-required` state.
-*   Full implementation of push notifications.
-*   Support for more `Part` types and URI schemes (e.g., `http://`, `data://`).
-*   Integration with MCP tools.
-*   More robust error handling and input validation.
-*   Comprehensive unit and integration tests.
-*   Containerization improvements (health checks, etc.).
-
-## Naming
-> *ka* (𓂓) - is the ancient Egyptian concept of the soul manifestation, the "vital essence".
-> *ba* (𓅽) - is the ancient Egyptian concept of the soul manifestation, the "personality".
-

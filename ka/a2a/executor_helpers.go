@@ -14,7 +14,7 @@ import (
 )
 
 type firstWriteSignaller struct {
-	target io.Writer
+	target       io.Writer
 	firstWriteCh chan struct{}
 	written      atomic.Bool
 }
@@ -105,129 +105,152 @@ func decodeDataURI(uri string) ([]byte, error) {
 // buildPromptFromInput constructs the LLM messages slice from task input messages,
 // including the agent's system message.
 // It returns a slice of llm.Message, a boolean indicating if any relevant content was found, and an error.
-func buildPromptFromInput(taskID string, inputMessages []Message, agentSystemMessage string) (messages []llm.Message, contentFound bool, err error) { // Added agentSystemMessage parameter
-	var llmMessages []llm.Message
-	userMessageFound := false
-	contentFound = false // Initialize contentFound
+func buildPromptFromInput(taskID string, inputMessages []Message, agentSystemMessage string) ([]llm.Message, bool, error) {
+	llmMessages := make([]llm.Message, 0, len(inputMessages)+1)
+	contentFound := false
 
-	// Prepend the agent's system message if it exists
+	// Add system message if provided
 	if agentSystemMessage != "" {
 		llmMessages = append(llmMessages, llm.Message{
 			Role:    string(RoleSystem),
 			Content: agentSystemMessage,
 		})
-		contentFound = true // System message counts as content
+		contentFound = true
 	}
 
-
+	// Handle empty input case
 	if len(inputMessages) == 0 {
-		// If there's a system message but no other input, it's still valid
-		if agentSystemMessage != "" {
+		if contentFound {
 			return llmMessages, true, nil
 		}
-		return nil, false, nil // No input, no prompt
+		return nil, false, nil
 	}
 
-	// First pass: Check for at least one user message
-	for _, msg := range inputMessages {
-		if msg.Role == RoleUser {
-			userMessageFound = true
-			break
-		}
-	}
-
-	if !userMessageFound {
+	// Validate at least one user message exists
+	if !hasUserMessage(inputMessages) {
 		return nil, false, fmt.Errorf("input validation failed: no message with role '%s' found", RoleUser)
 	}
 
-	// Second pass: Build the prompt string from input messages
+	// Process all messages
 	for _, msg := range inputMessages {
-		// Include messages from User, Assistant, and Tool roles (System already handled)
-		if msg.Role == RoleUser || msg.Role == RoleAssistant || msg.Role == RoleTool {
-			var messageContentBuilder strings.Builder
-			// Tool calls are now handled by parsing XML in executor_llm.go, not included directly in the prompt here.
+		if !isRelevantRole(msg.Role) {
+			continue
+		}
 
-			// Include parts for all relevant roles
-			for _, part := range msg.Parts {
-				switch p := part.(type) {
-				case TextPart:
-					messageContentBuilder.WriteString(p.Text)
-					contentFound = true
-				case FilePart:
-					parsedURI, ok := isValidPartURI(p.URI)
-					if !ok {
-						log.Printf("[Task %s] Warning: Invalid or unsupported URI scheme in FilePart: %s", taskID, p.URI)
-						messageContentBuilder.WriteString(fmt.Sprintf("[Invalid File URI: %s]", p.URI))
-						continue // Skip this part but continue with others
-					}
-
-					switch parsedURI.Scheme {
-					case "http", "https":
-						const maxDownloadSize = 1024 * 1024 // 1MB limit
-						content, downloadErr := downloadHTTPContent(p.URI, maxDownloadSize)
-						if downloadErr != nil {
-							log.Printf("[Task %s] Error downloading FilePart content from %s: %v", taskID, p.URI, downloadErr)
-							messageContentBuilder.WriteString(fmt.Sprintf("[File Download Error: %s (%s) - %v]", p.URI, p.MimeType, downloadErr))
-						} else {
-							contentStr := string(content)
-							snippetLen := 500
-							if len(contentStr) > snippetLen {
-								contentStr = contentStr[:snippetLen] + "..."
-							}
-							messageContentBuilder.WriteString(fmt.Sprintf("[File Content from %s (%s)]:\n%s\n[/File Content]", p.URI, p.MimeType, contentStr))
-							contentFound = true
-						}
-					case "file":
-						messageContentBuilder.WriteString(fmt.Sprintf("[File: %s (%s)]", p.URI, p.MimeType))
-						contentFound = true
-					case "data":
-						dataContent, decodeErr := decodeDataURI(p.URI)
-						if decodeErr != nil {
-							log.Printf("[Task %s] Error decoding Data URI for FilePart %s: %v", taskID, p.URI, decodeErr)
-							messageContentBuilder.WriteString(fmt.Sprintf("[Data URI Decode Error: %s - %v]", p.MimeType, decodeErr))
-						} else {
-							contentStr := string(dataContent)
-							snippetLen := 500
-							if len(contentStr) > snippetLen {
-								contentStr = contentStr[:snippetLen] + "..."
-							}
-							messageContentBuilder.WriteString(fmt.Sprintf("[Data Content (%s)]:\n%s\n[/Data Content]", p.MimeType, contentStr))
-							contentFound = true
-						}
-					default:
-						// This case should ideally not be reached due to isValidPartURI check
-						log.Printf("[Task %s] Warning: Unexpected URI scheme after validation: %s", taskID, parsedURI.Scheme)
-						messageContentBuilder.WriteString(fmt.Sprintf("[Unexpected URI Scheme: %s]", parsedURI.Scheme))
-					}
-
-				case DataPart:
-					// For DataPart, we might just include a placeholder or summary
-					messageContentBuilder.WriteString(fmt.Sprintf("[Data: %s]", p.MimeType))
-					contentFound = true
-				default:
-					log.Printf("[Task %s] Warning: Unrecognized part type %T", taskID, p)
-					messageContentBuilder.WriteString(fmt.Sprintf("[Unknown Part Type: %T]", p))
-				}
-			}
-
-			// Only add message if it has content
-			if messageContentBuilder.Len() > 0 {
-				llmMessages = append(llmMessages, llm.Message{
-					Role:    string(msg.Role), // Convert Task MessageRole to LLM Message Role string
-					Content: messageContentBuilder.String(),
-				})
-			}
+		content, msgContentFound := buildMessageContent(taskID, msg)
+		if msgContentFound && content != "" {
+			llmMessages = append(llmMessages, llm.Message{
+				Role:    string(msg.Role),
+				Content: content,
+			})
+			contentFound = true
 		}
 	}
 
 	if !contentFound {
-		// This case handles when no parts suitable for prompt were found at all
 		return nil, false, fmt.Errorf("could not extract suitable prompt content from messages")
 	}
 
-	// The system message is already prepended if it existed.
-	// The rest of the messages are added in their original order.
-	// No further reordering is needed here.
-
 	return llmMessages, true, nil
+}
+
+// hasUserMessage checks if there's at least one user message in the input
+func hasUserMessage(messages []Message) bool {
+	for _, msg := range messages {
+		if msg.Role == RoleUser {
+			return true
+		}
+	}
+	return false
+}
+
+// isRelevantRole returns true if the message role should be included in the prompt
+func isRelevantRole(role MessageRole) bool {
+	return role == RoleUser || role == RoleAssistant || role == RoleTool
+}
+
+// buildMessageContent processes a single message and builds its content string
+func buildMessageContent(taskID string, msg Message) (string, bool) {
+	var messageContentBuilder strings.Builder
+	contentFound := false
+
+	for _, part := range msg.Parts {
+		switch p := part.(type) {
+		case TextPart:
+			messageContentBuilder.WriteString(p.Text)
+			contentFound = true
+		case FilePart:
+			contentFound = processFilePart(taskID, p, &messageContentBuilder) || contentFound
+		case DataPart:
+			messageContentBuilder.WriteString(fmt.Sprintf("[Data: %s]", p.MimeType))
+			contentFound = true
+		default:
+			log.Printf("[Task %s] Warning: Unrecognized part type %T", taskID, p)
+			messageContentBuilder.WriteString(fmt.Sprintf("[Unknown Part Type: %T]", p))
+		}
+	}
+
+	return messageContentBuilder.String(), contentFound
+}
+
+// processFilePart handles the processing of file parts with different URI schemes
+func processFilePart(taskID string, part FilePart, builder *strings.Builder) bool {
+	parsedURI, ok := isValidPartURI(part.URI)
+	if !ok {
+		log.Printf("[Task %s] Warning: Invalid or unsupported URI scheme in FilePart: %s", taskID, part.URI)
+		builder.WriteString(fmt.Sprintf("[Invalid File URI: %s]", part.URI))
+		return false
+	}
+
+	switch parsedURI.Scheme {
+	case "http", "https":
+		return processHTTPFilePart(taskID, part, builder)
+	case "file":
+		builder.WriteString(fmt.Sprintf("[File: %s (%s)]", part.URI, part.MimeType))
+		return true
+	case "data":
+		return processDataURIFilePart(taskID, part, builder)
+	default:
+		// This case should ideally not be reached due to isValidPartURI check
+		log.Printf("[Task %s] Warning: Unexpected URI scheme after validation: %s", taskID, parsedURI.Scheme)
+		builder.WriteString(fmt.Sprintf("[Unexpected URI Scheme: %s]", parsedURI.Scheme))
+		return false
+	}
+}
+
+// processHTTPFilePart handles HTTP/HTTPS file parts
+func processHTTPFilePart(taskID string, part FilePart, builder *strings.Builder) bool {
+	const maxDownloadSize = 1024 * 1024 // 1MB limit
+	content, downloadErr := downloadHTTPContent(part.URI, maxDownloadSize)
+	if downloadErr != nil {
+		log.Printf("[Task %s] Error downloading FilePart content from %s: %v", taskID, part.URI, downloadErr)
+		builder.WriteString(fmt.Sprintf("[File Download Error: %s (%s) - %v]", part.URI, part.MimeType, downloadErr))
+		return false
+	}
+
+	contentStr := string(content)
+	snippetLen := 500
+	if len(contentStr) > snippetLen {
+		contentStr = contentStr[:snippetLen] + "..."
+	}
+	builder.WriteString(fmt.Sprintf("[File Content from %s (%s)]:\n%s\n[/File Content]", part.URI, part.MimeType, contentStr))
+	return true
+}
+
+// processDataURIFilePart handles data URI file parts
+func processDataURIFilePart(taskID string, part FilePart, builder *strings.Builder) bool {
+	dataContent, decodeErr := decodeDataURI(part.URI)
+	if decodeErr != nil {
+		log.Printf("[Task %s] Error decoding Data URI for FilePart %s: %v", taskID, part.URI, decodeErr)
+		builder.WriteString(fmt.Sprintf("[Data URI Decode Error: %s - %v]", part.MimeType, decodeErr))
+		return false
+	}
+
+	contentStr := string(dataContent)
+	snippetLen := 500
+	if len(contentStr) > snippetLen {
+		contentStr = contentStr[:snippetLen] + "..."
+	}
+	builder.WriteString(fmt.Sprintf("[Data Content (%s)]:\n%s\n[/Data Content]", part.MimeType, contentStr))
+	return true
 }

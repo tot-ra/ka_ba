@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-
 func TestNewInMemoryTaskStore(t *testing.T) {
 	store := NewInMemoryTaskStore()
 	if store == nil {
@@ -53,7 +52,7 @@ func TestMessageUnmarshalJSON(t *testing.T) {
 			name:     "Data Part Only",
 			jsonData: `{"role": "tool", "parts": [{"type": "data", "mime_type": "application/json", "data": {"key": "value"}}]}`,
 			expectedMsg: Message{
-				Role: RoleTool,
+				Role:  RoleTool,
 				Parts: []Part{DataPart{Type: "data", MimeType: "application/json", Data: map[string]interface{}{"key": "value"}}},
 			},
 			expectError: false,
@@ -181,22 +180,18 @@ func TestMessageUnmarshalJSON(t *testing.T) {
 					t.Errorf("Role mismatch: expected %v, got %v", tc.expectedMsg.Role, msg.Role)
 				}
 
-
 				if len(msg.Parts) != len(tc.expectedMsg.Parts) {
 					t.Fatalf("Parts count mismatch: expected %d, got %d. Got: %+v", len(tc.expectedMsg.Parts), len(msg.Parts), msg.Parts)
 				}
-
 
 				for i := range msg.Parts {
 					expectedPart := tc.expectedMsg.Parts[i]
 					actualPart := msg.Parts[i]
 
-
 					if reflect.TypeOf(expectedPart) != reflect.TypeOf(actualPart) {
 						t.Errorf("Part %d type mismatch: expected %T, got %T", i, expectedPart, actualPart)
 						continue
 					}
-
 
 					if !reflect.DeepEqual(expectedPart, actualPart) {
 						t.Errorf("Part %d content mismatch:\nExpected: %+v (%T)\nActual:   %+v (%T)", i, expectedPart, expectedPart, actualPart, actualPart)
@@ -207,10 +202,9 @@ func TestMessageUnmarshalJSON(t *testing.T) {
 	}
 }
 
-
 func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -221,13 +215,11 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 		t.Fatalf("AddArtifact 1 failed: %v", err)
 	}
 
-
 	artifact2 := Artifact{Type: "image/png", Filename: "image.png", Data: []byte{1, 2, 3}}
 	err = store.AddArtifact(task.ID, artifact2)
 	if err != nil {
 		t.Fatalf("AddArtifact 2 failed: %v", err)
 	}
-
 
 	retrievedTask, err := store.GetTask(task.ID)
 	if err != nil {
@@ -236,7 +228,6 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 	if len(retrievedTask.Artifacts) != 2 {
 		t.Fatalf("Expected 2 artifacts, got %d", len(retrievedTask.Artifacts))
 	}
-
 
 	art1Ptr, ok := retrievedTask.Artifacts["art1"]
 	if !ok {
@@ -248,7 +239,6 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 	} else if art1Ptr.Type != "text/plain" {
 		t.Errorf("Artifact 1 type mismatch: expected 'text/plain', got '%s'", art1Ptr.Type)
 	}
-
 
 	foundArt2 := false
 	var art2ID string
@@ -276,7 +266,6 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 		t.Error("Artifact 2 (with generated ID) not found")
 	}
 
-
 	updatedArtifact1 := Artifact{ID: "art1", Type: "text/markdown", Data: []byte("updated content"), Filename: "file1.md"}
 	err = store.AddArtifact(task.ID, updatedArtifact1)
 	if err != nil {
@@ -301,14 +290,12 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 		t.Errorf("Updated Artifact 1 type mismatch: expected 'text/markdown', got '%s'", art1PtrUpdated.Type)
 	}
 
-
 	art2Ptr, ok := retrievedTask.Artifacts[art2ID]
 	if !ok {
 		t.Errorf("Artifact 2 (ID: %s) not found after updating artifact 1", art2ID)
 	} else if !bytes.Equal(art2Ptr.Data, []byte{1, 2, 3}) {
 		t.Errorf("Artifact 2 data changed unexpectedly after updating artifact 1")
 	}
-
 
 	err = store.AddArtifact("non-existent-task", artifact1)
 	if err != ErrTaskNotFound {
@@ -318,7 +305,7 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 
 func TestInMemoryTaskStore_GetArtifactData(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -329,7 +316,6 @@ func TestInMemoryTaskStore_GetArtifactData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddArtifact failed: %v", err)
 	}
-
 
 	retrievedData, retrievedArtifact, err := store.GetArtifactData(task.ID, "art1")
 	if err != nil {
@@ -356,8 +342,6 @@ func TestInMemoryTaskStore_GetArtifactData(t *testing.T) {
 		t.Errorf("Artifact metadata data field mismatch: expected '%s', got '%s'", string(artifactData), string(retrievedArtifact.Data))
 	}
 
-
-
 	_, _, err = store.GetArtifactData(task.ID, "non-existent-artifact")
 	if err == nil {
 		t.Error("Expected error when getting non-existent artifact, got nil")
@@ -367,7 +351,6 @@ func TestInMemoryTaskStore_GetArtifactData(t *testing.T) {
 			t.Errorf("Expected error message '%s', got '%s'", expectedErrMsg, err.Error())
 		}
 	}
-
 
 	_, _, err = store.GetArtifactData("non-existent-task", "art1")
 	if err == nil {
@@ -380,13 +363,12 @@ func TestInMemoryTaskStore_GetArtifactData(t *testing.T) {
 	}
 }
 
-
 func TestNewTask(t *testing.T) {
 	store := NewInMemoryTaskStore()
 	inputMessages := []Message{
 		{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Hello"}}},
 	}
-	task, err := store.CreateTask("test system prompt", inputMessages)
+	task, err := store.CreateTask("test task", "test system prompt", inputMessages)
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -399,8 +381,8 @@ func TestNewTask(t *testing.T) {
 	if task.State != TaskStateSubmitted {
 		t.Errorf("Expected initial state %s, got %s", TaskStateSubmitted, task.State)
 	}
-	if !reflect.DeepEqual(task.Input, inputMessages) {
-		t.Errorf("Expected input messages %+v, got %+v", inputMessages, task.Input)
+	if len(task.Messages) != 1 || task.Messages[0].Role != RoleUser {
+		t.Errorf("Expected messages to contain the input message, got %+v", task.Messages)
 	}
 	if task.CreatedAt.IsZero() {
 		t.Error("CreatedAt timestamp was not set")
@@ -411,7 +393,6 @@ func TestNewTask(t *testing.T) {
 	if task.Artifacts == nil {
 		t.Error("Artifacts map was not initialized")
 	}
-
 
 	retrievedTask, err := store.GetTask(task.ID)
 	if err != nil {
@@ -424,7 +405,7 @@ func TestNewTask(t *testing.T) {
 
 func TestGetTask(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -440,24 +421,21 @@ func TestGetTask(t *testing.T) {
 		t.Errorf("Get retrieved a different task instance for ID %s", task.ID)
 	}
 
-
 	_, err = store.GetTask("non-existent-id")
 	if err == nil {
 		t.Error("GetTask returned ok=true for a non-existent task ID")
 	}
 }
 
-
 func TestSetState(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
 	initialTime := task.UpdatedAt
 
 	time.Sleep(1 * time.Millisecond)
-
 
 	err = store.SetState(task.ID, TaskStateWorking)
 	if err != nil {
@@ -475,7 +453,6 @@ func TestSetState(t *testing.T) {
 		t.Errorf("UpdatedAt timestamp was not updated after SetState")
 	}
 	workingTime := task.UpdatedAt
-
 
 	time.Sleep(1 * time.Millisecond)
 	outputMessages := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: "Done"}}}
@@ -496,14 +473,13 @@ func TestSetState(t *testing.T) {
 	if task.State != TaskStateCompleted {
 		t.Errorf("Expected state %s, got %s", TaskStateCompleted, task.State)
 	}
-	if len(task.Output) != 1 || !reflect.DeepEqual(task.Output[0], outputMessages) {
-		t.Errorf("Expected output %+v, got %+v", []Message{outputMessages}, task.Output)
+	if len(task.Messages) < 2 || task.Messages[1].Role != RoleAssistant {
+		t.Errorf("Expected messages to contain the assistant message, got %+v", task.Messages)
 	}
 	if !task.UpdatedAt.After(workingTime) {
 		t.Errorf("UpdatedAt timestamp was not updated after SetState")
 	}
 	completedTime := task.UpdatedAt
-
 
 	time.Sleep(1 * time.Millisecond)
 	testError := fmt.Errorf("something went wrong")
@@ -533,7 +509,6 @@ func TestSetState(t *testing.T) {
 	if !task.UpdatedAt.After(completedTime) {
 		t.Errorf("UpdatedAt timestamp was not updated after SetState")
 	}
-
 
 	err = store.SetState("non-existent-id", TaskStateWorking)
 	if err == nil {

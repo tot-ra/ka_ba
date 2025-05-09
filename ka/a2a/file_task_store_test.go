@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-
 func setupTestDir(t *testing.T) string {
 	t.Helper()
 	tempDir, err := os.MkdirTemp("", "filetaskstore_test_*")
@@ -24,7 +23,6 @@ func setupTestDir(t *testing.T) string {
 func TestNewFileTaskStore(t *testing.T) {
 	tempDir := setupTestDir(t)
 
-
 	store, err := NewFileTaskStore(tempDir)
 	if err != nil {
 		t.Fatalf("NewFileTaskStore failed: %v", err)
@@ -35,7 +33,6 @@ func TestNewFileTaskStore(t *testing.T) {
 	if store.baseDir != tempDir {
 		t.Errorf("Expected baseDir %s, got %s", tempDir, store.baseDir)
 	}
-
 
 	defaultDir := filepath.Join(tempDir, "_tasks_default")
 	storeDefault, err := NewFileTaskStore(defaultDir)
@@ -60,8 +57,8 @@ func TestFileTaskStore_CreateAndGetTask(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	initialMsg := Message{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Hello"}}}
-	createdTask, err := store.CreateTask("test system prompt", []Message{initialMsg})
+	initialMsg := Message{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Hello"}}}
+	createdTask, err := store.CreateTask("test task", "test system prompt", []Message{initialMsg})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -73,16 +70,22 @@ func TestFileTaskStore_CreateAndGetTask(t *testing.T) {
 		t.Errorf("Expected initial state %s, got %s", TaskStateSubmitted, createdTask.State)
 	}
 
-	if len(createdTask.Input) != 1 || len(createdTask.Input[0].Parts) != 1 || createdTask.Input[0].Parts[0].GetType() != "text" || createdTask.Input[0].Parts[0].(*TextPart).Text != "Hello" {
-		t.Error("Initial input message not set correctly")
+	if len(createdTask.Messages) != 1 || len(createdTask.Messages[0].Parts) != 1 || createdTask.Messages[0].Parts[0].GetType() != "text" {
+		t.Error("Initial message not set correctly")
 	}
 
+	// Check text content using type assertion
+	textPart, ok := createdTask.Messages[0].Parts[0].(TextPart)
+	if !ok {
+		t.Error("Failed to convert part to TextPart")
+	} else if textPart.Text != "Hello" {
+		t.Errorf("Expected text 'Hello', got '%s'", textPart.Text)
+	}
 
 	filePath := store.taskFilePath(createdTask.ID)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		t.Errorf("Task file %s was not created", filePath)
 	}
-
 
 	retrievedTask, err := store.GetTask(createdTask.ID)
 	if err != nil {
@@ -96,10 +99,17 @@ func TestFileTaskStore_CreateAndGetTask(t *testing.T) {
 		t.Errorf("Retrieved task state mismatch: expected %s, got %s", createdTask.State, retrievedTask.State)
 	}
 
-	if len(retrievedTask.Input) != 1 || len(retrievedTask.Input[0].Parts) != 1 || retrievedTask.Input[0].Parts[0].GetType() != "text" || retrievedTask.Input[0].Parts[0].(TextPart).Text != "Hello" {
-		t.Error("Retrieved input message not correct")
+	if len(retrievedTask.Messages) != 1 || len(retrievedTask.Messages[0].Parts) != 1 || retrievedTask.Messages[0].Parts[0].GetType() != "text" {
+		t.Error("Retrieved message not correct")
 	}
 
+	// Check text content using type assertion
+	textPart, ok = retrievedTask.Messages[0].Parts[0].(TextPart)
+	if !ok {
+		t.Error("Failed to convert retrieved part to TextPart")
+	} else if textPart.Text != "Hello" {
+		t.Errorf("Expected retrieved text 'Hello', got '%s'", textPart.Text)
+	}
 
 	_, err = store.GetTask("non-existent-id")
 	if err != ErrTaskNotFound {
@@ -114,20 +124,19 @@ func TestFileTaskStore_UpdateTask(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	initialMsg := Message{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Initial"}}}
-	task, err := store.CreateTask("test system prompt", []Message{initialMsg})
+	initialMsg := Message{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Initial"}}}
+	task, err := store.CreateTask("test task", "test system prompt", []Message{initialMsg})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
 	originalTime := task.UpdatedAt
-
 
 	time.Sleep(10 * time.Millisecond)
 
 	updatedTask, err := store.UpdateTask(task.ID, func(t *Task) error {
 		t.State = TaskStateWorking
 
-		t.Output = append(t.Output, Message{Role: RoleAssistant, Parts: []Part{&TextPart{Type: "text", Text: "Working"}}})
+		t.Messages = append(t.Messages, Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: "Working"}}})
 		return nil
 	})
 
@@ -137,13 +146,12 @@ func TestFileTaskStore_UpdateTask(t *testing.T) {
 	if updatedTask.State != TaskStateWorking {
 		t.Errorf("Expected state %s after update, got %s", TaskStateWorking, updatedTask.State)
 	}
-	if len(updatedTask.Output) != 1 || updatedTask.Output[0].Role != RoleAssistant {
-		t.Errorf("Output messages not updated correctly, expected 1, got %d", len(updatedTask.Output))
+	if len(updatedTask.Messages) != 2 || updatedTask.Messages[1].Role != RoleAssistant {
+		t.Errorf("Messages not updated correctly, expected 2, got %d", len(updatedTask.Messages))
 	}
 	if !updatedTask.UpdatedAt.After(originalTime) {
 		t.Error("UpdatedAt timestamp was not updated")
 	}
-
 
 	retrievedTask, err := store.GetTask(task.ID)
 	if err != nil {
@@ -152,10 +160,9 @@ func TestFileTaskStore_UpdateTask(t *testing.T) {
 	if retrievedTask.State != TaskStateWorking {
 		t.Errorf("Persisted state incorrect: expected %s, got %s", TaskStateWorking, retrievedTask.State)
 	}
-	if len(retrievedTask.Output) != 1 {
-		t.Errorf("Persisted output messages incorrect, expected 1, got %d", len(retrievedTask.Output))
+	if len(retrievedTask.Messages) != 2 {
+		t.Errorf("Persisted messages incorrect, expected 2, got %d", len(retrievedTask.Messages))
 	}
-
 
 	_, err = store.UpdateTask("non-existent-id", func(t *Task) error { return nil })
 	if err != ErrTaskNotFound {
@@ -170,7 +177,7 @@ func TestFileTaskStore_SetState(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -196,12 +203,12 @@ func TestFileTaskStore_AddMessage(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "First"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "First"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
 
-	newMessage := Message{Role: RoleAssistant, Parts: []Part{&TextPart{Type: "text", Text: "Second"}}}
+	newMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: "Second"}}}
 	err = store.AddMessage(task.ID, newMessage)
 	if err != nil {
 		t.Fatalf("AddMessage failed: %v", err)
@@ -211,15 +218,17 @@ func TestFileTaskStore_AddMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask after AddMessage failed: %v", err)
 	}
-	if len(retrievedTask.Input) != 1 {
-		t.Fatalf("Expected 1 input message, got %d", len(retrievedTask.Input))
-	}
-	if len(retrievedTask.Output) != 1 {
-		t.Fatalf("Expected 1 output message, got %d", len(retrievedTask.Output))
+
+	if len(retrievedTask.Messages) != 2 {
+		t.Fatalf("Expected 2 messages, got %d", len(retrievedTask.Messages))
 	}
 
-	if retrievedTask.Output[0].Role != RoleAssistant || len(retrievedTask.Output[0].Parts) != 1 || retrievedTask.Output[0].Parts[0].(TextPart).Text != "Second" {
-		t.Error("Output message not added correctly")
+	// Check text content using type assertion
+	textPart, ok := retrievedTask.Messages[1].Parts[0].(TextPart)
+	if !ok {
+		t.Error("Failed to convert part to TextPart")
+	} else if retrievedTask.Messages[1].Role != RoleAssistant || textPart.Text != "Second" {
+		t.Error("Message not added correctly")
 	}
 }
 
@@ -230,11 +239,10 @@ func TestFileTaskStore_AddArtifact(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
-
 
 	artifact1 := Artifact{ID: "art1", Type: "text/plain", Data: []byte("content1"), Filename: "file1.txt"}
 	err = store.AddArtifact(task.ID, artifact1)
@@ -242,13 +250,11 @@ func TestFileTaskStore_AddArtifact(t *testing.T) {
 		t.Fatalf("AddArtifact 1 failed: %v", err)
 	}
 
-
 	artifact2 := Artifact{Type: "image/png", Filename: "image.png", Data: []byte{1, 2, 3}}
 	err = store.AddArtifact(task.ID, artifact2)
 	if err != nil {
 		t.Fatalf("AddArtifact 2 failed: %v", err)
 	}
-
 
 	retrievedTask, err := store.GetTask(task.ID)
 	if err != nil {
@@ -290,7 +296,6 @@ func TestFileTaskStore_AddArtifact(t *testing.T) {
 	}
 }
 
-
 func isValidUUID(u string) bool {
 	_, err := uuid.Parse(u)
 	return err == nil
@@ -303,7 +308,7 @@ func TestFileTaskStore_GetArtifactData(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -315,7 +320,6 @@ func TestFileTaskStore_GetArtifactData(t *testing.T) {
 		t.Fatalf("AddArtifact failed: %v", err)
 	}
 
-
 	retrievedData, retrievedArtifact, err := store.GetArtifactData(task.ID, "art1")
 	if err != nil {
 		t.Fatalf("GetArtifactData failed: %v", err)
@@ -323,7 +327,6 @@ func TestFileTaskStore_GetArtifactData(t *testing.T) {
 	if retrievedArtifact == nil {
 		t.Fatal("GetArtifactData returned nil artifact metadata")
 	}
-
 
 	if string(retrievedData) != string(artifactData) {
 		t.Errorf("Retrieved artifact data mismatch: expected '%s', got '%s'", string(artifactData), string(retrievedData))
@@ -338,8 +341,6 @@ func TestFileTaskStore_GetArtifactData(t *testing.T) {
 		t.Errorf("Retrieved artifact filename mismatch: expected 'data.txt', got '%s'", retrievedArtifact.Filename)
 	}
 
-
-
 	_, _, err = store.GetArtifactData(task.ID, "non-existent-artifact")
 	if err == nil {
 		t.Error("Expected error for non-existent artifact ID, got nil")
@@ -350,8 +351,6 @@ func TestFileTaskStore_GetArtifactData(t *testing.T) {
 			t.Errorf("Expected error message '%s', got '%s'", expectedErrMsg, err.Error())
 		}
 	}
-
-
 
 	_, _, err = store.GetArtifactData("non-existent-task", "art1")
 	if err != ErrTaskNotFound {
