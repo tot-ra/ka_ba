@@ -24,8 +24,10 @@ Kaba is a project combining two main components:
 
 ```mermaid
 flowchart LR
-ba["ba UI"] --"graphql, subscriptions"--> backend --"spawn, create tasks"--> ka --> LLM
-ka .-> filesystem
+ba["ba UI"] --"manage agents and tasks <br> graphql, subscriptions"--> backend --"spawn new process, create tasks"--> ka["ka agent"] --"evaluate task"--> LLM
+ka -."use tools".-> filesystem
+ka -."call MCPs (todo)".-> MCP-server
+ka -."store task state as JSON file".-> disk
 ```
 
 
