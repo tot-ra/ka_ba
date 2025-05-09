@@ -1,0 +1,30 @@
+.spinner {
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 2px solid;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+}
+
+.small {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+
+.medium {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.large {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

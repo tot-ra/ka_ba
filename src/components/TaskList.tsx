@@ -2,6 +2,7 @@ import React from 'react'; // Removed useState, useEffect
 // Import shared types needed by this component
 import { Task } from '../types'; // Removed TaskHistory
 import Button from './Button';
+import Spinner from './Spinner';
 
 interface TaskListProps {
   agentId: string | null; // Still needed to know *which* agent's tasks are shown
@@ -60,10 +61,11 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
           <li key={task.id} style={{ border: '1px solid #ccc', marginBottom: '10px', padding: '10px', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             {/* State Indicator */}
             <div style={{ marginRight: '10px', marginTop:'10px', fontSize: '1.2em' }}>
-              {task.state === 'SUBMITTED' && '⏳'} {/* Loader indicator */}
-              {task.state === 'INPUT_REQUIRED' && '🟡'} {/* Question emoji */}
-              {task.state === 'FAILED' && '🛑'} {/* Question emoji */}
-              {task.state === 'COMPLETED' && '✅'} {/* Green check emoji */}
+              {task.state === 'SUBMITTED' && <Spinner size="small" color="#3498db" />}
+              {task.state === 'WORKING' && <Spinner size="small" color="#3498db" />}
+              {task.state === 'INPUT_REQUIRED' && '🟡'}
+              {task.state === 'FAILED' && '🛑'}
+              {task.state === 'COMPLETED' && '✅'}
             </div>
             {/* Left Section */}
             <div style={{ flexGrow: 1, marginRight: '15px' }}>
