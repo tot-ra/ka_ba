@@ -155,8 +155,9 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		// Pass the task name, current system prompt from the LLMClient, and the initial message
 		// CreateTask now expects []Message for initial messages
+		// For tasks created directly via API, parentTaskID is an empty string.
 		initialMessages := []Message{params.Message}
-		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, initialMessages)
+		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, initialMessages, "")
 		if err != nil {
 			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})

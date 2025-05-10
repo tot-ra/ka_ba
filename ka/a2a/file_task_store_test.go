@@ -58,7 +58,7 @@ func TestFileTaskStore_CreateAndGetTask(t *testing.T) {
 	}
 
 	initialMsg := Message{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Hello"}}}
-	createdTask, err := store.CreateTask("test task", "test system prompt", []Message{initialMsg})
+	createdTask, err := store.CreateTask("test task", "test system prompt", []Message{initialMsg}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestFileTaskStore_UpdateTask(t *testing.T) {
 	}
 
 	initialMsg := Message{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Initial"}}}
-	task, err := store.CreateTask("test task", "test system prompt", []Message{initialMsg})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{initialMsg}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestFileTaskStore_SetState(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestFileTaskStore_AddMessage(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "First"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "First"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestFileTaskStore_AddArtifact(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestFileTaskStore_GetArtifactData(t *testing.T) {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{&TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}

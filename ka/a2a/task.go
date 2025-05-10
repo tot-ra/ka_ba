@@ -310,6 +310,7 @@ type Task struct {
 	CreatedAt    time.Time            `json:"created_at"`
 	UpdatedAt    time.Time            `json:"updated_at"`
 	Artifacts    map[string]*Artifact `json:"artifacts,omitempty"`
+	ParentTaskID string               `json:"parent_task_id,omitempty"` // Added ParentTaskID
 }
 
 type InMemoryTaskStore struct {
@@ -321,8 +322,8 @@ func NewInMemoryTaskStore() *InMemoryTaskStore {
 	return &InMemoryTaskStore{tasks: make(map[string]*Task)}
 }
 
-// CreateTask creates a new task with the given name, system prompt, and input messages.
-func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMessages []Message) (*Task, error) {
+// CreateTask creates a new task with the given name, system prompt, input messages, and parent task ID.
+func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMessages []Message, parentTaskID string) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -347,6 +348,7 @@ func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMe
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		Artifacts:    make(map[string]*Artifact),
+		ParentTaskID: parentTaskID, // Store the parent task ID
 	}
 	s.tasks[id] = task
 	fmt.Printf("[TaskStore] Created Task: %s (Name: %s)\n", id, name)
@@ -462,7 +464,7 @@ func (s *InMemoryTaskStore) DeleteTask(taskID string) error {
 }
 
 type TaskStore interface {
-	CreateTask(name string, systemPrompt string, inputMessages []Message) (*Task, error) // Updated signature to include name
+	CreateTask(name string, systemPrompt string, inputMessages []Message, parentTaskID string) (*Task, error) // Updated signature
 	GetTask(taskID string) (*Task, error)
 	UpdateTask(taskID string, updateFn func(*Task) error) (*Task, error)
 	SetState(taskID string, state TaskState) error

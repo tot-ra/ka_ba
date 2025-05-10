@@ -52,6 +52,12 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 	// For tools expecting JSON arguments, they will parse toolCall.Function.Content.
 	log.Printf("[Task %s] Executing tool %s with Attributes: %v, ContentLength: %d", taskID, toolCall.Function.Name, toolCall.Function.Attributes, len(toolCall.Function.Content))
 
+	// Inject taskID into attributes if not already present
+	if toolCall.Function.Attributes == nil {
+		toolCall.Function.Attributes = make(map[string]string)
+	}
+	toolCall.Function.Attributes["__task_id"] = taskID // Use a distinct key
+
 	// Execute the tool's Execute method, passing the entire FunctionCall detail
 	toolResultString, toolErr := tool.Execute(ctx, toolCall.Function)
 

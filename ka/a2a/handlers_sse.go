@@ -223,7 +223,8 @@ func TasksSendSubscribeHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 
 		// Create task using the single message, wrapped in a slice for CreateTask
 		// Pass the task name, current system prompt from the LLMClient, and the input message
-		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, []Message{params.Message})
+		// For tasks created directly via API, parentTaskID is an empty string.
+		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, []Message{params.Message}, "")
 		if err != nil {
 			log.Printf("[TaskSendSubscribe] Error creating task: %v", err)
 			http.Error(w, "Internal Server Error: Failed to create task", http.StatusInternalServerError)

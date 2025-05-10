@@ -77,8 +77,8 @@ func (fts *FileTaskStore) loadTask(taskID string) (*Task, error) {
 	return &task, nil
 }
 
-// CreateTask creates a new task with the given name, system prompt, and input messages.
-func (fts *FileTaskStore) CreateTask(name string, systemPrompt string, initialMessages []Message) (*Task, error) {
+// CreateTask creates a new task with the given name, system prompt, input messages, and parent task ID.
+func (fts *FileTaskStore) CreateTask(name string, systemPrompt string, initialMessages []Message, parentTaskID string) (*Task, error) {
 	fts.mu.Lock()
 	defer fts.mu.Unlock()
 
@@ -100,15 +100,16 @@ func (fts *FileTaskStore) CreateTask(name string, systemPrompt string, initialMe
 		Artifacts:    make(map[string]*Artifact),
 		CreatedAt:    now,
 		UpdatedAt:    now,
+		ParentTaskID: parentTaskID, // Store the parent task ID
 	}
 
-	log.Printf("[FileTaskStore CreateTask] Attempting to save task %s (Name: %s)...", taskID, name) // Added log
+	log.Printf("[FileTaskStore CreateTask] Attempting to save task %s (Name: %s, ParentTaskID: %s)...", taskID, name, parentTaskID) // Added log
 	err := fts.saveTask(task)
 	if err != nil {
-		log.Printf("[FileTaskStore CreateTask] Error saving task %s: %v", taskID, err) // Added log
-		return nil, fmt.Errorf("failed to save new task %s: %w", taskID, err)
+		log.Printf("[FileTaskStore CreateTask] Error saving task %s (ParentTaskID: %s): %v", taskID, parentTaskID, err) // Added log
+		return nil, fmt.Errorf("failed to save new task %s (ParentTaskID: %s): %w", taskID, parentTaskID, err)
 	}
-	log.Printf("[FileTaskStore CreateTask] Successfully saved task %s (Name: %s).", taskID, name) // Added log
+	log.Printf("[FileTaskStore CreateTask] Successfully saved task %s (Name: %s, ParentTaskID: %s).", taskID, name, parentTaskID) // Added log
 
 	return task, nil
 }

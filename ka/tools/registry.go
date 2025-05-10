@@ -9,6 +9,7 @@ func GetAllTools() []Tool {
 		&WriteToFileTool{}, // Added the new WriteToFileTool
 		&SearchFilesTool{},
 		&AskFollowupQuestionTool{},
+		&AddTaskTool{}, // Added the new AddTaskTool
 		// Add instances of other tool implementations here as they are created.
 		// Example: &WriteFileTool{}, etc.
 	}

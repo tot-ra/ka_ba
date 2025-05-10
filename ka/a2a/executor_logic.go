@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"ka/tools" // Added import for tools package
 	"log"
 	"strings"
+	"time" // Added import for time package
 )
 
 // ExecuteTask runs a task to completion, handling LLM calls and tool execution.
@@ -245,6 +247,44 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 			toolResults = append(toolResults, toolResultMsg)
 		}
 
+		// Process tool results for any special sentinel values (e.g., new task requests)
+		processedToolResults := []Message{}
+		for _, resMsg := range toolResults {
+			// isNewTaskRequest := false // Removed unused variable
+			if len(resMsg.Parts) > 0 {
+				if textPart, ok := resMsg.Parts[0].(TextPart); ok {
+					if strings.HasPrefix(textPart.Text, tools.AddTaskSentinelPrefix) {
+						// isNewTaskRequest = true // Removed unused variable
+						jsonData := strings.TrimPrefix(textPart.Text, tools.AddTaskSentinelPrefix)
+						var newTaskData tools.NewTaskRequestData
+						if err := json.Unmarshal([]byte(jsonData), &newTaskData); err != nil {
+							log.Printf("[Task %s] Error unmarshalling new task request data: %v. Raw: %s", t.ID, err, jsonData)
+							// Replace original sentinel with an error message for the LLM
+							resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("Error processing add_task tool: failed to parse request data: %v", err)}
+						} else {
+							log.Printf("[Task %s] Received new task request: Name='%s', Parent='%s'", t.ID, newTaskData.Name, newTaskData.ParentTaskID)
+							initialUserMessage := Message{
+								Role: RoleUser,
+								Parts: []Part{TextPart{Type: "text", Text: newTaskData.Description}},
+								Timestamp: time.Now().UTC(),
+							}
+							newTask, err := te.TaskStore.CreateTask(newTaskData.Name, newTaskData.SystemPrompt, []Message{initialUserMessage}, newTaskData.ParentTaskID)
+							if err != nil {
+								log.Printf("[Task %s] Error creating new sub-task via add_task tool: %v", t.ID, err)
+								resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("Error creating new task via add_task tool: %v", err)}
+							} else {
+								log.Printf("[Task %s] Successfully created new sub-task %s (Parent: %s) via add_task tool.", t.ID, newTask.ID, newTask.ParentTaskID)
+								resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("New task %s created successfully.", newTask.ID)}
+								// TODO: Consider if/how to trigger execution of newTask.ID. For now, it's just created.
+							}
+						}
+					}
+				}
+			}
+			processedToolResults = append(processedToolResults, resMsg)
+		}
+		toolResults = processedToolResults // Use the processed results
+
 		// Append tool results to the task's messages for the next LLM iteration
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {
 			task.Messages = append(task.Messages, toolResults...) // Append all tool result messages to Messages
@@ -398,6 +438,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 	fmt.Printf("[Task %s Stream] Messages for LLM:\n---\n%s\n---\n", t.ID, logMessages)
 
 	// Call the extracted LLM stream execution handler
+	// The NewToolDispatcher now correctly receives te.TaskStore and te.AvailableTools
 	fullResultString, _, _, requiresInput, assistantMessageSaved, llmErr := handleLLMExecutionStream(ctx, t.ID, te.LLMClient, te.TaskStore, llmMessages, sseWriter, NewToolDispatcher(te.TaskStore, te.AvailableTools))
 
 	// Handle LLM error returned by the handler
@@ -441,6 +482,52 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 			}
 			toolResults = append(toolResults, toolResultMsg)
 		}
+
+		// Process tool results for any special sentinel values (e.g., new task requests) - STREAMING VERSION
+		processedToolResults := []Message{}
+		for _, resMsg := range toolResults {
+			// isNewTaskRequest := false // Removed unused variable
+			if len(resMsg.Parts) > 0 {
+				if textPart, ok := resMsg.Parts[0].(TextPart); ok {
+					if strings.HasPrefix(textPart.Text, tools.AddTaskSentinelPrefix) {
+						// isNewTaskRequest = true // Removed unused variable
+						jsonData := strings.TrimPrefix(textPart.Text, tools.AddTaskSentinelPrefix)
+						var newTaskData tools.NewTaskRequestData
+						if err := json.Unmarshal([]byte(jsonData), &newTaskData); err != nil {
+							log.Printf("[Task %s Stream] Error unmarshalling new task request data: %v. Raw: %s", t.ID, err, jsonData)
+							resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("Error processing add_task tool: failed to parse request data: %v", err)}
+						} else {
+							log.Printf("[Task %s Stream] Received new task request: Name='%s', Parent='%s'", t.ID, newTaskData.Name, newTaskData.ParentTaskID)
+							initialUserMessage := Message{
+								Role: RoleUser,
+								Parts: []Part{TextPart{Type: "text", Text: newTaskData.Description}},
+								Timestamp: time.Now().UTC(),
+							}
+							newTask, err := te.TaskStore.CreateTask(newTaskData.Name, newTaskData.SystemPrompt, []Message{initialUserMessage}, newTaskData.ParentTaskID)
+							if err != nil {
+								log.Printf("[Task %s Stream] Error creating new sub-task via add_task tool: %v", t.ID, err)
+								resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("Error creating new task via add_task tool: %v", err)}
+							} else {
+								log.Printf("[Task %s Stream] Successfully created new sub-task %s (Parent: %s) via add_task tool.", t.ID, newTask.ID, newTask.ParentTaskID)
+								resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("New task %s created successfully.", newTask.ID)}
+								// TODO: Consider if/how to trigger execution of newTask.ID. For now, it's just created.
+								// For streaming, we might want to send an SSE event about the new task.
+								newTaskCreationEventData, _ := json.Marshal(map[string]string{
+									"type":         "new_sub_task_created",
+									"parentTaskId": t.ID,
+									"newTaskId":    newTask.ID,
+									"newTaskName":  newTask.Name,
+								})
+								sseWriter.SendEvent("info", string(newTaskCreationEventData))
+							}
+						}
+					}
+				}
+			}
+			processedToolResults = append(processedToolResults, resMsg)
+		}
+		toolResults = processedToolResults // Use the processed results
+
 
 		// Append tool results to the task's messages for the next LLM iteration
 		_, updateErr := te.TaskStore.UpdateTask(t.ID, func(task *Task) error {

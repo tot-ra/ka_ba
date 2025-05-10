@@ -204,7 +204,7 @@ func TestMessageUnmarshalJSON(t *testing.T) {
 
 func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestInMemoryTaskStore_AddArtifact(t *testing.T) {
 
 func TestInMemoryTaskStore_GetArtifactData(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestNewTask(t *testing.T) {
 	inputMessages := []Message{
 		{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Hello"}}},
 	}
-	task, err := store.CreateTask("test task", "test system prompt", inputMessages)
+	task, err := store.CreateTask("test task", "test system prompt", inputMessages, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestNewTask(t *testing.T) {
 
 func TestGetTask(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestGetTask(t *testing.T) {
 
 func TestSetState(t *testing.T) {
 	store := NewInMemoryTaskStore()
-	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}})
+	task, err := store.CreateTask("test task", "test system prompt", []Message{{Role: RoleUser, Parts: []Part{TextPart{Type: "text", Text: "Test"}}}}, "")
 	if err != nil {
 		t.Fatalf("CreateTask failed: %v", err)
 	}
