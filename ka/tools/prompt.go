@@ -130,5 +130,9 @@ Current User: %s
 Current Time: %s
 Current Working Directory: %s`, context.OS, context.Shell, context.User, context.Time, context.WorkDir)
 
+
+fmt.Fprintf(&toolDefinitionsXML, `
+USER TASK
+====`)
 	return toolDefinitionsXML.String()
 }
