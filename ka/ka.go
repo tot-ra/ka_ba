@@ -10,8 +10,11 @@ import (
 	"ka/tools" // Import the tools package
 	"log"      // Manually added back
 	"os"
+	// "os/user" // No longer needed here
+	// "runtime" // No longer needed here
 	"strconv" // Added for port conversion
 	"strings" // Added for API key splitting
+	// "time"    // No longer needed here
 )
 
 const (
@@ -41,7 +44,7 @@ func main() {
 	if flags.serveFlag {
 		runServerMode(flags, port, availableToolsMap, currentDir)
 	} else {
-		runCLIMode(flags, availableToolsMap, currentDir)
+		runCLIMode(flags, availableToolsMap) // currentDir no longer passed
 	}
 }
 
@@ -88,12 +91,12 @@ func loadTools() map[string]tools.Tool {
 }
 
 func determinePort(portFlag int) int {
-	port := portFlag // Start with the flag value (or default)
+	port := portFlag
 	envPortStr := os.Getenv("PORT")
 	if envPortStr != "" {
 		envPort, err := strconv.Atoi(envPortStr)
 		if err == nil {
-			port = envPort // Use environment variable if valid
+			port = envPort
 		} else {
 			fmt.Fprintf(os.Stderr, "Warning: Invalid PORT environment variable '%s', using default/flag value: %d\n", envPortStr, port)
 		}
@@ -105,8 +108,7 @@ func checkServerArg(serveFlag *bool) {
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "server" {
 		*serveFlag = true
-		// Remove "server" from args so it's not treated as a prompt in CLI mode
-		flag.Set("args", "") // Clear args to prevent it being used as prompt
+		flag.Set("args", "")
 	}
 }
 
@@ -114,7 +116,7 @@ func getCurrentWorkingDirectory() string {
 	currentDir, err := os.Getwd()
 	if err != nil {
 		log.Printf("[main] Error getting current working directory: %v", err)
-		currentDir = "unknown" // Fallback
+		currentDir = "unknown"
 	}
 	return currentDir
 }
@@ -179,7 +181,7 @@ func processAPIKeys(apiKeysFlag string) []string {
 	return apiKeys
 }
 
-func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool, currentDir string) {
+func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) {
 	// Warn about auth flags in CLI mode
 	warnAboutAuthFlags(flags.jwtSecretFlag, flags.apiKeysFlag)
 
@@ -192,7 +194,7 @@ func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool, curr
 	userPrompt := getUserPrompt()
 
 	// Compose system prompt with all available tools
-	cliSystemMessage := composeCliSystemMessage(availableToolsMap, currentDir)
+	cliSystemMessage := composeCliSystemMessage(availableToolsMap)
 
 	// Create LLM client for CLI mode
 	cliLLMClient := llm.NewLLMClient(apiURL, flags.modelFlag, cliSystemMessage, flags.maxContextLengthFlag)
@@ -245,12 +247,14 @@ func printUsageAndExit() {
 	os.Exit(1)
 }
 
-func composeCliSystemMessage(availableToolsMap map[string]tools.Tool, currentDir string) string {
+func composeCliSystemMessage(availableToolsMap map[string]tools.Tool) string {
 	var allToolNames []string
 	for name := range availableToolsMap {
 		allToolNames = append(allToolNames, name)
 	}
-	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, availableToolsMap, currentDir)
+
+	// System context is now fetched within ComposeSystemPrompt
+	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, availableToolsMap)
 	fmt.Printf("[main] Using CLI system message:\n%s\n", cliSystemMessage)
 	return cliSystemMessage
 }

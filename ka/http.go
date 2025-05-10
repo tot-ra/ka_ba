@@ -7,8 +7,11 @@ import (
 	"io" // Added for io.ReadAll
 	"log"
 	"net/http"
+	// "os"      // No longer needed here
+	// "os/user" // No longer needed here
+	// "runtime" // No longer needed here
 	"strings" // Added for string manipulation
-	"os" // Added for os.Getwd
+	// "time"    // No longer needed here
 
 	"ka/a2a" // Keep one a2a import
 	"ka/llm" // Import llm package
@@ -470,14 +473,15 @@ func startHTTPServer(
 				return
 			}
 
-			// Get the current working directory for the prompt
-			currentDir, err := os.Getwd()
-			if err != nil {
-				log.Printf("Error getting current working directory for prompt composition: %v", err)
-				currentDir = "unknown" // Fallback
-			}
+			// Get the current working directory for the prompt - No longer needed here
+			// currentDir, err := os.Getwd()
+			// if err != nil {
+			// 	log.Printf("Error getting current working directory for prompt composition: %v", err)
+			// 	currentDir = "unknown" // Fallback
+			// }
 
-			composedPrompt := tools.ComposeSystemPrompt(selectedToolNames, availableTools, currentDir)
+			// System context is now fetched within ComposeSystemPrompt
+			composedPrompt := tools.ComposeSystemPrompt(selectedToolNames, availableTools)
 
 			// Return the composed prompt as a JSON string
 			response := map[string]string{"systemPrompt": composedPrompt}
