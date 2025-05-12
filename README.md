@@ -39,6 +39,7 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
     - multitasking (N tasks processing at the same time)
     - priorities (focus on high-priorities first)
     - prompt: use ephemeral TODO buffer for local tasks
+    - result preview: show inline artifacts (links to files, browser window)
 - Permanent thinking agent
     - Sentry mode (security, code style, refactoring, marketing)
     - Watching filesystem
