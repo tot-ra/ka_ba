@@ -16,7 +16,8 @@ const AgentInteraction: React.FC = () => {
   const { selectedAgentId, setSelectedAgentId } = useAgent();
   const navigate = useNavigate();
 
-  const [taskInput, setTaskInput] = useState<TaskInput>({ type: 'text', content: '' });
+  // Updated TaskInput state structure
+  const [taskInput, setTaskInput] = useState<{ text: string; files: File[] }>({ text: '', files: [] });
   const [currentTask, setCurrentTask] = useState<Task | null>(null);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -252,10 +253,17 @@ const AgentInteraction: React.FC = () => {
     }
   };
 
-  const handleSendTask = async (e: React.FormEvent) => {
+  const handleSendTask = async (e: React.FormEvent, input: { text: string; files: File[] }) => {
     e.preventDefault();
     if (!urlAgentId) {
       setError('No agent selected.');
+      return;
+    }
+
+    // Updated validation: allow if text is not empty OR files are present
+    if (!input.text.trim() && input.files.length === 0) {
+      setError('Text input cannot be empty and at least one file must be provided.'); // Updated error message
+      setIsLoading(false);
       return;
     }
 
@@ -265,41 +273,22 @@ const AgentInteraction: React.FC = () => {
     setCurrentTask(null);
 
     let parts: InputPart[] = [];
-    try {
-      if (taskInput.type === 'text') {
-        if (!taskInput.content || typeof taskInput.content !== 'string' || !taskInput.content.trim()) {
-           setError('Text input cannot be empty.');
-           setIsLoading(false);
-           return;
-        }
-        parts.push({ type: 'text', content: { text: taskInput.content as string } });
-      } else if (taskInput.type === 'file') {
-        const file = taskInput.content as File;
-        if (!file) {
-           setError('No file selected.');
-           setIsLoading(false);
-           return;
-        }
-        parts.push({ type: 'text', content: { text: `File: ${file.name} (upload not implemented)` } });
-      } else if (taskInput.type === 'data') {
-        if (!taskInput.content || typeof taskInput.content !== 'string' || !taskInput.content.trim()) {
-           setError('JSON data cannot be empty.');
-           setIsLoading(false);
-           return;
-        }
-        try {
-          const jsonData = JSON.parse(taskInput.content as string);
-          parts.push({ type: 'data', content: jsonData });
-        } catch (jsonError: any) {
-          setError(`Invalid JSON data: ${jsonError.message}`);
-          setIsLoading(false);
-          return;
-        }
-      }
-    } catch (prepError: any) {
-       setError(`Error preparing task input: ${prepError.message}`);
-       setIsLoading(false);
-       return;
+
+    // Add text part if text is not empty
+    if (input.text.trim()) {
+      parts.push({ type: 'text', content: { text: input.text.trim() } });
+    }
+
+    // Add file parts for each file (Note: File upload to backend needs implementation)
+    if (input.files.length > 0) {
+      // This is a placeholder. Actual file upload logic needs to be implemented
+      // to send the file content to the backend and get a proper artifact reference.
+      // For now, we'll add a text part indicating a file was attached.
+      input.files.forEach(file => {
+        parts.push({ type: 'text', content: { text: `File attached: ${file.name} (${file.size} bytes). File upload to backend is not yet implemented.` } });
+        // In a real implementation, you would upload the file and get an artifact ID or URI
+        // parts.push({ type: 'file', content: { artifactId: '...', fileName: file.name, mimeType: file.type } });
+      });
     }
 
     const variables = {
@@ -331,14 +320,15 @@ const AgentInteraction: React.FC = () => {
     }
   };
 
-  const handleInputRequired = async () => {
-     if (!currentTask || currentTask.state !== 'INPUT_REQUIRED') return;
-
-     setIsLoading(true);
-     setError(null);
-     setError("Sending input not implemented yet.");
-     setIsLoading(false);
-  };
+  // Removed handleInputRequired as it's not fully implemented and not part of the core request
+  // const handleInputRequired = async () => {
+  //    if (!currentTask || currentTask.state !== 'INPUT_REQUIRED') return;
+  //
+  //    setIsLoading(true);
+  //    setError(null);
+  //    setError("Sending input not implemented yet.");
+  //    setIsLoading(false);
+  // };
 
   const fetchArtifacts = async (taskId: string) => {
      if (!urlAgentId) return;
@@ -357,18 +347,17 @@ const AgentInteraction: React.FC = () => {
        return;
      }
 
+     // Assuming the first part is the main input for duplication
      const originalPart = originalMessage.parts[0];
 
      if (originalPart.type === 'text') {
-       setTaskInput({ type: 'text', content: (originalPart as unknown as TextPart).text || '' });
-     } else if (originalPart.type === 'data') {
-       try {
-         setTaskInput({ type: 'data', content: JSON.stringify((originalPart as unknown as DataPart).data, null, 2) || '' });
-       } catch (e) {
-          setError('Failed to prepare original data prompt for duplication.');
-       }
+       // Set the text content for duplication
+       setTaskInput({ text: (originalPart as TextPart).text || '', files: [] });
      } else {
-       setError(`Duplication currently not supported for '${originalPart.type}' input type.`);
+       // For non-text parts, just set empty text and files for now
+       // Duplicating complex input types might require more specific logic
+       setError(`Duplication currently only fully supported for 'text' input type. Setting empty input.`);
+       setTaskInput({ text: '', files: [] });
      }
    };
 
@@ -407,7 +396,7 @@ const AgentInteraction: React.FC = () => {
                   taskInput={taskInput}
                   setTaskInput={setTaskInput}
                   onSendTask={handleSendTask}
-                  onSendInput={handleInputRequired}
+                  onSendInput={async (input: { text: string; files: File[] }) => { /* Placeholder for input required */ console.log('Input required handler triggered with:', input); }} // Keep a placeholder with correct signature and explicit type
                   isLoading={isLoading}
                   currentTask={currentTask}
                 />
