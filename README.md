@@ -29,7 +29,10 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 - Custom LLM per agent with ratelimiting
 - Multitasking
     - ☑️ task duplication
-    - automatic task creation from other tasks
+    - ☑️ automatic task creation from other tasks
+        - prompt: to know when to split tasks
+    - priorities (focus on high-priorities first)
+    - prompt: use ephemeral TODO buffer for local tasks
 - Permanent thinking agent
     - Sentry mode (security, code style, refactoring, marketing)
     - Watching filesystem
