@@ -158,10 +158,6 @@
   transform: rotate(0deg);
 }
 
-.thinkBlockToggle.expanded {
-  transform: rotate(90deg);
-}
-
 .thinkBlockContent {
   padding: 8px; /* Slightly reduced padding */
   background-color: #f9f9f9;
@@ -169,4 +165,22 @@
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0; /* Remove default pre margin */
+}
+
+/* Styles for expanded tool block content */
+.toolBlockContent {
+  padding: 8px;
+  background-color: #f9f9f9;
+  border-top: 1px solid #ccc;
+}
+
+.toolBlockTextContent,
+.toolBlockJsonContent {
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 5px 0 0 0; /* Add some top margin */
+  background: #f0f0f0; /* Slightly different background */
+  padding: 8px;
+  border-radius: 4px;
 }

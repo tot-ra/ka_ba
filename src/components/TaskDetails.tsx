@@ -15,8 +15,10 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
 }) => {
   // State to manage collapsed state of think blocks
   const [collapsedThinkBlocks, setCollapsedThinkBlocks] = useState<{ [key: string]: boolean }>({});
+  // State to manage collapsed state of tool blocks
+  const [collapsedToolBlocks, setCollapsedToolBlocks] = useState<{ [key: string]: boolean }>({});
 
-  // Function to toggle collapsed state
+  // Function to toggle collapsed state for think blocks
   const toggleThinkBlock = (key: string) => {
     setCollapsedThinkBlocks(prevState => ({
       ...prevState,
@@ -24,12 +26,43 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
     }));
   };
 
-  const renderMessagePart = (messageIndex: number, part: MessagePart, partIndex: number, taskArtifacts: Task['artifacts']) => {
+  // Function to toggle collapsed state for tool blocks
+  const toggleToolBlock = (key: string) => {
+    setCollapsedToolBlocks(prevState => ({
+      ...prevState,
+      [key]: !prevState[key],
+    }));
+  };
+
+  const renderMessagePart = (message: Message, messageIndex: number, part: MessagePart, partIndex: number, taskArtifacts: Task['artifacts']) => {
     if (typeof part !== 'object' || part === null || !part.type) {
       return <pre key={`${messageIndex}-${partIndex}-unsupported`} className={styles.messagePartPre}>Unsupported part structure: {JSON.stringify(part, null, 2)}</pre>;
     }
 
     const partData = part as any;
+
+    // Handle tool messages separately
+    if (message.role === 'TOOL') {
+      const blockKey = `${messageIndex}-${partIndex}-tool`;
+      const isCollapsed = collapsedToolBlocks[blockKey] ?? true; // Default to collapsed
+
+      return (
+        <div key={blockKey} className={styles.toolBlockContainer}>
+          {!isCollapsed && (
+            <div className={styles.toolBlockContent}>
+              {partData.type === 'text' ? (
+                <pre className={styles.toolBlockTextContent}>{partData.text}</pre>
+              ) : (
+                <pre className={styles.toolBlockJsonContent}>
+                  {JSON.stringify(partData, null, 2)}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
 
     switch (partData.type) {
       case 'text':
@@ -59,9 +92,9 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
             <div key={blockKey} className={styles.thinkBlockContainer}>
               <div className={styles.thinkBlockHeader} onClick={() => toggleThinkBlock(blockKey)}>
                 <span className={`${styles.thinkBlockToggle} ${isCollapsed ? styles.collapsed : styles.expanded}`}>
-                  {isCollapsed ? '-' : '~'}
+                  {isCollapsed ? '💭' : '🌧️'}
                 </span>
-                Thinking Process
+                thinking...
               </div>
               {!isCollapsed && (
                 <pre className={styles.thinkBlockContent}>
@@ -188,13 +221,17 @@ const getStatusClassName = (state: string | undefined | null): string => {
           {historyMessages.map((message, msgIndex) => (
             <div key={msgIndex} className={`${styles.messageContainer} ${message.role === 'USER' ? styles.userMessage : styles.agentMessage}`}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <strong className={styles.messageRole}>
+                <strong
+                  className={styles.messageRole}
+                  onClick={message.role === 'TOOL' ? () => toggleToolBlock(`${msgIndex}-0-tool`) : undefined} // Assuming one part for tool messages
+                  style={{ cursor: message.role === 'TOOL' ? 'pointer' : 'default' }}
+                >
                   {message.role === 'USER' ? '👨🏻‍💻':''}
                   {message.role === 'TOOL' ? '⚙️':''}
                   {message.role === 'ASSISTANT' ? '🤖':''} {message.role.toLowerCase()}</strong>
                 {message.timestamp && <span className={styles.messageTimestamp}>{new Date(message.timestamp).toLocaleString()}</span>}
               </div>
-              {message.parts.map((part, partIndex) => renderMessagePart(msgIndex, part, partIndex, currentTask?.artifacts))}
+              {message.parts.map((part, partIndex) => renderMessagePart(message, msgIndex, part, partIndex, currentTask?.artifacts))}
             </div>
           ))}
         </div>
