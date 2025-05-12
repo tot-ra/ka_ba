@@ -12,7 +12,6 @@ interface TaskDetailsProps {
 const TaskDetails: React.FC<TaskDetailsProps> = ({
   currentTask,
   streamingOutput,
-  onDuplicateClick,
 }) => {
   // State to manage collapsed state of think blocks
   const [collapsedThinkBlocks, setCollapsedThinkBlocks] = useState<{ [key: string]: boolean }>({});
@@ -181,25 +180,20 @@ const getStatusClassName = (state: string | undefined | null): string => {
           {currentTask.createdAt && <div><strong>Created:</strong> {new Date(currentTask.createdAt).toLocaleString()}</div>}
           {currentTask.updatedAt && <div><strong>Updated:</strong> {new Date(currentTask.updatedAt).toLocaleString()}</div>}
           {currentTask.error && <div className={styles.errorText}><strong>Error:</strong> {currentTask.error}</div>}
-          <button
-            onClick={onDuplicateClick}
-            disabled={!canDuplicate}
-            title={duplicateTitle}
-            className={styles.duplicateButton}
-          >
-            Duplicate Task
-          </button>
         </div>
       )}
 
       {historyMessages.length > 0 && (
         <div className={styles.taskHistorySection}>
-          <h3>Task History</h3>
           {historyMessages.map((message, msgIndex) => (
             <div key={msgIndex} className={`${styles.messageContainer} ${message.role === 'USER' ? styles.userMessage : styles.agentMessage}`}>
-              <strong className={styles.messageRole}>{message.role.toLowerCase()}</strong>
-              {/* Optionally display timestamp */}
-              {message.timestamp && <span className={styles.messageTimestamp}>{new Date(message.timestamp).toLocaleString()}</span>}
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <strong className={styles.messageRole}>
+                  {message.role === 'USER' ? '👨🏻‍💻':''}
+                  {message.role === 'TOOL' ? '⚙️':''}
+                  {message.role === 'ASSISTANT' ? '🤖':''} {message.role.toLowerCase()}</strong>
+                {message.timestamp && <span className={styles.messageTimestamp}>{new Date(message.timestamp).toLocaleString()}</span>}
+              </div>
               {message.parts.map((part, partIndex) => renderMessagePart(msgIndex, part, partIndex, currentTask?.artifacts))}
             </div>
           ))}
