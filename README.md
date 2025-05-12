@@ -29,6 +29,7 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 - Automatic discovery (DNS/k8s)
 - Permanent thinking agent (Sentry mode, watching filesystem)
 - Agent instantiation by agents
+- Composeable chat UI (place multiple agents into single chat on custom website and let them interact with each other)
 
 
 ### TODO for ka agent
