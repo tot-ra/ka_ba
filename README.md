@@ -15,22 +15,27 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 
 
 ## Goals and vision
+- Agent creation
+    - ☑️ Modular system prompt
+    - ☑️ System context
+        - Add project path with initial 2-layer-deep file list (100 files max)
 - Agent runtime
     - ☑️ Tools
-    - Modular
+        - CLI
+        - Browser
     - MCP 
-    - Loop prevention
-    - Ratelimiting (max RPM to LLM)
-    - Max task processing
+- LLM Providers
+    - Add LMStudio, Clarifai, Google gemini, Openrouter 
+    - Custom rate-limit per provider
 - Multiagent orchestration of tasks with multiple agents
     - Agent-to-Agent calls
     - Automatic discovery (DNS/k8s)
     - Sequential / parallel workflows
-- Custom LLM per agent with ratelimiting
-- Multitasking
+- Task processing
     - ☑️ task duplication
     - ☑️ automatic task creation from other tasks
         - prompt: to know when to split tasks
+    - multitasking (N tasks processing at the same time)
     - priorities (focus on high-priorities first)
     - prompt: use ephemeral TODO buffer for local tasks
 - Permanent thinking agent
@@ -39,7 +44,12 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 - Security:
     - limit agent access to specfic folders only
     - add dockerization support
+    - Ratelimiting (max RPM to LLM provider)
+    - Max task processing
     - detect unsafe commands
+    - prevent loops within task messages
+    - prevent loops in tasks creating tasks
+    - prevent loops in agent-to-agent calls
 - I/O
     - push notifications
     - multimodal inputs
