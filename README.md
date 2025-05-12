@@ -54,8 +54,14 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 - I/O
     - push notifications
     - multimodal inputs
-    - audio notes agent use-case
-- Composeable chat UI (place multiple agents into single chat on custom website and let them interact with each other)
+    - audio input
+    - video input
+- Portability
+    - Embeddable UI. Script to place on website to talk to an agent(s)
+    - Multiple agents talking within same chat window
+    - Desktop app
+    - Mobile app
+    
 
 ### Usage
 ```bash
