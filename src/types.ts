@@ -46,7 +46,9 @@ export interface Task {
   messages?: Message[]; // Replace input/output with messages
   error?: string;
   createdAt: string; // ISO date string
+  createdAtUnixMs: number; // Add Unix timestamp in milliseconds
   updatedAt: string; // ISO date string
+  updatedAtUnixMs: number; // Add Unix timestamp in milliseconds
   artifacts?: { [key: string]: Artifact }; // Map of artifact ID to Artifact (as fetched by listTasks)
   // Add other potential fields if needed by components, ensuring consistency with GraphQL schema
   sessionId?: string | null;
@@ -62,6 +64,7 @@ export interface Message {
   toolCallId?: string;
   metadata?: any; // Added metadata
   timestamp: string; // Add timestamp
+  timestampUnixMs: number; // Add Unix timestamp in milliseconds
 }
 
 

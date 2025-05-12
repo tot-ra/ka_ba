@@ -74,8 +74,9 @@ type Message struct {
 	// ParsedToolCalls is populated after parsing RawToolCallsXML.
 	ParsedToolCalls []ToolCall `json:"-"` // Ignore this field during standard JSON marshalling
 	// ToolCallID is used in a tool message to indicate which tool call this message is a response to.
-	ToolCallID string    `json:"tool_call_id,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 	Timestamp  time.Time `json:"timestamp"` // Add timestamp to message
+	TimestampUnixMs int64 `json:"timestamp_unix_ms"` // Add Unix timestamp in milliseconds
 }
 
 // ToolCall represents a single tool call parsed from the simplified XML structure.
@@ -308,7 +309,9 @@ type Task struct {
 	Messages     []Message            `json:"messages,omitempty"`      // Replace Input/Output with a single Messages array
 	Error        string               `json:"error,omitempty"`
 	CreatedAt    time.Time            `json:"created_at"`
+	CreatedAtUnixMs int64 `json:"created_at_unix_ms"` // Add Unix timestamp in milliseconds
 	UpdatedAt    time.Time            `json:"updated_at"`
+	UpdatedAtUnixMs int64 `json:"updated_at_unix_ms"` // Add Unix timestamp in milliseconds
 	Artifacts    map[string]*Artifact `json:"artifacts,omitempty"`
 	ParentTaskID string               `json:"parent_task_id,omitempty"` // Added ParentTaskID
 }
@@ -336,6 +339,7 @@ func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMe
 	now = time.Now()
 	for i, msg := range inputMessages {
 		msg.Timestamp = now // Add timestamp to initial messages
+		msg.TimestampUnixMs = now.UnixNano() / int64(time.Millisecond) // Add Unix timestamp in milliseconds
 		messagesWithTimestamps[i] = msg
 	}
 
@@ -346,7 +350,9 @@ func (s *InMemoryTaskStore) CreateTask(name string, systemPrompt string, inputMe
 		SystemPrompt: systemPrompt,           // Store the provided system prompt
 		Messages:     messagesWithTimestamps, // Use the new Messages field
 		CreatedAt:    now,
+		CreatedAtUnixMs: now.UnixNano() / int64(time.Millisecond), // Populate Unix timestamp
 		UpdatedAt:    now,
+		UpdatedAtUnixMs: now.UnixNano() / int64(time.Millisecond), // Populate Unix timestamp
 		Artifacts:    make(map[string]*Artifact),
 		ParentTaskID: parentTaskID, // Store the parent task ID
 	}
@@ -369,8 +375,10 @@ func (s *InMemoryTaskStore) SetState(taskID string, state TaskState) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if t, ok := s.tasks[taskID]; ok {
+		now := time.Now()
 		t.State = state
-		t.UpdatedAt = time.Now()
+		t.UpdatedAt = now
+		t.UpdatedAtUnixMs = now.UnixNano() / int64(time.Millisecond) // Update Unix timestamp
 		fmt.Printf("[TaskStore] Updated Task State: %s, New State: %s\n", taskID, state)
 		return nil
 	}
@@ -392,7 +400,9 @@ func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error
 		return nil, fmt.Errorf("update function failed for task %s: %w", taskID, err)
 	}
 
-	task.UpdatedAt = time.Now()
+	now := time.Now()
+	task.UpdatedAt = now
+	task.UpdatedAtUnixMs = now.UnixNano() / int64(time.Millisecond) // Update Unix timestamp
 
 	fmt.Printf("[TaskStore] Updated Task: %s via UpdateTask\n", taskID)
 	return task, nil
@@ -400,7 +410,9 @@ func (s *InMemoryTaskStore) UpdateTask(taskID string, updateFn func(*Task) error
 
 func (s *InMemoryTaskStore) AddMessage(taskID string, message Message) error {
 	_, err := s.UpdateTask(taskID, func(task *Task) error {
-		message.Timestamp = time.Now()                 // Add timestamp when message is added
+		now := time.Now()
+		message.Timestamp = now // Add timestamp when message is added
+		message.TimestampUnixMs = now.UnixNano() / int64(time.Millisecond) // Add Unix timestamp in milliseconds
 		task.Messages = append(task.Messages, message) // Append to the single Messages array
 		return nil
 	})

@@ -43,6 +43,17 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
     - audio notes agent use-case
 - Composeable chat UI (place multiple agents into single chat on custom website and let them interact with each other)
 
+### Usage
+```bash
+npm install
+npm run dev
+open "http://localhost:5173"
+
+cd backend
+npm install
+npm run dev
+```
+
 ## Architecture
 
 Kaba is a project combining two main components:
@@ -103,24 +114,6 @@ For effective interaction and future orchestration capabilities within `ba`, A2A
 *   Go (if you plan to spawn local `ka` agents)
 *   An A2A-compliant agent running and accessible via a URL (e.g., a running `ka` instance).
 
-### `ba` Setup
-
-*Note: These commands should typically be run from the project root (`kaba/`).*
-
-1.  Install frontend dependencies:
-    ```bash
-    npm install # or yarn install or pnpm install
-    ```
-2.  **Backend Setup (Pending):** The dedicated backend for `ba` (in `backend/`), intended for spawning local `ka` processes, is not yet implemented. Functionality requiring the backend (like spawning `ka` from the UI) will not be available until it's built.
-
-### Running `ba`
-
-1.  Start the `ba` frontend development server (from the project root):
-    ```bash
-    npm run dev # or yarn dev or pnpm dev
-    ```
-    The application should now be running at `http://localhost:5173` (or another port if 5173 is in use).
-2.  Ensure your target A2A agent(s) (e.g., a running `ka` instance) are accessible from your browser or via a proxy if needed.
 
 ## `ba` Project Structure
 

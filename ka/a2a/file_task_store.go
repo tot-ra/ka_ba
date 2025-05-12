@@ -74,6 +74,23 @@ func (fts *FileTaskStore) loadTask(taskID string) (*Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal task %s from %s: %w", taskID, filePath, err)
 	}
+
+	// Correct timestamps for messages if they are the zero value
+	// This handles loading tasks that might have been created with default timestamps
+	for i := range task.Messages {
+		// Check if the timestamp is the zero value (0001-01-01T00:00:00Z)
+		if task.Messages[i].Timestamp.IsZero() {
+			// Use the task's UpdatedAt or CreatedAt time
+			if !task.UpdatedAt.IsZero() {
+				task.Messages[i].Timestamp = task.UpdatedAt
+			} else {
+				task.Messages[i].Timestamp = task.CreatedAt
+			}
+			// Update the Unix timestamp as well
+			task.Messages[i].TimestampUnixMs = task.Messages[i].Timestamp.UnixNano() / int64(time.Millisecond)
+		}
+	}
+
 	return &task, nil
 }
 

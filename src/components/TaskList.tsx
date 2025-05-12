@@ -37,15 +37,15 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
     return <div style={{ color: 'red' }}>Error loading tasks: {error}</div>;
   }
 
-  // Helper to calculate duration
-  const getDurationInSeconds = (start: string, end: string): string => {
+  // Helper to calculate duration using ISO date strings
+  const getDurationInSeconds = (createdAt: string, updatedAt: string): string => {
     try {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      const createdDate = new Date(createdAt);
+      const updatedDate = new Date(updatedAt);
+      const durationMs = updatedDate.getTime() - createdDate.getTime();
+      if (isNaN(durationMs)) {
         return 'N/A';
       }
-      const durationMs = endDate.getTime() - startDate.getTime();
       return (durationMs / 1000).toFixed(2); // Duration in seconds with 2 decimal places
     } catch (e) {
       console.error("Error calculating duration:", e);
