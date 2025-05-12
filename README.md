@@ -213,12 +213,12 @@ The server exposes standard A2A endpoints:
 
 **Basic Interaction:**
 ```bash
-./ka ai "Hello, world!"
+./ka "Hello, world!"
 ```
 
 **Streaming:**
 ```bash
-./ka ai --stream "Tell me a story."
+./ka --stream "Tell me a story."
 ```
 
 **Piping Input:**
@@ -233,7 +233,7 @@ cat README.md | ./ka ai "Summarize this file."
 
 **Maximum Context Length:**
 ```bash
-./ka ai --max_context_length 4096 "Prompt requiring specific context length"
+./ka --max_context_length 4096 "Prompt requiring specific context length"
 ```
 
 ## `ka` Configuration (Environment Variables)
