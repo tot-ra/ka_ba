@@ -44,6 +44,7 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
     - Sentry mode (security, code style, refactoring, marketing)
     - Watching filesystem
 - Security:
+    - Credential management for MCPs 
     - limit agent access to specfic folders only
     - add dockerization support
     - Ratelimiting (max RPM to LLM provider)
