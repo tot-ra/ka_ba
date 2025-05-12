@@ -22,10 +22,10 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 - Agent runtime
     - ☑️ Tools
         - CLI
+        - Generated code execution  (eg. generate custom pythong/go/js code and run it in docker container as a tool output)
         - Browser
     - MCP
     - Docker container
-        - Generated code execution 
 - LLM Providers
     - Add LMStudio, Clarifai, Google gemini, Openrouter 
     - Custom rate-limit per provider
