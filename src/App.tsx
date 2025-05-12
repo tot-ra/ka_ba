@@ -32,7 +32,7 @@ function App() {
             <Route path="/add-local-agent" element={<AddLocalAgent />} />
             <Route path="/add-external-agent" element={<AddExternalAgent />} />
             <Route path="/agents/edit/:agentId" element={<EditLocalAgent />} />
-            <Route path="/agent/view/:agentId" element={<AgentManagement />}>
+            <Route path="/agents/view/:agentId" element={<AgentManagement />}>
               <Route path="task/:taskId" element={<AgentManagement />} />
             </Route>
             <Route path="/" element={<AgentManagement />} />

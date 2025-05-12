@@ -131,7 +131,7 @@ const AgentInteraction: React.FC = () => {
   const handleSelectTask = (task: Task) => {
     setSelectedTask(task);
     if (urlAgentId) {
-      navigate(`/agent/view/${urlAgentId}/task/${task.id}`);
+      navigate(`/agents/view/${urlAgentId}/task/${task.id}`);
     }
   };
 
@@ -143,7 +143,7 @@ const AgentInteraction: React.FC = () => {
 
     if (selectedTask && selectedTask.id === taskId) {
         setSelectedTask(null);
-        navigate(`/agent/view/${urlAgentId}`);
+        navigate(`/agents/view/${urlAgentId}`);
     }
 
     setIsLoading(true);

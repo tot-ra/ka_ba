@@ -49,7 +49,7 @@ const AgentList: React.FC<AgentListProps> = ({
                         checked={selectedAgentId === agent.id}
                         onChange={() => {
                           handleSelectAgent(agent.id);
-                          navigate(`/agent/view/${agent.id}`); // Navigate to the agent view URL
+                          navigate(`/agents/view/${agent.id}`); // Navigate to the agent view URL
                         }}
                         className={styles.agentRadio}
                     />

@@ -3,7 +3,7 @@ import axios from 'axios'; // Assuming axios is used for HTTP requests
 // Removed: import TaskSubmitForm from '../components/TaskSubmitForm';
 import AgentInteraction from './AgentInteraction'; // Import AgentInteraction
 import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom'; // Import useParams
 import styles from './AgentManagement.module.css'; // Import the CSS module
 import AgentList from '../components/AgentList'; // Import the new AgentList component
 import Button from '../components/Button'; // Import Button for the add buttons
@@ -19,6 +19,7 @@ interface Agent {
 
 const AgentManagement: React.FC = () => {
   const navigate = useNavigate();
+  const { agentId: urlAgentId } = useParams<{ agentId?: string }>(); // Get agentId from URL
   // Use context for agents and selectedAgentId
   const { agents, selectedAgentId, setSelectedAgentId, fetchAgents: fetchAgentsFromContext, loadingAgents, agentError } = useAgent();
   // Removed agentLogs and loadingLogs state
@@ -26,6 +27,13 @@ const AgentManagement: React.FC = () => {
   useEffect(() => {
     fetchAgentsFromContext();
   }, [fetchAgentsFromContext]);
+
+  // Effect to select agent from URL
+  useEffect(() => {
+    if (urlAgentId) {
+      setSelectedAgentId(urlAgentId);
+    }
+  }, [urlAgentId, setSelectedAgentId]);
 
   const handleSelectAgent = (agentId: string) => {
     setSelectedAgentId(agentId); // Use context setter

@@ -257,6 +257,10 @@ const EditLocalAgent: React.FC = () => {
         console.log('Agent system prompt updated:', updatedAgent);
         // Optionally navigate back to agent list or show success
         // navigate('/agents');
+
+        // Add navigation to agent view page
+        navigate(`/agents/view/${agentDetails.id}`);
+
       } else {
         console.error('Failed to update agent system prompt or received invalid data:', response.data);
         // Optionally set an error message
