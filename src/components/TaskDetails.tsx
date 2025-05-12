@@ -55,13 +55,15 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
         try {
           const toolResult = JSON.parse(partData.text);
           if (toolResult.tool_name) {
-            toolDescription = `⚙️ ${toolResult.tool_name}`;
+            toolDescription = ''
+            
             toolResultContent = toolResult.result || toolResult.error; // Get result or error
 
             // Construct details based on tool name and arguments
             const toolCallArguments = toolResult.arguments; // Arguments are now directly in the JSON
             switch (toolResult.tool_name) {
               case 'read_file':
+                toolDescription = `📄 reading file`;
                 if (toolCallArguments && toolCallArguments.path) {
                   toolDetails = ` "${toolCallArguments.path}"`;
                   if (toolCallArguments.from_line !== undefined || toolCallArguments.to_line !== undefined) {
@@ -70,6 +72,7 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
                 }
                 break;
               case 'search_files':
+                toolDescription = `🔍 searching files`;
                 if (toolCallArguments) {
                   toolDetails = ` "${toolCallArguments.path}" for "${toolCallArguments.regex}"`;
                   if (toolCallArguments.file_pattern) {
@@ -78,16 +81,19 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
                 }
                 break;
               case 'write_to_file':
+                  toolDescription = `📝 writing to file`;
                  if (toolCallArguments && toolCallArguments.path) {
                     toolDetails = ` "${toolCallArguments.path}"`;
                  }
                  break;
               case 'execute_command':
+                  toolDescription = `💻 executing command`;
                  if (toolCallArguments && toolCallArguments.command) {
                     toolDetails = `: ${toolCallArguments.command}`;
                  }
                  break;
               case 'list_files':
+                  toolDescription = `📂 listing files`;
                  if (toolCallArguments && toolCallArguments.path) {
                     toolDetails = ` "${toolCallArguments.path}"`;
                     if (toolCallArguments.recursive) {
@@ -95,51 +101,14 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
                     }
                  }
                  break;
-              case 'list_code_definition_names':
-                 if (toolCallArguments && toolCallArguments.path) {
-                    toolDetails = ` "${toolCallArguments.path}"`;
-                 }
-                 break;
-              case 'browser_action':
-                 if (toolCallArguments && toolCallArguments.action) {
-                    toolDetails = `: ${toolCallArguments.action}`;
-                    if (toolCallArguments.url) {
-                       toolDetails += ` "${toolCallArguments.url}"`;
-                    } else if (toolCallArguments.coordinate) {
-                       toolDetails += ` at ${toolCallArguments.coordinate}`;
-                    } else if (toolCallArguments.text) {
-                       toolDetails += ` "${toolCallArguments.text}"`;
-                    }
-                 }
-                 break;
-              case 'use_mcp_tool':
-                 if (toolCallArguments && toolCallArguments.server_name && toolCallArguments.tool_name) {
-                    toolDetails = `: ${toolCallArguments.server_name}/${toolCallArguments.tool_name}`;
-                 }
-                 break;
-              case 'access_mcp_resource':
-                 if (toolCallArguments && toolCallArguments.server_name && toolCallArguments.uri) {
-                    toolDetails = `: ${toolCallArguments.server_name}/${toolCallArguments.uri}`;
-                 }
-                 break;
               case 'ask_followup_question':
-                 if (toolCallArguments && toolCallArguments.question) {
-                    toolDetails = `: "${toolCallArguments.question.substring(0, 50)}..."`; // Truncate long questions
-                 }
-                 break;
-              case 'attempt_completion':
-                 toolDetails = ': Attempting completion';
+                  toolDescription = `❓ asking follow-up question`;
                  break;
               case 'new_task':
-                 toolDetails = ': Creating new task';
-                 break;
-              case 'plan_mode_respond':
-                 toolDetails = ': Responding in plan mode';
-                 break;
-              case 'load_mcp_documentation':
-                 toolDetails = ': Loading MCP documentation';
+                 toolDescription = `🛠️ creating new task`;
                  break;
               default:
+                toolDescription = `⚙️ ${toolResult.tool_name}`;
                 // Default for unknown tools
                 if (toolCallArguments) {
                    toolDetails = `: ${JSON.stringify(toolCallArguments).substring(0, 50)}...`; // Show truncated arguments
@@ -164,18 +133,18 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
       }
 
 
+      // Construct the header string with tool description, details, and timestamp
+      const headerText = `${toolDescription}${toolDetails}`;
+      const timestampText = message.timestamp ? new Date(message.timestamp).toLocaleString() : '';
+
       return (
         <div key={blockKey} className={styles.toolBlockContainer}>
-           <div className={styles.toolBlockHeader} onClick={() => toggleToolBlock(blockKey)} style={{ cursor: 'pointer' }}>
-              <span className={`${styles.toolBlockToggle} ${isCollapsed ? styles.collapsed : styles.expanded}`}>
-                 {isCollapsed ? '▶' : '▼'}
-              </span>
-              <strong>{toolDescription}{toolDetails}</strong>
-           </div>
           {!isCollapsed && (
             <div className={styles.toolBlockContent}>
-              {partData.type === 'text' ? (
-                <pre className={styles.toolBlockTextContent}>{partData.text}</pre>
+              {toolResultContent !== null ? (
+                <pre className={styles.toolBlockTextContent}>{toolResultContent}</pre>
+              ) : partData.type === 'text' ? (
+                 <pre className={styles.toolBlockTextContent}>{partData.text}</pre>
               ) : (
                 <pre className={styles.toolBlockJsonContent}>
                   {JSON.stringify(partData, null, 2)}
@@ -183,6 +152,13 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
               )}
             </div>
           )}
+
+          <div className={styles.toolBlockHeader} onClick={() => toggleToolBlock(blockKey)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ flexGrow: 1 }}>
+                 <strong>{headerText}</strong>
+              </span>
+              {timestampText && <span className={styles.messageTimestamp}>{timestampText}</span>}
+           </div>
         </div>
       );
     }
@@ -344,17 +320,13 @@ const getStatusClassName = (state: string | undefined | null): string => {
         <div className={styles.taskHistorySection}>
           {historyMessages.map((message, msgIndex) => (
             <div key={msgIndex} className={`${styles.messageContainer} ${message.role === 'USER' ? styles.userMessage : styles.agentMessage}`}>
+
+              {message.role != 'TOOL' && (
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <strong
-                  className={styles.messageRole}
-                  onClick={message.role === 'TOOL' ? () => toggleToolBlock(`${msgIndex}-0-tool`) : undefined} // Assuming one part for tool messages
-                  style={{ cursor: message.role === 'TOOL' ? 'pointer' : 'default' }}
-                >
-                  {message.role === 'USER' ? '👨🏻‍💻':''}
-                  {message.role === 'TOOL' ? '⚙️':''}
-                  {message.role === 'ASSISTANT' ? '🤖':''} {message.role.toLowerCase()}</strong>
-                {message.timestamp && <span className={styles.messageTimestamp}>{new Date(message.timestamp).toLocaleString()}</span>}
+                  {message.timestamp && <span className={styles.messageTimestamp}>{new Date(message.timestamp).toLocaleString()}</span>}
               </div>
+              )}
+
               {message.parts.map((part, partIndex) => renderMessagePart(message, msgIndex, part, partIndex, currentTask?.artifacts))}
             </div>
           ))}
@@ -371,5 +343,6 @@ const getStatusClassName = (state: string | undefined | null): string => {
     </div>
   );
 };
+
 
 export default TaskDetails;
