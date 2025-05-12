@@ -23,7 +23,9 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
     - ☑️ Tools
         - CLI
         - Browser
-    - MCP 
+    - MCP
+    - Docker container
+        - Generated code execution 
 - LLM Providers
     - Add LMStudio, Clarifai, Google gemini, Openrouter 
     - Custom rate-limit per provider
@@ -46,7 +48,6 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 - Security:
     - Credential management for MCPs 
     - limit agent access to specfic folders only
-    - add dockerization support
     - Ratelimiting (max RPM to LLM provider)
     - Max task processing
     - detect unsafe commands
