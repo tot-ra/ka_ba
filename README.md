@@ -9,7 +9,7 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 > *ka* (𓂓) and *ba* (𓅽) - is the ancient Egyptian concept of the soul layers.
 > The "vital essence" and the "personality".
 > 
-> kaaba - "House of God"
+> kaaba ( 🕋 ) - "House of God"
 > 
 > baka (jap. バカ) - "fool"
 
