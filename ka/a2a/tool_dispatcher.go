@@ -2,7 +2,7 @@ package a2a
 
 import (
 	"context"
-	// "encoding/json" // No longer needed as JSON parsing is done by individual tools
+	"encoding/json" // Import the json package
 	"fmt"
 	"log"
 
@@ -68,21 +68,42 @@ func (td *ToolDispatcher) DispatchToolCall(ctx context.Context, taskID string, t
 		Parts:      []Part{}, // Initialize parts slice
 	}
 
+	// Prepare the tool result data structure
+	toolResultData := map[string]interface{}{
+		"tool_name": toolCall.Function.Name,
+		"arguments": json.RawMessage(toolCall.Function.Content), // Include raw JSON arguments
+		"result":    toolResultString,
+		"error":     nil, // Initialize error to nil
+	}
+
 	if toolErr != nil {
-		// If there was an error executing the tool, return an error message
+		// If there was an error executing the tool, include the error message
 		log.Printf("[Task %s] Tool execution failed for %s (ID: %s): %v", taskID, toolCall.Function.Name, toolCall.ID, toolErr)
-		toolMessage.Parts = append(toolMessage.Parts, TextPart{
-			Type: "text",
-			Text: fmt.Sprintf("Error executing tool %s (ID: %s): %v", toolCall.Function.Name, toolCall.ID, toolErr),
-		})
+		toolResultData["error"] = fmt.Sprintf("Error executing tool %s (ID: %s): %v", toolCall.Function.Name, toolCall.ID, toolErr)
+		// Also set the result to an empty string or a specific error indicator if needed
+		toolResultData["result"] = "" // Clear result on error
 	} else {
-		// If tool execution was successful, add the result as a text part
-		toolMessage.Parts = append(toolMessage.Parts, TextPart{
-			Type: "text",
-			Text: toolResultString, // Use the string result directly
-		})
 		log.Printf("[Task %s] Tool %s (ID: %s) executed successfully. Result: %s", taskID, toolCall.Function.Name, toolCall.ID, toolResultString)
 	}
+
+	// Marshal the tool result data into a JSON string
+	toolResultJSON, marshalErr := json.Marshal(toolResultData)
+	if marshalErr != nil {
+		// If marshaling fails, return an error message
+		log.Printf("[Task %s] Failed to marshal tool result JSON for %s (ID: %s): %v", taskID, toolCall.Function.Name, toolCall.ID, marshalErr)
+		toolMessage.Parts = append(toolMessage.Parts, TextPart{
+			Type: "text",
+			Text: fmt.Sprintf("Error formatting tool result for %s (ID: %s): %v", toolCall.Function.Name, toolCall.ID, marshalErr),
+		})
+		// Return the message with the marshaling error, and the original tool error if any
+		return toolMessage, fmt.Errorf("failed to marshal tool result JSON: %w", marshalErr)
+	}
+
+	// Add the JSON string as a text part
+	toolMessage.Parts = append(toolMessage.Parts, TextPart{
+		Type: "text", // Keep type as text for now, frontend will parse JSON
+		Text: string(toolResultJSON),
+	})
 
 	// Return the constructed tool message and the original tool error (if any)
 	return toolMessage, toolErr
