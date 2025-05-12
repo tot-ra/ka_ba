@@ -80,44 +80,32 @@ const TaskList: React.FC<TaskListProps> = ({ agentId, tasks, loading, error, onD
               </a>
               {/* Duration */}
               <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>
+                Updated: {new Date(task.updatedAt).toLocaleString()} <br/ >
                 Duration: {getDurationInSeconds(task.createdAt, task.updatedAt)}s
               </div>
-              
+
+              <div>
+                {task.error && <div style={{ color: 'red', marginTop: '5px' }}><strong>Error:</strong> {task.error}</div>}
+                {/* <strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span> */}
+              </div>              
             </div>
 
             {/* Middle Section (Buttons) */}
 
-            <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '150px' }}> {/* Added minWidth for better alignment */}
-              <div>
-                {task.error && <div style={{ color: 'red', marginTop: '5px' }}><strong>Error:</strong> {task.error}</div>}
-                {/* <strong>State:</strong> <span style={{ fontWeight: 'bold', color: task.state === 'FAILED' ? 'red' : (task.state === 'COMPLETED' ? 'green' : 'inherit') }}>{task.state}</span> */}
-              </div>
-              <div style={{ fontSize: '0.8em', color: '#666', marginTop: '3px' }}>Updated: {new Date(task.updatedAt).toLocaleString()}</div>
-
-            </div>
-
-
             {/* Right Section */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '10px', marginRight: '10px' }}>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '0', marginRight: '0' }}>
               <Button
                 onClick={() => onDuplicateTask(agentId!, task.id)} // Call the prop with agentId and taskId
-                title="Duplicate Task" // Updated title
-              >
-                Duplicate
-              </Button>
-              {/* Delete Button */}
-              <Button
+                title="Duplicate Task"
+              >+</Button><Button
                 onClick={() => {
                   if (window.confirm(`Are you sure you want to delete task ${task.id}?`)) {
                     onDeleteTask(task.id); // Use destructured prop directly
                   }
                 }}
                 variant="danger"
-                style={{ marginTop: '5px' }} // Keep margin top for spacing
                 title="Delete Task"
-              >
-                Delete
-              </Button>
+              >×</Button>
             </div>
           </li>
         ))}
