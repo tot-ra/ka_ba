@@ -16,7 +16,7 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 
 ## Goals and vision
 - Agent creation
-    - ☑️ Modular system prompt
+    - ☑️ Modular system prompt dependent on tools
     - ☑️ System context
         - Add project path with initial 2-layer-deep file list (100 files max)
 - Agent runtime
@@ -35,6 +35,7 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
     - ☑️ task duplication
     - ☑️ automatic task creation from other tasks
         - prompt: to know when to split tasks
+    - Parallel tool processing if possible
     - multitasking (N tasks processing at the same time)
     - priorities (focus on high-priorities first)
     - prompt: use ephemeral TODO buffer for local tasks
