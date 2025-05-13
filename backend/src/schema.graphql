@@ -17,6 +17,8 @@ type McpServerConfig {
   args: [String!]!
   transportType: String!
   env: JSONObject!
+  tools: [ToolDefinition!] # Add tools field
+  resources: [String!] # Add resources field
 }
 
 input InputMcpServerConfig {
@@ -26,6 +28,7 @@ input InputMcpServerConfig {
   args: [String!]!
   transportType: String!
   env: JSONObject!
+  # Input type does not need tools/resources as they are fetched by the backend
 }
 
 # --- Tool Related Types ---
@@ -33,6 +36,7 @@ input InputMcpServerConfig {
 type ToolDefinition {
   name: String!
   description: String!
+  # Add input schema field later if needed
 }
 
 # --- Task Related Types ---

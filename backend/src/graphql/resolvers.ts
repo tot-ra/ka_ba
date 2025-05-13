@@ -7,7 +7,7 @@ import { GraphQLError } from 'graphql';
 import { ApolloContext } from './server.js';
 import { Repeater } from '@repeaterjs/repeater'; // Import Repeater for AsyncIterator creation
 import axios from 'axios'; // Import axios for HTTP calls to ka agent
-import { readMcpServers, writeMcpServers } from '../services/mcpServerService.js'; // Import MCP server service functions
+import { readMcpServers, writeMcpServers, fetchMcpServerCapabilities } from '../services/mcpServerService.js'; // Import MCP server service functions and fetchCapabilities
 
 // Define the payload structure for the agentLogs subscription
 export interface LogEntryPayload {
@@ -49,6 +49,8 @@ interface McpServerConfig {
   args: string[];
   transportType: string;
   env: { [key: string]: string };
+  tools: ToolDefinition[]; // Add tools field
+  resources: string[]; // Add resources field
 }
 
 // Define interface for addMcpServer mutation arguments
@@ -244,15 +246,24 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
            });
          }
 
-         // 2. Check if the agent supports the /compose-prompt endpoint (optional but good practice)
-         // This would require the agent card to expose this endpoint.
-         // For now, we'll assume ka agents support it and just call the endpoint.
+         // 2. Fetch the full McpServerConfig objects for the selected names
+         let selectedMcpServers: McpServerConfig[] = [];
+         try {
+           const allMcpServers = await readMcpServers();
+           selectedMcpServers = allMcpServers.filter(server => mcpServerNames.includes(server.name));
+           console.log(`[GraphQL composeSystemPrompt] Found ${selectedMcpServers.length} selected MCP servers.`);
+         } catch (error: any) {
+           console.error('[GraphQL composeSystemPrompt] Error fetching MCP servers:', error);
+           // Continue without MCP servers if fetching fails
+         }
 
-         // 3. Call the agent's /compose-prompt HTTP endpoint with the selected tool names and MCP server names
+
+         // 3. Call the agent's /compose-prompt HTTP endpoint with the selected tool names and full MCP server configs
          try {
            const composeUrl = `${agent.url.replace(/\/+$/, '')}/compose-prompt`; // Ensure no double slash
-           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames, 'and MCP servers:', mcpServerNames);
-           const response = await axios.post<{ systemPrompt: string }>(composeUrl, { toolNames, mcpServerNames }); // Send object with both arrays in body
+           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames, 'and selected MCP servers:', selectedMcpServers.map(s => s.name));
+           // Pass the full selectedMcpServers array to the agent
+           const response = await axios.post<{ systemPrompt: string }>(composeUrl, { toolNames, mcpServers: selectedMcpServers }); // Send object with both arrays in body
 
            if (response.status !== 200 || typeof response.data?.systemPrompt !== 'string') {
               console.error(`[GraphQL composeSystemPrompt] Unexpected response from agent ${agentId} /compose-prompt endpoint: Status ${response.status}, Data:`, response.data);
@@ -444,10 +455,24 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
           }
       },
 
-      addMcpServer: async (_parent: any, { server }: AddMcpServerArgs, _context: ApolloContext, _info: any): Promise<McpServerConfig> => { 
-        try { const servers = await readMcpServers(); servers.push(server); await writeMcpServers(servers); return server; } 
-        catch (error: any) { console.error('Error adding MCP server:', error); 
-          throw new GraphQLError('Failed to add MCP server', { extensions: { code: 'INTERNAL_SERVER_ERROR' }, originalError: error, }); } 
+      addMcpServer: async (_parent: any, { server }: AddMcpServerArgs, _context: ApolloContext, _info: any): Promise<McpServerConfig> => {
+        try {
+          // Fetch capabilities before saving
+          const capabilities = await fetchMcpServerCapabilities(server);
+          const serverWithCapabilities = { ...server, ...capabilities }; // Merge capabilities into server object
+
+          const servers = await readMcpServers();
+          servers.push(serverWithCapabilities); // Push server with capabilities
+          await writeMcpServers(servers);
+          return serverWithCapabilities; // Return server with capabilities
+        }
+        catch (error: any) {
+          console.error('Error adding MCP server:', error);
+          throw new GraphQLError('Failed to add MCP server', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR' },
+            originalError: error,
+          });
+        }
       },
 
       // Resolver to edit an existing MCP server
@@ -460,9 +485,14 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
               extensions: { code: 'NOT_FOUND' },
             });
           }
-          servers[serverIndex] = server;
+
+          // Fetch capabilities for the updated server config
+          const capabilities = await fetchMcpServerCapabilities(server);
+          const serverWithCapabilities = { ...server, ...capabilities }; // Merge capabilities into server object
+
+          servers[serverIndex] = serverWithCapabilities; // Replace with server with capabilities
           await writeMcpServers(servers);
-          return server;
+          return serverWithCapabilities; // Return server with capabilities
         } catch (error: any) {
           console.error(`Error editing MCP server "${name}":`, error);
           throw new GraphQLError(`Failed to edit MCP server "${name}"`, {

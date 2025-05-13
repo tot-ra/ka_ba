@@ -4,6 +4,12 @@ import styles from './AddMcpServer.module.css'; // Can reuse some styles from Ad
 import { sendGraphQLRequest } from '../utils/graphqlClient';
 import Button from '../components/Button'; // Import the Button component
 
+// Define the structure for ToolDefinition to match the schema
+interface ToolDefinition {
+  name: string;
+  description: string;
+}
+
 interface McpServerConfig {
   name: string;
   timeout: number;
@@ -11,6 +17,8 @@ interface McpServerConfig {
   args: string[];
   transportType: string;
   env: { [key: string]: string };
+  tools: ToolDefinition[]; // Add tools field
+  resources: string[]; // Add resources field
 }
 
 // Define the GraphQL query to fetch a single MCP server by name (assuming this exists or will be added)
@@ -26,6 +34,11 @@ const GET_MCP_SERVERS_QUERY = `
       args
       transportType
       env
+      tools { # Request tools
+        name
+        description
+      }
+      resources # Request resources
     }
   }
 `;
@@ -40,6 +53,11 @@ const EDIT_MCP_SERVER_MUTATION = `
       args
       transportType
       env
+      tools { # Request tools in the response
+        name
+        description
+      }
+      resources # Request resources in the response
     }
   }
 `;
@@ -57,6 +75,8 @@ function EditMcpServer() {
     args: [],
     transportType: 'stdio', // Default
     env: {},
+    tools: [], // Add initial empty array for tools
+    resources: [], // Add initial empty array for resources
   });
 
   useEffect(() => {
@@ -121,9 +141,20 @@ function EditMcpServer() {
     setError(null);
 
     try {
+      // Create a new object with only the fields allowed by InputMcpServerConfig
+      const inputServerConfig = {
+        name: formData.name,
+        timeout: formData.timeout,
+        command: formData.command,
+        args: formData.args,
+        transportType: formData.transportType,
+        env: formData.env,
+        // Exclude tools and resources as they are not part of InputMcpServerConfig
+      };
+
       const response = await sendGraphQLRequest(EDIT_MCP_SERVER_MUTATION, {
         name: name, // Use the name from the URL for the mutation
-        server: formData, // Send the updated form data
+        server: inputServerConfig, // Send the filtered data
       });
 
       if (response.errors) {
@@ -236,6 +267,32 @@ function EditMcpServer() {
         </Button>
         {error && <div style={{ color: 'red' }}>{error}</div>}
       </form>
+
+      {/* Display Tools */}
+      {serverConfig.tools && serverConfig.tools.length > 0 && (
+        <div className={styles.formGroup}> {/* Reuse formGroup style for spacing */}
+          <h3>Available Tools:</h3>
+          <ul>
+            {serverConfig.tools.map((tool, index) => (
+              <li key={index}>
+                <strong>{tool.name}:</strong> {tool.description}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Display Resources */}
+      {serverConfig.resources && serverConfig.resources.length > 0 && (
+        <div className={styles.formGroup}> {/* Reuse formGroup style for spacing */}
+          <h3>Available Resources:</h3>
+          <ul>
+            {serverConfig.resources.map((resource, index) => (
+              <li key={index}>{resource}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
