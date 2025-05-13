@@ -431,11 +431,10 @@ const getStatusClassName = (state: string | undefined | null): string => {
           />
           <Button
             type="submit"
-            className={styles.sendMessageButton}
-          disabled={!userMessageInput.trim() || isSendingMessage} // Disable if input is empty or sending
-        >
-          {isSendingMessage ? 'Sending...' : 'Send Message'}
-        </Button>
+            disabled={!userMessageInput.trim() || isSendingMessage} // Disable if input is empty or sending
+          >
+            {isSendingMessage ? 'Sending...' : 'Add Message'}
+          </Button>
         {sendMessageError && (
           <div className={styles.errorMessage}>{sendMessageError}</div>
         )}
