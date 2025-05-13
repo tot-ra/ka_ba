@@ -466,22 +466,19 @@ func startHTTPServer(
 			}
 			w.Header().Set("Content-Type", "application/json")
 
-			var selectedToolNames []string
-			if err := json.NewDecoder(r.Body).Decode(&selectedToolNames); err != nil {
-				log.Printf("Error decoding selected tool names: %v", err)
-				writeJSONRPCError(w, nil, jsonRPCInvalidParamsCode, "Invalid Request Body", "Expected JSON array of tool names")
+			var requestBody struct {
+				ToolNames      []string `json:"toolNames"`
+				McpServerNames []string `json:"mcpServerNames"`
+			}
+
+			if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+				log.Printf("Error decoding compose prompt request body: %v", err)
+				writeJSONRPCError(w, nil, jsonRPCInvalidParamsCode, "Invalid Request Body", "Expected JSON object with toolNames and mcpServerNames arrays")
 				return
 			}
 
-			// Get the current working directory for the prompt - No longer needed here
-			// currentDir, err := os.Getwd()
-			// if err != nil {
-			// 	log.Printf("Error getting current working directory for prompt composition: %v", err)
-			// 	currentDir = "unknown" // Fallback
-			// }
-
 			// System context is now fetched within ComposeSystemPrompt
-			composedPrompt := tools.ComposeSystemPrompt(selectedToolNames, availableTools)
+			composedPrompt := tools.ComposeSystemPrompt(requestBody.ToolNames, requestBody.McpServerNames, availableTools)
 
 			// Return the composed prompt as a JSON string
 			response := map[string]string{"systemPrompt": composedPrompt}

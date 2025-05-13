@@ -233,7 +233,7 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
         }
       },
       // New resolver to compose system prompt
-      composeSystemPrompt: async (_parent: any, { agentId, toolNames }: { agentId: string, toolNames: string[] }, context: ApolloContext, _info: any): Promise<string> => {
+      composeSystemPrompt: async (_parent: any, { agentId, toolNames, mcpServerNames }: { agentId: string, toolNames: string[], mcpServerNames: string[] }, context: ApolloContext, _info: any): Promise<string> => {
          const { agentManager } = context;
 
          // 1. Find the agent
@@ -248,11 +248,11 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
          // This would require the agent card to expose this endpoint.
          // For now, we'll assume ka agents support it and just call the endpoint.
 
-         // 3. Call the agent's /compose-prompt HTTP endpoint with the selected tool names
+         // 3. Call the agent's /compose-prompt HTTP endpoint with the selected tool names and MCP server names
          try {
            const composeUrl = `${agent.url.replace(/\/+$/, '')}/compose-prompt`; // Ensure no double slash
-           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames);
-           const response = await axios.post<{ systemPrompt: string }>(composeUrl, toolNames); // Send toolNames array in body
+           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames, 'and MCP servers:', mcpServerNames);
+           const response = await axios.post<{ systemPrompt: string }>(composeUrl, { toolNames, mcpServerNames }); // Send object with both arrays in body
 
            if (response.status !== 200 || typeof response.data?.systemPrompt !== 'string') {
               console.error(`[GraphQL composeSystemPrompt] Unexpected response from agent ${agentId} /compose-prompt endpoint: Status ${response.status}, Data:`, response.data);
