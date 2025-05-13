@@ -6,6 +6,10 @@ type Agent {
   isLocal: Boolean!
   pid: Int # Process ID, only available for local agents
   systemPrompt: String # Add systemPrompt field
+  llmProvider: String # Add LLM provider type (e.g., 'openai', 'gemini')
+  llmModel: String # Add LLM model name
+  llmApiBaseUrl: String # Add LLM API base URL (optional for some providers like Gemini)
+  llmApiKey: String # Add LLM API key (sensitive, handle with care)
 }
 
 # --- MCP Server Related Types ---
@@ -29,6 +33,17 @@ input InputMcpServerConfig {
   transportType: String!
   env: JSONObject!
   # Input type does not need tools/resources as they are fetched by the backend
+}
+
+# Input type for updating agent configuration
+input InputAgentConfig {
+  name: String # Optional: Update agent name
+  description: String # Optional: Update agent description
+  systemPrompt: String # Optional: Update system prompt
+  llmProvider: String # Optional: Update LLM provider type
+  llmModel: String # Optional: Update LLM model name
+  llmApiBaseUrl: String # Optional: Update LLM API base URL
+  llmApiKey: String # Optional: Update LLM API key
 }
 
 # --- Tool Related Types ---
@@ -151,7 +166,8 @@ type Mutation {
     metadata: JSONObject # Optional metadata
   ): Task! # Returns the initial task state
   deleteTask(agentId: ID!, taskId: ID!): Boolean!
-  updateAgentSystemPrompt(agentId: ID!, systemPrompt: String!): Agent! # Mutation to update an agent's system prompt
+  # updateAgentSystemPrompt(agentId: ID!, systemPrompt: String!): Agent! # Mutation to update an agent's system prompt (consider deprecating)
+  updateAgentConfig(agentId: ID!, config: InputAgentConfig!): Agent! # Mutation to update agent configuration including LLM settings
   addMcpServer(server: InputMcpServerConfig!): McpServerConfig! # Mutation to add a new MCP server
   editMcpServer(name: String!, server: InputMcpServerConfig!): McpServerConfig! # Mutation to edit an existing MCP server
   deleteMcpServer(name: String!): Boolean! # Mutation to delete an MCP server

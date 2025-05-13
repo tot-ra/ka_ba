@@ -154,7 +154,7 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 // It now accepts the TaskExecutor, the LLMClient, and the map of available tools.
 func startHTTPServer(
 		taskExecutor *a2a.TaskExecutor, 
-		llmClient *llm.LLMClient, 
+		llmClient llm.LLM, // Use the LLM interface
 		port int, 
 		agentName, 
 		agentDescription, 
@@ -427,7 +427,7 @@ func startHTTPServer(
 	}
 
 	// updateSystemPromptHandler updates the agent's system prompt
-	updateSystemPromptHandler := func(llmClient *llm.LLMClient) http.HandlerFunc {
+	updateSystemPromptHandler := func(llmClient llm.LLM) http.HandlerFunc { // Use the LLM interface
 		return func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPut && r.Method != http.MethodPost {
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

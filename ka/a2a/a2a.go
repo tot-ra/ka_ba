@@ -8,7 +8,7 @@ import (
 )
 
 type TaskExecutor struct {
-	LLMClient                     *llm.LLMClient // Exported LLMClient
+	LLMClient                     llm.LLM // Use the LLM interface
 	TaskStore                     TaskStore      // Exported TaskStore
 	AvailableTools                map[string]tools.Tool // Map of available tools
 	mu                            sync.Mutex
@@ -18,7 +18,7 @@ type TaskExecutor struct {
 
 // NewTaskExecutor creates a new TaskExecutor.
 // It now accepts the map of available tools.
-func NewTaskExecutor(client *llm.LLMClient, store TaskStore, availableTools map[string]tools.Tool) *TaskExecutor { // Updated signature
+func NewTaskExecutor(client llm.LLM, store TaskStore, availableTools map[string]tools.Tool) *TaskExecutor { // Use the LLM interface in signature
 	return &TaskExecutor{
 		LLMClient:                     client,         // Assign to exported field
 		TaskStore:                     store,          // Assign to exported field

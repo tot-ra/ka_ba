@@ -58,6 +58,17 @@ interface AddMcpServerArgs {
   server: McpServerConfig;
 }
 
+// Define interface for InputAgentConfig to match the schema
+interface InputAgentConfig {
+  name?: string;
+  description?: string;
+  systemPrompt?: string;
+  llmProvider?: string;
+  llmModel?: string;
+  llmApiBaseUrl?: string;
+  llmApiKey?: string;
+}
+
 
 // Update function signature to accept eventEmitter
 export function createResolvers(agentManager: AgentManager, eventEmitter: EventEmitter) {
@@ -257,15 +268,50 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
         // Use removeAgent which handles stopping local agents internally
         return context.agentManager.removeAgent(id);
       },
-      // New resolver to update an agent's system prompt
-      updateAgentSystemPrompt: async (_parent: any, { agentId, systemPrompt }: { agentId: string, systemPrompt: string }, context: ApolloContext, _info: any): Promise<Agent> => {
+      // New resolver to update agent configuration
+      updateAgentConfig: async (_parent: any, { agentId, config }: { agentId: string, config: InputAgentConfig }, context: ApolloContext, _info: any): Promise<Agent> => {
         const { agentManager } = context;
         try {
-          const updatedAgent = await agentManager.updateAgentSystemPrompt(agentId, systemPrompt);
-          return updatedAgent;
+          // Find the agent
+          const agent = agentManager.getAgents().find((a: Agent) => a.id === agentId);
+          if (!agent) {
+            throw new GraphQLError(`Agent with ID ${agentId} not found.`, {
+              extensions: { code: 'AGENT_NOT_FOUND' },
+            });
+          }
+
+          // Update agent properties based on the input config
+          if (config.name !== undefined) {
+            agent.name = config.name;
+          }
+          if (config.description !== undefined) {
+            agent.description = config.description;
+          }
+          if (config.systemPrompt !== undefined) {
+            agent.systemPrompt = config.systemPrompt;
+          }
+          if (config.llmProvider !== undefined) {
+            agent.llmProvider = config.llmProvider;
+          }
+          if (config.llmModel !== undefined) {
+            agent.llmModel = config.llmModel;
+          }
+          if (config.llmApiBaseUrl !== undefined) {
+            agent.llmApiBaseUrl = config.llmApiBaseUrl;
+          }
+          if (config.llmApiKey !== undefined) {
+            agent.llmApiKey = config.llmApiKey;
+          }
+
+          // Note: A more complete implementation would persist these changes
+          // and potentially signal the running ka process to reload its config.
+          // For now, we are just updating the in-memory agent object.
+
+          console.log(`[GraphQL updateAgentConfig] Updated agent ${agentId} config:`, agent);
+          return agent; // Return the updated agent object
         } catch (error: any) {
-          console.error(`[GraphQL updateAgentSystemPrompt] Error updating system prompt for agent ${agentId}:`, error);
-          throw new GraphQLError(`Failed to update system prompt for agent ${agentId}: ${error.message}`, {
+          console.error(`[GraphQL updateAgentConfig] Error updating agent config for agent ${agentId}:`, error);
+          throw new GraphQLError(`Failed to update agent config for agent ${agentId}: ${error.message}`, {
             extensions: { code: 'AGENT_UPDATE_ERROR', agentId: agentId },
             originalError: error
           });

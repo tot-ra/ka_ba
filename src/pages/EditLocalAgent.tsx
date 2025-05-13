@@ -20,6 +20,10 @@ interface AgentDetails {
   isLocal: boolean;
   systemPrompt?: string; // Add systemPrompt field
   pid?: number; // Add pid for AgentList
+  llmProvider?: string; // Add LLM provider field
+  llmModel?: string; // Add LLM model field
+  llmApiBaseUrl?: string; // Add LLM API base URL field
+  llmApiKey?: string; // Add LLM API key field
 }
 
 interface McpServerConfig {
@@ -53,10 +57,15 @@ const EditLocalAgent: React.FC = () => {
   const [availableTools, setAvailableTools] = useState<ToolDefinition[]>([]);
   const [selectedTools, setSelectedTools] = useState<string[]>([]); // Stores names of selected regular tools
   const [selectedMcpServers, setSelectedMcpServers] = useState<string[]>([]); // Stores names of selected MCP servers
+  const [llmProvider, setLlmProvider] = useState<string>('openai'); // Default to openai
+  const [llmModel, setLlmModel] = useState<string>('');
+  const [llmApiBaseUrl, setLlmApiBaseUrl] = useState<string>('');
+  const [llmApiKey, setLlmApiKey] = useState<string>(''); // Sensitive, handle with care
+
   const [composedSystemPrompt, setComposedSystemPrompt] = useState<string>('');
   const [isFetchingTools, setIsFetchingTools] = useState(false);
   const [isComposingPrompt, setIsComposingPrompt] = useState(false);
-  const [isUpdatingPrompt, setIsUpdatingPrompt] = useState(false);
+  const [isUpdatingAgent, setIsUpdatingAgent] = useState(false); // Renamed from isUpdatingPrompt
   const [currentViewTab, setCurrentViewTab] = useState<'details' | 'logs'>('details'); // State for active tab
 
   // Fetch agent details on component mount
@@ -80,6 +89,10 @@ const EditLocalAgent: React.FC = () => {
                 isLocal
                 systemPrompt # Fetch systemPrompt
                 pid # Fetch pid
+                llmProvider # Fetch LLM provider
+                llmModel # Fetch LLM model
+                llmApiBaseUrl # Fetch LLM API base URL
+                llmApiKey # Fetch LLM API key
               }
             }
           `, { agentId });
@@ -92,6 +105,11 @@ const EditLocalAgent: React.FC = () => {
           const agent = response.data.agent as AgentDetails; // Add type assertion
           setAgentDetails(agent);
           setComposedSystemPrompt(agent.systemPrompt || ''); // Initialize prompt with existing one
+          setLlmProvider(agent.llmProvider || 'openai'); // Initialize LLM provider
+          setLlmModel(agent.llmModel || ''); // Initialize LLM model
+          setLlmApiBaseUrl(agent.llmApiBaseUrl || ''); // Initialize LLM API base URL
+          setLlmApiKey(agent.llmApiKey || ''); // Initialize LLM API key
+
           // Note: We don't have info on *which* tools were used to compose the *current* prompt,
           // so we'll just fetch available tools and let the user re-select/re-compose if needed.
           fetchAvailableTools(agent.id);
@@ -229,7 +247,7 @@ const EditLocalAgent: React.FC = () => {
       setSelectedTools(availableTools.map(tool => tool.name));
       // Select all MCP servers automatically
       setSelectedMcpServers(mcpServers.map(server => server.name));
-      
+
       // Trigger prompt composition automatically
       const composePromptWithAll = async () => {
         setIsComposingPrompt(true);
@@ -237,7 +255,7 @@ const EditLocalAgent: React.FC = () => {
           console.log('Sending ComposeSystemPrompt request from useEffect...'); // Added log
           const COMPOSE_PROMPT_MUTATION = `
               mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
-                composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
+                composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServers.map(server => server.name))
               }
             `;
           const response = await sendGraphQLRequest(COMPOSE_PROMPT_MUTATION, {
@@ -276,13 +294,13 @@ const EditLocalAgent: React.FC = () => {
       const newSelection = prevSelected.includes(toolName)
         ? prevSelected.filter(name => name !== toolName)
         : [...prevSelected, toolName];
-      
+
       // Automatically recompose prompt when selection changes
       if (agentDetails?.id) {
         setIsComposingPrompt(true);
         const COMPOSE_PROMPT_MUTATION = `
             mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
-              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
+              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $selectedMcpServers)
             }
           `;
         sendGraphQLRequest(COMPOSE_PROMPT_MUTATION, {
@@ -321,7 +339,7 @@ const EditLocalAgent: React.FC = () => {
         console.log('Sending ComposeSystemPrompt request from handleMcpServerSelection...'); // Added log
         sendGraphQLRequest(`
             mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
-              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
+              composeSystemPrompt(agentId: $agentId, toolNames: $selectedTools, mcpServerNames: $newSelection)
             }
           `, {
           agentId: agentDetails.id,
@@ -359,30 +377,45 @@ const EditLocalAgent: React.FC = () => {
 
   // The handleComposePrompt function has been removed
 
-  const handleUpdateAgentPrompt = async () => {
-    if (!agentDetails || !composedSystemPrompt) {
+  const handleUpdateAgentConfig = async () => { // Renamed function
+    if (!agentDetails) {
       // Should not happen if button is disabled correctly
       return;
     }
 
-    setIsUpdatingPrompt(true);
+    setIsUpdatingAgent(true); // Use new state
     try {
-      const UPDATE_AGENT_PROMPT_MUTATION = `
-          mutation UpdateAgentSystemPrompt($agentId: ID!, $systemPrompt: String!) {
-            updateAgentSystemPrompt(agentId: $agentId, systemPrompt: $systemPrompt) {
+      const UPDATE_AGENT_CONFIG_MUTATION = `
+          mutation UpdateAgentConfig($agentId: ID!, $config: InputAgentConfig!) {
+            updateAgentConfig(agentId: $agentId, config: $config) {
               id
               name
+              llmProvider
+              llmModel
+              llmApiBaseUrl
+              llmApiKey
+              systemPrompt
             }
-            }
-          `;
-      const response = await sendGraphQLRequest(UPDATE_AGENT_PROMPT_MUTATION, { agentId: agentDetails.id, systemPrompt: composedSystemPrompt });
+          }
+        `;
+      const response = await sendGraphQLRequest(UPDATE_AGENT_CONFIG_MUTATION, {
+        agentId: agentDetails.id,
+        config: {
+          systemPrompt: composedSystemPrompt,
+          llmProvider: llmProvider,
+          llmModel: llmModel,
+          llmApiBaseUrl: llmApiBaseUrl,
+          llmApiKey: llmApiKey, // Send API key (handle sensitivity on backend)
+          // Add other configurable fields here if needed (name, description)
+        },
+      });
 
       if (response.errors) {
-        console.error('GraphQL errors updating agent system prompt:', response.errors);
+        console.error('GraphQL errors updating agent config:', response.errors);
         // Optionally set an error message
-      } else if (response.data?.updateAgentSystemPrompt?.id) {
+      } else if (response.data?.updateAgentConfig?.id) {
         // Success - maybe show a message or navigate back
-        console.log('Agent system prompt updated:', response.data.updateAgentSystemPrompt);
+        console.log('Agent configuration updated:', response.data.updateAgentConfig);
         // Optionally navigate back to agent list or show success
         // navigate('/agents');
 
@@ -390,14 +423,14 @@ const EditLocalAgent: React.FC = () => {
         navigate(`/agents/view/${agentDetails.id}`);
 
       } else {
-        console.error('Failed to update agent system prompt or received invalid data:', response);
+        console.error('Failed to update agent config or received invalid data:', response);
         // Optionally set an error message
       }
     } catch (error: any) {
-      console.error('Error updating agent system prompt:', error);
+      console.error('Error updating agent config:', error);
       // Optionally set an error message
     } finally {
-      setIsUpdatingPrompt(false);
+      setIsUpdatingAgent(false); // Use new state
     }
   };
 
@@ -510,6 +543,73 @@ const EditLocalAgent: React.FC = () => {
             <p>Agent URL: <a target="_blank" rel="noopener noreferrer" href={agentDetails.url}>{agentDetails.url}</a></p>
 
             <div className={styles.toolSelectionSection}>
+              <h3>LLM Configuration</h3>
+              <div className={styles.formGroup}>
+                <label htmlFor="llmProvider">LLM Provider:</label>
+                <select
+                  id="llmProvider"
+                  value={llmProvider}
+                  onChange={(e) => setLlmProvider(e.target.value)}
+                  className={styles.formSelect}
+                >
+                  <option value="openai">OpenAI Compatible</option>
+                  <option value="gemini">Google Gemini</option>
+                  {/* Add other providers here */}
+                </select>
+              </div>
+
+              {llmProvider === 'openai' && (
+                <>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="llmApiBaseUrl">API Base URL:</label>
+                    <input
+                      type="text"
+                      id="llmApiBaseUrl"
+                      value={llmApiBaseUrl}
+                      onChange={(e) => setLlmApiBaseUrl(e.target.value)}
+                      className={styles.formInput}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="llmModel">Model Name:</label>
+                    <input
+                      type="text"
+                      id="llmModel"
+                      value={llmModel}
+                      onChange={(e) => setLlmModel(e.target.value)}
+                      className={styles.formInput}
+                    />
+                  </div>
+                   {/* Optionally add API Key field for OpenAI if needed */}
+                </>
+              )}
+
+              {llmProvider === 'gemini' && (
+                <>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="llmModel">Model Name:</label>
+                    <input
+                      type="text"
+                      id="llmModel"
+                      value={llmModel}
+                      onChange={(e) => setLlmModel(e.target.value)}
+                      className={styles.formInput}
+                    />
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="llmApiKey">API Key:</label>
+                    <input
+                      type="password" // Use password type for sensitive input
+                      id="llmApiKey"
+                      value={llmApiKey}
+                      onChange={(e) => setLlmApiKey(e.target.value)}
+                      className={styles.formInput}
+                    />
+                  </div>
+                </>
+              )}
+
+
               <h3>Available Tools</h3>
               {isFetchingTools ? (
                 <p>Loading tools...</p>
@@ -574,12 +674,12 @@ const EditLocalAgent: React.FC = () => {
                   </Button>
 
                   <Button
-                    onClick={handleUpdateAgentPrompt}
-                    disabled={isUpdatingPrompt || isComposingPrompt} // Disable while composing
+                    onClick={handleUpdateAgentConfig} // Use new handler
+                    disabled={isUpdatingAgent || isComposingPrompt} // Disable while composing or updating
                     variant="primary"
                   >
-                    {isUpdatingPrompt || isComposingPrompt ? <div className={styles.spinner}></div> : null}
-                    {isUpdatingPrompt ? 'Updating Agent...' : isComposingPrompt ? 'Composing Prompt...' : 'Update Agent with this Prompt'}
+                    {isUpdatingAgent || isComposingPrompt ? <div className={styles.spinner}></div> : null}
+                    {isUpdatingAgent ? 'Updating Agent...' : isComposingPrompt ? 'Composing Prompt...' : 'Update Agent Configuration'}
                   </Button>
                 </div>
               )}

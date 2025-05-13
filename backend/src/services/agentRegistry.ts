@@ -8,6 +8,11 @@ export interface Agent {
   isLocal: boolean;
   capabilities?: AgentCapabilities | null;
   subscriptionController?: AbortController; // Use AbortController directly
+  systemPrompt?: string; // Add systemPrompt field
+  llmProvider?: string; // Add LLM provider field
+  llmModel?: string; // Add LLM model field
+  llmApiBaseUrl?: string; // Add LLM API base URL field
+  llmApiKey?: string; // Add LLM API key field
 }
 
 interface AgentCapabilities {

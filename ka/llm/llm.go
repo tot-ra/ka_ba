@@ -14,11 +14,30 @@ import (
 	"github.com/pkoukk/tiktoken-go"
 )
 
+// Message represents a message in a conversation.
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
+// LLM is an interface that represents a Large Language Model client.
+type LLM interface {
+	// Chat sends the provided messages to the LLM and returns the completion, input tokens, completion tokens, and error.
+	Chat(ctx context.Context, messages []Message, stream bool, out io.Writer) (string, int, int, error)
+	// UpdateSystemMessage updates the system message for the LLM client.
+	UpdateSystemMessage(newSystemMessage string)
+}
+
+// OpenAIClient is an LLM client for OpenAI-compatible APIs.
+type OpenAIClient struct {
+	APIURL           string
+	Model            string
+	SystemMessage    string
+	MaxContextLength int
+	tokenizer        *tiktoken.Tiktoken
+}
+
+// Request represents a request to an OpenAI-compatible API.
 type Request struct {
 	Model       string    `json:"model"`
 	Messages    []Message `json:"messages"`
@@ -27,15 +46,8 @@ type Request struct {
 	Stream      bool      `json:"stream"`
 }
 
-type LLMClient struct {
-	APIURL           string
-	Model            string
-	SystemMessage    string // Added SystemMessage field
-	MaxContextLength int
-	tokenizer        *tiktoken.Tiktoken
-}
-
-func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LLMClient { // Added systemMessage parameter
+// NewOpenAIClient creates a new OpenAIClient.
+func NewOpenAIClient(apiURL, model string, systemMessage string, maxContextLength int) *OpenAIClient {
 	// Attempt to get the encoding for the specific model.
 	tkm, err := tiktoken.EncodingForModel(model)
 	if err != nil {
@@ -47,7 +59,7 @@ func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LL
 			panic(fmt.Sprintf("Failed to get fallback tiktoken encoding 'cl100k_base': %v", err))
 		}
 	}
-	return &LLMClient{
+	return &OpenAIClient{
 		APIURL:           apiURL,
 		Model:            model,
 		SystemMessage:    systemMessage, // Store the system message
@@ -56,17 +68,30 @@ func NewLLMClient(apiURL, model, systemMessage string, maxContextLength int) *LL
 	}
 }
 
-// UpdateSystemMessage updates the system message for the LLM client.
-func (c *LLMClient) UpdateSystemMessage(newSystemMessage string) {
+// NewLLM creates and returns an LLM client based on the provider type.
+func NewLLM(providerType, apiURL, model, apiKey, systemMessage string, maxContextLength int) (LLM, error) {
+	switch providerType {
+	case "openai":
+		return NewOpenAIClient(apiURL, model, systemMessage, maxContextLength), nil
+	case "gemini":
+		// Assuming APIKey is needed for Gemini
+		return NewGeminiClient(apiKey, model), nil
+	default:
+		return nil, fmt.Errorf("unsupported LLM provider type: %s", providerType)
+	}
+}
+
+// UpdateSystemMessage updates the system message for the OpenAI client.
+func (c *OpenAIClient) UpdateSystemMessage(newSystemMessage string) {
 	c.SystemMessage = newSystemMessage
-	fmt.Printf("LLMClient system message updated to: %s\n", newSystemMessage)
+	fmt.Printf("OpenAIClient system message updated to: %s\n", newSystemMessage)
 }
 
 // getTokenLength uses the client's specific tiktoken tokenizer to count tokens.
-func (c *LLMClient) getTokenLength(text string) int {
+func (c *OpenAIClient) getTokenLength(text string) int {
 	if c.tokenizer == nil {
-		// Should not happen due to logic in NewLLMClient, but good practice.
-		fmt.Println("Error: Tokenizer not initialized for LLMClient.")
+		// Should not happen due to logic in NewOpenAIClient, but good practice.
+		fmt.Println("Error: Tokenizer not initialized for OpenAIClient.")
 		// Returning a high number might be safer than 0 if this somehow occurs,
 		// to prevent accidentally exceeding context limits.
 		return len(text) // Fallback to character count as a rough upper bound.
@@ -75,8 +100,8 @@ func (c *LLMClient) getTokenLength(text string) int {
 	return len(tokens)
 }
 
-// Chat sends the provided messages to the LLM and returns the completion, input tokens, completion tokens, and error.
-func (c *LLMClient) Chat(ctx context.Context, messages []Message, stream bool, out io.Writer) (string, int, int, error) {
+// Chat sends the provided messages to the OpenAI-compatible LLM and returns the completion, input tokens, completion tokens, and error.
+func (c *OpenAIClient) Chat(ctx context.Context, messages []Message, stream bool, out io.Writer) (string, int, int, error) {
 	// Prepare messages with system message
 	messagesWithSystem := c.prepareMessages(messages)
 
@@ -90,7 +115,7 @@ func (c *LLMClient) Chat(ctx context.Context, messages []Message, stream bool, o
 }
 
 // prepareMessages adds the system message to the provided messages
-func (c *LLMClient) prepareMessages(messages []Message) []Message {
+func (c *OpenAIClient) prepareMessages(messages []Message) []Message {
 	systemMessage := Message{
 		Role:    "system",
 		Content: c.SystemMessage,
@@ -99,7 +124,7 @@ func (c *LLMClient) prepareMessages(messages []Message) []Message {
 }
 
 // handleContextLimits calculates token usage and truncates messages if needed
-func (c *LLMClient) handleContextLimits(messages []Message) (int, []Message) {
+func (c *OpenAIClient) handleContextLimits(messages []Message) (int, []Message) {
 	inputTokenLength := 0
 	for _, message := range messages {
 		inputTokenLength += c.getTokenLength(message.Content)
@@ -118,7 +143,7 @@ func (c *LLMClient) handleContextLimits(messages []Message) (int, []Message) {
 }
 
 // truncateMessages reduces the message list to fit within context limits
-func (c *LLMClient) truncateMessages(messages []Message, inputTokenLength int) []Message {
+func (c *OpenAIClient) truncateMessages(messages []Message, inputTokenLength int) []Message {
 	fmt.Printf("Context length exceeds maximum allowed length of %d tokens. Truncating messages.\n", c.MaxContextLength)
 
 	// Find the index of the last system message
@@ -150,7 +175,7 @@ func (c *LLMClient) truncateMessages(messages []Message, inputTokenLength int) [
 }
 
 // sendRequest creates and sends the API request, handling both streaming and non-streaming responses
-func (c *LLMClient) sendRequest(ctx context.Context, messages []Message, stream bool, out io.Writer) (string, int, error) {
+func (c *OpenAIClient) sendRequest(ctx context.Context, messages []Message, stream bool, out io.Writer) (string, int, error) {
 	request := Request{
 		Model:       c.Model,
 		Messages:    messages,
@@ -195,7 +220,7 @@ func (c *LLMClient) sendRequest(ctx context.Context, messages []Message, stream 
 }
 
 // handleErrorResponse processes error responses from the API
-func (c *LLMClient) handleErrorResponse(resp *http.Response) error {
+func (c *OpenAIClient) handleErrorResponse(resp *http.Response) error {
 	bodyBytes, readErr := io.ReadAll(resp.Body)
 	errorMsg := fmt.Sprintf("LLM API returned status %d", resp.StatusCode)
 	if readErr == nil && len(bodyBytes) > 0 {
@@ -205,7 +230,7 @@ func (c *LLMClient) handleErrorResponse(resp *http.Response) error {
 }
 
 // handleStreamingResponse processes streaming responses
-func (c *LLMClient) handleStreamingResponse(resp *http.Response, out io.Writer) (string, int, error) {
+func (c *OpenAIClient) handleStreamingResponse(resp *http.Response, out io.Writer) (string, int, error) {
 	var completionBuilder strings.Builder
 	reader := bufio.NewReader(resp.Body)
 	var currentEventData strings.Builder
@@ -250,7 +275,7 @@ func (c *LLMClient) handleStreamingResponse(resp *http.Response, out io.Writer) 
 }
 
 // processEventData extracts content from a streaming event
-func (c *LLMClient) processEventData(eventData string, out io.Writer) string {
+func (c *OpenAIClient) processEventData(eventData string, out io.Writer) string {
 	// Parse the JSON data
 	var chunk map[string]interface{}
 	if jsonErr := json.Unmarshal([]byte(eventData), &chunk); jsonErr != nil {
@@ -277,7 +302,7 @@ func (c *LLMClient) processEventData(eventData string, out io.Writer) string {
 }
 
 // handleNonStreamingResponse processes non-streaming responses
-func (c *LLMClient) handleNonStreamingResponse(resp *http.Response, out io.Writer) (string, int, error) {
+func (c *OpenAIClient) handleNonStreamingResponse(resp *http.Response, out io.Writer) (string, int, error) {
 	fmt.Fprintln(out, "Attempting to read response body...")
 
 	// Read the entire response

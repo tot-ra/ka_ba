@@ -49,6 +49,7 @@ type SendTaskParams struct {
 	PushNotification interface{} `json:"pushNotification,omitempty"`
 	HistoryLength    *int        `json:"historyLength,omitempty"`
 	Metadata         interface{} `json:"metadata,omitempty"`
+	SystemPrompt     string      `json:"systemPrompt,omitempty"` // Add SystemPrompt field
 	// SkillID string    `json:"skill_id,omitempty"` // Keep if needed
 	// Context string    `json:"context,omitempty"` // Keep if needed
 }
@@ -157,7 +158,7 @@ func TasksSendHandler(taskExecutor *TaskExecutor) http.HandlerFunc {
 		// CreateTask now expects []Message for initial messages
 		// For tasks created directly via API, parentTaskID is an empty string.
 		initialMessages := []Message{params.Message}
-		task, err := taskExecutor.TaskStore.CreateTask(taskName, taskExecutor.LLMClient.SystemMessage, initialMessages, "")
+		task, err := taskExecutor.TaskStore.CreateTask(taskName, params.SystemPrompt, initialMessages, "")
 		if err != nil {
 			log.Printf("[TaskSend %v] Error creating task: %v", rpcReq.ID, err)
 			sendJSONRPCResponse(w, rpcReq.ID, nil, &JSONRPCError{Code: -32000, Message: "Internal Server Error: Failed to create task", Data: err.Error()})

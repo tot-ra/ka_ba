@@ -14,9 +14,11 @@ interface SpawnedProcessInfo {
   pid: number;
   port: number;
   config: {
-    model?: string;
+    llmProvider?: string;
+    llmModel?: string;
+    llmApiBaseUrl?: string;
+    llmApiKey?: string;
     systemPrompt?: string;
-    apiBaseUrl?: string;
   };
 }
 
@@ -34,13 +36,15 @@ export class LocalAgentManager {
     this.eventEmitter = eventEmitter;
   }
 
-  public async spawnLocalAgent(args: { model?: string, systemPrompt?: string, apiBaseUrl?: string, port?: number | null, name?: string, description?: string }): Promise<Agent | null> {
-    const { model, systemPrompt, apiBaseUrl, port: requestedPort, name, description } = args;
-    console.log('Attempting to spawn ka agent with:', { model, systemPrompt, apiBaseUrl, port: requestedPort, name, description });
+  public async spawnLocalAgent(args: { llmProvider?: string, llmModel?: string, llmApiBaseUrl?: string, llmApiKey?: string, systemPrompt?: string, port?: number | null, name?: string, description?: string }): Promise<Agent | null> {
+    const { llmProvider, llmModel, llmApiBaseUrl, llmApiKey, systemPrompt, port: requestedPort, name, description } = args;
+    console.log('Attempting to spawn ka agent with:', { llmProvider, llmModel, llmApiBaseUrl, llmApiKey: llmApiKey ? '***' : 'undefined', systemPrompt, port: requestedPort, name, description }); // Mask API key in logs
 
     const env: NodeJS.ProcessEnv = { ...process.env };
-    if (model) env.LLM_MODEL = model;
-    if (apiBaseUrl) env.LLM_API_BASE = apiBaseUrl;
+    if (llmProvider) env.LLM_PROVIDER_TYPE = llmProvider;
+    if (llmModel) env.LLM_MODEL = llmModel;
+    if (llmApiBaseUrl) env.LLM_API_BASE = llmApiBaseUrl;
+    if (llmApiKey) env.GEMINI_API_KEY = llmApiKey; // Pass Gemini API key as specific env var
 
     const kaExecutablePath = join(__dirname, '..', '..', '..', 'ka', 'ka');
     console.log(`Calculated absolute path for ka executable: ${kaExecutablePath}`);
@@ -68,8 +72,10 @@ export class LocalAgentManager {
     const kaArgs = [];
     if (name) kaArgs.push('--name', name);
     if (description) kaArgs.push('--description', description);
-    if (model) kaArgs.push('--model', model);
-    if (systemPrompt) kaArgs.push('--system-prompt', systemPrompt);
+    if (llmModel) kaArgs.push('--model', llmModel); // Pass model as arg
+    if (systemPrompt) kaArgs.push('--system-prompt', systemPrompt); // Pass system prompt as arg
+    if (llmProvider) kaArgs.push('--llm-provider', llmProvider); // Pass provider as arg
+    if (llmApiKey) kaArgs.push('--gemini-api-key', llmApiKey); // Pass gemini api key as arg
     kaArgs.push('server');
     console.log('Spawning ka with args:', kaArgs);
 
@@ -82,7 +88,7 @@ export class LocalAgentManager {
     kaProcess.unref();
 
     try {
-      const newAgent = await this.waitForAgentStartup(newAgentId, kaProcess, agentPort, agentUrl, name, description, model, systemPrompt, apiBaseUrl);
+      const newAgent = await this.waitForAgentStartup(newAgentId, kaProcess, agentPort, agentUrl, name, description, llmProvider, llmModel, llmApiBaseUrl, llmApiKey, systemPrompt);
 
       this.agentRegistry.addAgent(newAgent);
 
@@ -91,7 +97,7 @@ export class LocalAgentManager {
           process: kaProcess,
           pid: kaProcess.pid,
           port: agentPort,
-          config: { model, systemPrompt, apiBaseUrl },
+          config: { llmProvider, llmModel, llmApiBaseUrl, llmApiKey, systemPrompt },
         });
         console.log(`Stored spawned process info for agent ID: ${newAgent.id} with PID: ${kaProcess.pid} on port ${agentPort}`);
 
@@ -187,9 +193,11 @@ export class LocalAgentManager {
       agentUrl: string,
       name: string | undefined,
       description: string | undefined,
-      model: string | undefined,
-      systemPrompt: string | undefined,
-      apiBaseUrl: string | undefined
+      llmProvider: string | undefined,
+      llmModel: string | undefined,
+      llmApiBaseUrl: string | undefined,
+      llmApiKey: string | undefined,
+      systemPrompt: string | undefined
     ): Promise<Agent> {
     return new Promise<Agent>((resolve, reject) => {
       let resolved = false;
@@ -230,8 +238,13 @@ export class LocalAgentManager {
             id: agentId,
             url: agentUrl,
             name: name || `Spawned ka Agent ${agentId}`,
-            description: description || `ka agent spawned with model: ${model || 'default'}`,
+            description: description || `ka agent spawned with provider: ${llmProvider || 'default'}, model: ${llmModel || 'default'}`,
             isLocal: true,
+            llmProvider,
+            llmModel,
+            llmApiBaseUrl,
+            llmApiKey,
+            systemPrompt,
           };
           resolve(newAgent);
         }
@@ -252,7 +265,7 @@ export class LocalAgentManager {
       });
 
       kaProcess.on('exit', (code: number | null, signal: string | null) => {
-        console.log(`ka process (port ${agentPort}) exited with code ${code} and signal ${signal}.`);
+        console.log(`ka process (port ${agentPort}) exited with code ${code}, signal ${signal}.`);
         if (!resolved) {
           const exitMsg = `Process exited prematurely with code ${code}, signal ${signal}.`;
           handleStartupError(exitMsg, startupTimeout, processError || undefined);

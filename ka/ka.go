@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	model                   = "qwen3-30b-a3b"
-	apiURL                  = "http://localhost:1234/v1/chat/completions"
+	defaultOpenAIAPIURL     = "http://localhost:1234/v1/chat/completions"
+	defaultOpenAIModel      = "qwen3-30b-a3b"
 	defaultMaxContextLength = 2048
+	defaultLLMProvider      = "openai" // Default LLM provider
 )
 
 var availableToolsMap map[string]tools.Tool
@@ -60,6 +61,8 @@ type FlagOptions struct {
 	jwtSecretFlag        string
 	apiKeysFlag          string
 	mcpConfigFlag        string // Add flag for MCP server configuration
+	llmProviderFlag      string // Add flag for LLM provider type
+	geminiAPIKeyFlag     string // Add flag for Gemini API key
 }
 
 func parseFlags() FlagOptions {
@@ -68,13 +71,15 @@ func parseFlags() FlagOptions {
 	flag.BoolVar(&flags.serveFlag, "serve", false, "Run the agent as an A2A HTTP server")
 	flag.BoolVar(&flags.streamFlag, "stream", false, "Enable streaming output for CLI chat")
 	flag.IntVar(&flags.maxContextLengthFlag, "max_context_length", defaultMaxContextLength, "Maximum context length for the LLM")
-	flag.StringVar(&flags.modelFlag, "model", model, "LLM model to use")
+	flag.StringVar(&flags.modelFlag, "model", defaultOpenAIModel, "LLM model to use") // Default to OpenAI model
 	flag.IntVar(&flags.portFlag, "port", 8080, "Port for the A2A HTTP server")
 	flag.StringVar(&flags.nameFlag, "name", "Default ka agent", "Name of the agent")
 	flag.StringVar(&flags.descriptionFlag, "description", "A spawned ka agent instance.", "Description of the agent")
 	flag.StringVar(&flags.jwtSecretFlag, "jwt-secret", "", "JWT secret key for securing endpoints (if provided, JWT auth is enabled)")
 	flag.StringVar(&flags.apiKeysFlag, "api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
 	flag.StringVar(&flags.mcpConfigFlag, "mcp-config", "", "Path to MCP server configuration file or JSON string") // Define the new flag
+	flag.StringVar(&flags.llmProviderFlag, "llm-provider", defaultLLMProvider, "LLM provider type (e.g., 'openai', 'gemini')") // Define the new flag
+	flag.StringVar(&flags.geminiAPIKeyFlag, "gemini-api-key", "", "API key for Google Gemini provider") // Define the new flag
 
 	// Redirect standard log output to stdout
 	log.SetOutput(os.Stdout)
@@ -136,8 +141,27 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 	// Initialize task store
 	taskStore := initializeTaskStore()
 
-	// Create LLM client for server mode
-	llmClient := llm.NewLLMClient(apiURL, flags.modelFlag, "", flags.maxContextLengthFlag)
+	// Determine LLM API URL based on provider
+	llmAPIURL := os.Getenv("LLM_API_BASE")
+	if llmAPIURL == "" && flags.llmProviderFlag == "openai" {
+		llmAPIURL = defaultOpenAIAPIURL
+	}
+
+	// Determine LLM API Key based on provider
+	llmAPIKey := os.Getenv("LLM_API_KEY")
+	if flags.llmProviderFlag == "gemini" {
+		llmAPIKey = os.Getenv("GEMINI_API_KEY")
+		if llmAPIKey == "" {
+			llmAPIKey = flags.geminiAPIKeyFlag
+		}
+	}
+
+	// Create LLM client for server mode using the factory
+	llmClient, err := llm.NewLLM(flags.llmProviderFlag, llmAPIURL, flags.modelFlag, llmAPIKey, "", flags.maxContextLengthFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating LLM client: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Create TaskExecutor
 	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, availableToolsMap)
@@ -153,7 +177,7 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 		port,
 		flags.nameFlag,
 		flags.descriptionFlag,
-		flags.modelFlag,
+		flags.modelFlag, // Note: This might need to be adjusted if different providers use different model naming conventions
 		flags.jwtSecretFlag,
 		apiKeys,
 		availableToolsMap,
@@ -206,8 +230,27 @@ func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) {
 	// Compose system prompt with all available tools
 	cliSystemMessage := composeCliSystemMessage(availableToolsMap)
 
-	// Create LLM client for CLI mode
-	cliLLMClient := llm.NewLLMClient(apiURL, flags.modelFlag, cliSystemMessage, flags.maxContextLengthFlag)
+	// Determine LLM API URL based on provider
+	llmAPIURL := os.Getenv("LLM_API_BASE")
+	if llmAPIURL == "" && flags.llmProviderFlag == "openai" {
+		llmAPIURL = defaultOpenAIAPIURL
+	}
+
+	// Determine LLM API Key based on provider
+	llmAPIKey := os.Getenv("LLM_API_KEY")
+	if flags.llmProviderFlag == "gemini" {
+		llmAPIKey = os.Getenv("GEMINI_API_KEY")
+		if llmAPIKey == "" {
+			llmAPIKey = flags.geminiAPIKeyFlag
+		}
+	}
+
+	// Create LLM client for CLI mode using the factory
+	cliLLMClient, err := llm.NewLLM(flags.llmProviderFlag, llmAPIURL, flags.modelFlag, llmAPIKey, cliSystemMessage, flags.maxContextLengthFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating LLM client: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Send prompt to LLM and handle response
 	sendPromptToLLM(cliLLMClient, cliSystemMessage, userPrompt, stream)
@@ -270,7 +313,7 @@ func composeCliSystemMessage(availableToolsMap map[string]tools.Tool) string {
 	return cliSystemMessage
 }
 
-func sendPromptToLLM(cliLLMClient *llm.LLMClient, cliSystemMessage, userPrompt string, stream bool) {
+func sendPromptToLLM(cliLLMClient llm.LLM, cliSystemMessage, userPrompt string, stream bool) {
 	messages := []llm.Message{
 		{Role: "system", Content: cliSystemMessage},
 		{Role: "user", Content: userPrompt},
