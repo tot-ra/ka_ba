@@ -234,6 +234,7 @@ const EditLocalAgent: React.FC = () => {
       const composePromptWithAll = async () => {
         setIsComposingPrompt(true);
         try {
+          console.log('Sending ComposeSystemPrompt request from useEffect...'); // Added log
           const COMPOSE_PROMPT_MUTATION = `
               mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
                 composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
@@ -245,13 +246,22 @@ const EditLocalAgent: React.FC = () => {
             mcpServerNames: mcpServers.map(server => server.name),
           });
 
+          console.log('Composed system prompt full response from useEffect:', response); // Modified log
           if (response.errors) {
-            console.error('GraphQL errors auto-composing system prompt:', response.errors);
-          } else if (typeof response.data?.composeSystemPrompt === 'string') {
-            setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
+            console.error('GraphQL errors auto-composing system prompt from useEffect:', response.errors); // Modified log
+            console.error('GraphQL response errors details from useEffect:', response.errors); // Added specific error logging
+          } else if (response.data) { // Check for data presence
+             console.log('GraphQL response data from useEffect:', response.data); // Added specific data logging
+            if (typeof response.data.composeSystemPrompt === 'string') {
+              setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
+            } else {
+               console.error('composeSystemPrompt field is not a string or is missing in response data from useEffect:', response.data); // Added check for expected data type
+            }
+          } else {
+             console.error('GraphQL response has no data or errors from useEffect:', response); // Added check for empty response
           }
-        } catch (error) {
-          console.error('Error auto-composing system prompt:', error);
+        } catch (error: any) { // Added type assertion for error
+          console.error('Error sending or processing ComposeSystemPrompt request from useEffect:', error); // Modified log and added catch
         } finally {
           setIsComposingPrompt(false);
         }
@@ -308,6 +318,7 @@ const EditLocalAgent: React.FC = () => {
       // Automatically recompose prompt when selection changes
       if (agentDetails?.id) {
         setIsComposingPrompt(true);
+        console.log('Sending ComposeSystemPrompt request from handleMcpServerSelection...'); // Added log
         sendGraphQLRequest(`
             mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
               composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
@@ -318,14 +329,23 @@ const EditLocalAgent: React.FC = () => {
           mcpServerNames: newSelection,
         })
           .then(response => {
+            console.log('ComposeSystemPrompt full response in handleMcpServerSelection:', response); // Modified log
             if (response.errors) {
-              console.error('GraphQL errors recomposing system prompt:', response.errors);
-            } else if (typeof response.data?.composeSystemPrompt === 'string') {
-              setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
+              console.error('GraphQL errors recomposing system prompt in handleMcpServerSelection:', response.errors); // Modified log
+              console.error('GraphQL response errors details:', response.errors); // Added specific error logging
+            } else if (response.data) { // Check for data presence
+              console.log('GraphQL response data in handleMcpServerSelection:', response.data); // Added specific data logging
+              if (typeof response.data.composeSystemPrompt === 'string') {
+                setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
+              } else {
+                 console.error('composeSystemPrompt field is not a string or is missing in response data:', response.data); // Added check for expected data type
+              }
+            } else {
+               console.error('GraphQL response has no data or errors in handleMcpServerSelection:', response); // Added check for empty response
             }
           })
           .catch(error => {
-            console.error('Error recomposing system prompt:', error);
+            console.error('Error sending or processing ComposeSystemPrompt request from handleMcpServerSelection:', error); // Modified log and added catch
           })
           .finally(() => {
             setIsComposingPrompt(false);

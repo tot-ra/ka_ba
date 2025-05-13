@@ -100,12 +100,15 @@ You can invoke tools using the following XML formats. Use the specific format fo
 
 			if tool.GetName() == "mcp"  && len(selectedMcpServers) > 0 {
 				fmt.Fprintf(&promptBuilder, "\n\n## Tool \"%s\"\n%s\n%s", tool.GetName(), tool.GetDescription(), tool.GetXMLDefinition())
-				promptBuilder.WriteString("\nConnected MCP Servers:\n")
+				fmt.Fprintf(&promptBuilder, "\nConnected MCP Servers:\n")
+
+				log.Printf("[ComposeSystemPrompt] Listing MCP servers %v", selectedMcpServers)
+
 				for _, server := range selectedMcpServers {
 					fmt.Fprintf(&promptBuilder, "\n### %s (`%s`)\n", server.Name, server.Command) // Include command for context
 
 					if len(server.Tools) > 0 {
-						promptBuilder.WriteString("\n#### Available Tools\n")
+						fmt.Fprintf(&promptBuilder,"\n#### Available Tools\n")
 						for _, tool := range server.Tools {
 							fmt.Fprintf(&promptBuilder, "- %s: %s\n", tool.Name, tool.Description)
 							// TODO: Include input schema here if available in ToolDefinition
@@ -113,14 +116,15 @@ You can invoke tools using the following XML formats. Use the specific format fo
 					}
 
 					if len(server.Resources) > 0 {
-						promptBuilder.WriteString("\n#### Available Resources\n")
+						fmt.Fprintf(&promptBuilder,"\n#### Available Resources\n")
 						for _, resource := range server.Resources {
+							log.Printf("[ComposeSystemPrompt] Adding resource for server %s: %s", server.Name, resource)
 							fmt.Fprintf(&promptBuilder, "- %s\n", resource)
 						}
 					}
-					promptBuilder.WriteString("\n") // Add a newline after each server
+					fmt.Fprintf(&promptBuilder, "aaaa\n") // Add a newline after each server
 				}
-			
+
 			} else {
 				// It's good practice to ensure GetXMLDefinition() doesn't return empty or excessively long strings.
 				// For now, we assume it's well-behaved.
@@ -133,6 +137,7 @@ You can invoke tools using the following XML formats. Use the specific format fo
 
 
 fmt.Fprintf(&promptBuilder, `
+
 SYSTEM INFORMATION
 ====
 Operating System: %s

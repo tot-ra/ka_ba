@@ -226,8 +226,10 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
               // Send MCP configurations to the spawned agent
               const setConfigUrl = `${spawnedAgent.url.replace(/\/+$/, '')}/set-mcp-config`;
               console.log(`[GraphQL spawnKaAgent] Sending MCP configurations to agent at ${setConfigUrl}`);
-              await axios.post(setConfigUrl, mcpServers); // Send as JSON array
-              console.log(`[GraphQL spawnKaAgent] Successfully sent MCP configurations to agent ${spawnedAgent.id}.`);
+              const setConfigResponse = await axios.post(setConfigUrl, mcpServers); // Send as JSON array
+              console.log(`[GraphQL spawnKaAgent] Successfully sent MCP configurations to agent ${spawnedAgent.id}. Status: ${setConfigResponse.status}`);
+              console.log(`[GraphQL spawnKaAgent] Response data from /set-mcp-config:`, setConfigResponse.data);
+
             } else {
               console.log(`[GraphQL spawnKaAgent] No MCP server configurations to send to agent ${spawnedAgent.id}.`);
             }
@@ -292,13 +294,42 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
            // Continue without MCP servers if fetching fails
          }
 
+         // NEW STEP: Send ALL MCP configurations to the agent before composing the prompt
+         try {
+            const allMcpServers = await readMcpServers(); // Re-read all servers
+            if (allMcpServers.length > 0) {
+              const setConfigUrl = `${agent.url.replace(/\/+$/, '')}/set-mcp-config`;
+              console.log(`[GraphQL composeSystemPrompt] Sending ALL ${allMcpServers.length} MCP configurations to agent ${agentId} at ${setConfigUrl} before composing prompt.`);
+              // Send the full list of all configured MCP servers
+              const setConfigResponse = await axios.post(setConfigUrl, allMcpServers);
+              console.log(`[GraphQL composeSystemPrompt] Successfully sent ALL MCP configurations to agent ${agentId}. Status: ${setConfigResponse.status}`);
+              console.log(`[GraphQL composeSystemPrompt] Response data from /set-mcp-config (during compose):`, setConfigResponse.data);
+            } else {
+               console.log(`[GraphQL composeSystemPrompt] No MCP server configurations to send to agent ${agentId} before composing prompt.`);
+            }
+         } catch (error: any) {
+            console.error(`[GraphQL composeSystemPrompt] Error sending ALL MCP configurations to agent ${agentId} before composing prompt:`, error);
+            // Log the original error details for debugging
+            if (error.response) {
+              console.error(`[GraphQL composeSystemPrompt] Agent response status (during compose): ${error.response.status}`);
+              console.error(`[GraphQL composeSystemPrompt] Agent response data (during compose):`, error.response.data);
+            } else if (error.request) {
+              console.error(`[GraphQL composeSystemPrompt] No response received from agent (during compose). Request details:`, error.request);
+            } else {
+              console.error(`[GraphQL composeSystemPrompt] Error setting up the request to agent (during compose):`, error.message);
+            }
+            // Decide how to handle this error: proceed with composing prompt or fail?
+            // For now, we'll log a warning and proceed, as the agent might still compose a prompt without updated MCP tools.
+         }
+
 
          // 3. Call the agent's /compose-prompt HTTP endpoint with the selected tool names and full MCP server configs
          try {
            const composeUrl = `${agent.url.replace(/\/+$/, '')}/compose-prompt`; // Ensure no double slash
-           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames, 'and selected MCP servers:', selectedMcpServers.map(s => s.name));
+           const selectedMcpServerNames = selectedMcpServers.map(s => s.name)
+           console.log(`[GraphQL composeSystemPrompt] Composing prompt for agent ${agentId} at ${composeUrl} with tools:`, toolNames, 'and selected MCP servers:', selectedMcpServerNames);
            // Pass the full selectedMcpServers array to the agent
-           const response = await axios.post<{ systemPrompt: string }>(composeUrl, { toolNames, mcpServers: selectedMcpServers }); // Send object with both arrays in body
+           const response = await axios.post<{ systemPrompt: string }>(composeUrl, { toolNames, mcpServerNames: selectedMcpServerNames }); // Send object with both arrays in body
 
            if (response.status !== 200 || typeof response.data?.systemPrompt !== 'string') {
               console.error(`[GraphQL composeSystemPrompt] Unexpected response from agent ${agentId} /compose-prompt endpoint: Status ${response.status}, Data:`, response.data);
@@ -307,7 +338,7 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
               });
            }
 
-           console.log(`[GraphQL composeSystemPrompt] Received composed prompt from agent ${agentId}.`);
+           console.log(`[GraphQL composeSystemPrompt] Received composed prompt from agent ${agentId}.`, response.data);
            return response.data.systemPrompt; // Return the composed system prompt string
          } catch (error: any) {
            console.error(`[GraphQL composeSystemPrompt] Error composing prompt for agent ${agentId}:`, error);
