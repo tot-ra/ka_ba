@@ -19,6 +19,13 @@ var ErrTaskNotFound = errors.New("task not found")
 
 type TaskState string
 
+type TaskStatus struct { 
+	State TaskState `json:"state"` 
+	message *Message `json:"message,omitempty"`
+	Timestamp string `json:"timestamp"`
+}
+
+
 const (
 	TaskStateSubmitted     TaskState = "SUBMITTED"      // Changed to uppercase
 	TaskStateWorking       TaskState = "WORKING"        // Changed to uppercase

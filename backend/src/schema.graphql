@@ -155,6 +155,7 @@ type Mutation {
   addMcpServer(server: InputMcpServerConfig!): McpServerConfig! # Mutation to add a new MCP server
   editMcpServer(name: String!, server: InputMcpServerConfig!): McpServerConfig! # Mutation to edit an existing MCP server
   deleteMcpServer(name: String!): Boolean! # Mutation to delete an MCP server
+  addUserMessageToTask(taskId: ID!, message: String!): Task! # Mutation to add a user message to a task
   # Removed startWorkflow
   # Removed stopWorkflow
 }

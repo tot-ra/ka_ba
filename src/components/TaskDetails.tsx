@@ -1,12 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, FormEvent } from 'react'; // Import FormEvent
 import styles from './TaskDetails.module.css';
+import { gql, useMutation } from '@apollo/client'; // Import gql and useMutation
 
 import { Message, MessagePart, Task } from '../types';
+
+// Define the GraphQL mutation
+const ADD_USER_MESSAGE_TO_TASK_MUTATION = gql`
+  mutation AddUserMessageToTask($taskId: ID!, $message: String!) {
+    addUserMessageToTask(taskId: $taskId, message: $message) {
+      id
+      state
+      messages {
+        role
+        parts
+        timestamp
+        timestampUnixMs
+      }
+      error
+      createdAt
+      createdAtUnixMs
+      updatedAt
+      updatedAtUnixMs
+      artifacts
+      agentId
+    }
+  }
+`;
+
 
 interface TaskDetailsProps {
   currentTask: Task | null;
   streamingOutput: string;
-  onDuplicateClick: () => void;
+  onDuplicateClick: () => void; // Keep this prop if needed elsewhere, though not used in render
 }
 
 const TaskDetails: React.FC<TaskDetailsProps> = ({
@@ -17,6 +42,30 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
   const [collapsedThinkBlocks, setCollapsedThinkBlocks] = useState<{ [key: string]: boolean }>({});
   // State to manage collapsed state of tool blocks
   const [collapsedToolBlocks, setCollapsedToolBlocks] = useState<{ [key: string]: boolean }>({});
+  // State to manage user input message
+  const [userMessageInput, setUserMessageInput] = useState('');
+  // State to manage loading state of the mutation
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  // State to manage error state of the mutation
+  const [sendMessageError, setSendMessageError] = useState<string | null>(null);
+
+
+  // Use the useMutation hook
+  const [addUserMessage] = useMutation(ADD_USER_MESSAGE_TO_TASK_MUTATION, {
+    onCompleted: (data) => {
+      console.log('Message added successfully:', data);
+      setUserMessageInput(''); // Clear input on success
+      setIsSendingMessage(false);
+      setSendMessageError(null);
+      // The taskUpdates subscription should handle updating the UI with the new message
+    },
+    onError: (error) => {
+      console.error('Error adding message:', error);
+      setIsSendingMessage(false);
+      setSendMessageError(error.message);
+    },
+  });
+
 
   // Function to toggle collapsed state for think blocks
   const toggleThinkBlock = (key: string) => {
@@ -27,12 +76,40 @@ const TaskDetails: React.FC<TaskDetailsProps> = ({
   };
 
   // Function to toggle collapsed state for tool blocks
-  const toggleToolBlock = (key: string) => {
+  const toggleToolBlock = (key: string) => { // Corrected function name
     setCollapsedToolBlocks(prevState => ({
       ...prevState,
       [key]: !prevState[key],
     }));
   };
+
+  // Handler for sending the user message
+  const handleSendMessage = async (event: FormEvent) => {
+    event.preventDefault(); // Prevent default form submission
+
+    if (!currentTask || !userMessageInput.trim() || isSendingMessage) {
+      return; // Don't send if no task, empty message, or already sending
+    }
+
+    setIsSendingMessage(true);
+    setSendMessageError(null);
+
+    try {
+      await addUserMessage({
+        variables: {
+          taskId: currentTask.id,
+          message: userMessageInput.trim(),
+        },
+      });
+      // onCompleted and onError handlers will manage state updates
+    } catch (error) {
+      // This catch block is for errors not caught by the onError option in useMutation
+      console.error('Unexpected error during message sending:', error);
+      setIsSendingMessage(false);
+      setSendMessageError('An unexpected error occurred.');
+    }
+  };
+
 
   const renderMessagePart = (message: Message, messageIndex: number, part: MessagePart, partIndex: number, taskArtifacts: Task['artifacts']) => {
     if (typeof part !== 'object' || part === null || !part.type) {
@@ -338,6 +415,30 @@ const getStatusClassName = (state: string | undefined | null): string => {
           <h3>Live Output Stream</h3>
           <pre className={styles.liveOutputStreamPre}>{streamingOutput}</pre>
         </div>
+      )}
+
+      {/* Add the user input form */}
+      {currentTask && ( // Only show the form if a task is selected
+        <form onSubmit={handleSendMessage} className={styles.messageInputForm}>
+          <textarea
+            className={styles.messageInputTextarea}
+            value={userMessageInput}
+            onChange={(e) => setUserMessageInput(e.target.value)}
+            placeholder="Type your message here..."
+            rows={3}
+            disabled={isSendingMessage} // Disable while sending
+          />
+          <button
+            type="submit"
+            className={styles.sendMessageButton}
+            disabled={!userMessageInput.trim() || isSendingMessage} // Disable if input is empty or sending
+          >
+            {isSendingMessage ? 'Sending...' : 'Send Message'}
+          </button>
+          {sendMessageError && (
+            <div className={styles.errorMessage}>{sendMessageError}</div>
+          )}
+        </form>
       )}
 
     </div>

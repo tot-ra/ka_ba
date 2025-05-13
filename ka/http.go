@@ -11,7 +11,7 @@ import (
 	// "os/user" // No longer needed here
 	// "runtime" // No longer needed here
 	"strings" // Added for string manipulation
-	// "time"    // No longer needed here
+	"time"    // Added import for time package
 
 	"ka/a2a" // Keep one a2a import
 	"ka/llm" // Import llm package
@@ -362,6 +362,8 @@ func startHTTPServer(
 					a2a.TasksListHandler(taskStore)(w, handlerReq)
 				case "tasks/delete": // Handle the delete method
 					a2a.TasksDeleteHandler(taskStore)(w, handlerReq)
+				case "tasks/addMessage": // Handle the addMessage method
+					TasksAddMessageHandler(taskExecutor)(w, handlerReq) // Call the new handler
 				default:
 					log.Printf("Method not found: %s", req.Method)
 					writeJSONRPCError(w, req.ID, jsonRPCMethodNotFoundCode, "Method not found", req.Method)
@@ -576,4 +578,136 @@ func startHTTPServer(
 	fmt.Printf("[http] Agent server running at http://localhost:%d/\n", port)
 	fmt.Println("[http] Registered Handlers: /.well-known/agent.json, /health, /tools, /compose-prompt, /system-prompt, /set-mcp-config, /") // Updated log message order
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
+}
+
+// TasksAddMessageHandler handles the JSON-RPC method "tasks/addMessage".
+// It adds a user message to an existing task and triggers a new LLM interaction.
+func TasksAddMessageHandler(taskExecutor *a2a.TaskExecutor) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// The JSON-RPC request body has already been read and is available in r.Body
+		// We need to decode the 'params' field, which is json.RawMessage, into the expected struct.
+
+		var req jsonRPCRequest // The root handler already decoded the basic request structure
+		// Re-read the body to get the raw JSON-RPC request again for decoding params
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("[TasksAddMessageHandler] Error reading request body: %v", err)
+			writeJSONRPCError(w, nil, jsonRPCInternalErrorCode, "Internal server error reading request body", nil)
+			return
+		}
+		r.Body.Close() // Close the body
+
+		if err := json.Unmarshal(bodyBytes, &req); err != nil {
+			log.Printf("[TasksAddMessageHandler] Error decoding JSON-RPC request body: %v", err)
+			writeJSONRPCError(w, nil, jsonRPCParseErrorCode, "Parse error: Invalid JSON received", err.Error())
+			return
+		}
+
+		// Define the expected parameters structure for "tasks/addMessage"
+		var params struct {
+			ID      string      `json:"id"` // Task ID
+			Message a2a.Message `json:"message"` // The message to add
+		}
+
+		// Decode the 'params' field (which is json.RawMessage) into the params struct
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			log.Printf("[TasksAddMessageHandler] Error decoding JSON-RPC params: %v", err)
+			writeJSONRPCError(w, req.ID, jsonRPCInvalidParamsCode, "Invalid params", "Expected object with 'id' (string) and 'message' (Message object)")
+			return
+		}
+
+		log.Printf("[TasksAddMessageHandler] Received request for task ID: %s, message role: %s", params.ID, params.Message.Role)
+
+		// Call the new method on TaskExecutor to handle adding the message and processing
+		err = taskExecutor.AddTaskMessageAndProcess(params.ID, params.Message)
+		if err != nil {
+			log.Printf("[TasksAddMessageHandler] Error calling AddTaskMessageAndProcess for task %s: %v", params.ID, err)
+			// Determine appropriate JSON-RPC error code based on the error type
+			code := jsonRPCInternalErrorCode
+			message := "Error processing message"
+			if strings.Contains(err.Error(), "task with ID") && strings.Contains(err.Error(), "not found") {
+				code = jsonRPCMethodNotFoundCode // Or a custom task-not-found code
+				message = "Task not found"
+			} else if strings.Contains(err.Error(), "cannot add message to a canceled task") {
+				code = jsonRPCInvalidParamsCode // Or a custom invalid-state code
+				message = "Cannot add message to task in current state"
+			}
+			writeJSONRPCError(w, req.ID, code, message, err.Error())
+			return
+		}
+
+		// Re-fetch the task after processing to return the latest state
+		updatedTask, err := taskExecutor.TaskStore.GetTask(params.ID)
+		if err != nil {
+			log.Printf("[TasksAddMessageHandler] Error re-fetching task %s after AddTaskMessageAndProcess: %v", params.ID, err)
+			// Even if re-fetch fails, the message was added and state updated.
+			// We can return a success response but maybe with a warning or just the task ID.
+			// For now, let's return an error if we can't get the updated task.
+			writeJSONRPCError(w, req.ID, jsonRPCInternalErrorCode, "Error retrieving updated task", err.Error())
+			return
+		}
+		if updatedTask == nil {
+			log.Printf("[TasksAddMessageHandler] Re-fetched task %s is nil after AddTaskMessageAndProcess.", params.ID)
+			writeJSONRPCError(w, req.ID, jsonRPCInternalErrorCode, "Error retrieving updated task", "Updated task is nil")
+			return
+		}
+
+		// Define a temporary struct to match the expected JSON structure for the response
+		// This matches the Task interface in backend/src/a2aClient.ts
+		type TaskResponse struct {
+			ID        string               `json:"id"`
+			SessionID string               `json:"sessionId,omitempty"` // Map from Go Task.ParentTaskID
+			Status    a2a.TaskStatus       `json:"status"` // Use the a2a.TaskStatus struct
+			Artifacts []a2a.Artifact       `json:"artifacts,omitempty"` // Map from Go Task.Artifacts (map)
+			History   []a2a.Message        `json:"history,omitempty"` // Map from Go Task.Messages
+			Metadata  any                  `json:"metadata,omitempty"` // Omit if not in Go Task
+		}
+
+		// Create the TaskStatus object from the Go Task's State and other fields
+		taskStatus := a2a.TaskStatus{
+			State: updatedTask.State, // Map Go Task.State to Status.State
+			// Assuming the last message in the task history is the status message if needed,
+			// but the A2A TaskStatus message field seems to be for specific status updates,
+			// not the last message in history. Let's omit for now unless needed.
+			// message: ?
+			Timestamp: updatedTask.UpdatedAt.Format(time.RFC3339Nano), // Use UpdatedAt for status timestamp
+		}
+
+		// Convert the Artifacts map to a slice
+		artifactSlice := []a2a.Artifact{}
+		if updatedTask.Artifacts != nil {
+			for _, artifact := range updatedTask.Artifacts {
+				// Need to copy the artifact value if it's a pointer in the map
+				artifactCopy := *artifact
+				artifactSlice = append(artifactSlice, artifactCopy)
+			}
+		}
+
+
+		// Populate the response struct
+		responseTask := TaskResponse{
+			ID:        updatedTask.ID,
+			SessionID: updatedTask.ParentTaskID, // Map Go Task.ParentTaskID to SessionID
+			Status:    taskStatus, // Include the constructed status
+			Artifacts: artifactSlice, // Include the converted artifact slice
+			History:   updatedTask.Messages, // Map Go Task.Messages to History
+			// Metadata is omitted as it's not in the Go Task struct
+		}
+
+
+		// Return the updated task in a JSON-RPC response
+		response := a2a.JSONRPCResponse{ // Use the type from a2a package
+			Jsonrpc: "2.0", // Field name is lowercase 'j'
+			ID:      req.ID,
+			Result:  responseTask, // Return the temporary response struct
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("[TasksAddMessageHandler] Error encoding JSON-RPC response: %v", err)
+			// If encoding fails, we can't send a proper JSON-RPC error,
+			// but we should at least try to write an HTTP error.
+			http.Error(w, "Internal server error encoding response", http.StatusInternalServerError)
+		}
+		log.Printf("[TasksAddMessageHandler] Successfully processed addMessage for task %s and returned updated task.", params.ID)
+	}
 }

@@ -106,6 +106,113 @@ func (te *TaskExecutor) ExecuteTaskStream(ctx context.Context, t *Task, sseWrite
 	}
 }
 
+// AddTaskMessageAndProcess adds a message to a task's history, updates its state,
+// and signals the executor to re-process the task.
+func (te *TaskExecutor) AddTaskMessageAndProcess(taskID string, message Message) error {
+	te.mu.Lock()
+	defer te.mu.Unlock()
+
+	// 1. Get the task from the store
+	task, err := te.TaskStore.GetTask(taskID)
+	if err != nil {
+		log.Printf("[Task %s] Error getting task from store in AddTaskMessageAndProcess: %v", taskID, err)
+		return fmt.Errorf("error retrieving task %s: %w", taskID, err)
+	}
+	if task == nil {
+		log.Printf("[Task %s] Task not found in AddTaskMessageAndProcess", taskID)
+		return fmt.Errorf("task with ID %s not found", taskID)
+	}
+
+	// 2. Append the new message to the task's history
+	// Ensure the role is 'user' as expected for messages added by the user
+	if message.Role != RoleUser {
+		log.Printf("[Task %s] Received message with non-user role '%s' in AddTaskMessageAndProcess. Forcing to 'user'.", taskID, message.Role)
+		message.Role = RoleUser // Force role to user
+	}
+	// Append to the main Messages slice within the update function
+	// task.Messages = append(task.Messages, message) // Removed direct append here
+
+	// 3. Update task state
+	// Rules:
+	// - completed, failed, or input-required -> working
+	// - processing (working) -> stay working, executor loop should handle
+	// - other states (submitted, canceled, unknown) -> working (except canceled)
+	originalState := task.State // Corrected: Access State directly
+	newState := originalState
+
+	switch originalState {
+	case TaskStateCompleted, TaskStateFailed, TaskStateInputRequired:
+		newState = TaskStateWorking
+		log.Printf("[Task %s] State changed from '%s' to 'working' after adding user message.", taskID, originalState)
+	case TaskStateWorking:
+		// Stay in working state, the executor loop should pick up the new message
+		log.Printf("[Task %s] Was already in 'working' state. Added user message.", taskID)
+	case TaskStateSubmitted:
+		newState = TaskStateWorking // Move from submitted to working
+		log.Printf("[Task %s] State changed from 'submitted' to 'working' after adding user message.", taskID)
+	case TaskStateCanceled:
+		// Cannot add message to a canceled task? Or should it revive?
+		// Let's assume we don't revive canceled tasks for now.
+		log.Printf("[Task %s] Attempted to add message to canceled task. Ignoring state change.", taskID)
+		return fmt.Errorf("cannot add message to a canceled task") // Or just log and return nil? Let's return error.
+	default:
+		// Unknown state, transition to working?
+		log.Printf("[Task %s] Task in unknown state '%s'. Transitioning to 'working'.", taskID, originalState)
+		newState = TaskStateWorking
+	}
+
+	// Update the state in the task object (will be done in the update function)
+	// task.Status.State = newState // Removed direct update
+	// task.Status.Timestamp = time.Now().UTC().Format(time.RFC3339Nano) // Removed direct update
+
+	// 4. Save the updated task using the UpdateTask function
+	// The UpdateTask function handles updating the timestamp and saving to the store.
+	_, err = te.TaskStore.UpdateTask(taskID, func(t *Task) error { // Corrected call to UpdateTask
+		t.Messages = append(t.Messages, message) // Append message inside the update function
+		t.State = newState // Update state inside the update function
+		// UpdateTask itself handles updating UpdatedAt and UpdatedAtUnixMs
+		return nil
+	})
+	if err != nil {
+		log.Printf("[Task %s] Error updating task in store in AddTaskMessageAndProcess: %v", taskID, err)
+		// Attempt to revert state if update failed? Complex. Just return error.
+		return fmt.Errorf("error saving updated task %s: %w", taskID, err)
+	}
+	log.Printf("[Task %s] Task updated in store after adding user message.", taskID)
+
+
+	// 5. Signal the executor to re-process the task
+	// If the task was waiting for input, signal its resume channel.
+	if originalState == TaskStateInputRequired {
+		resumeCh, ok := te.resumeChannels[taskID]
+		if ok {
+			select {
+			case resumeCh <- struct{}{}:
+				log.Printf("[Task %s] Signaled resume channel.", taskID)
+			default:
+				log.Printf("[Task %s] Resume channel was not ready to receive signal. Task might not have been waiting for input.", taskID)
+				// This might happen if the state was just changed from InputRequired by the executor loop
+				// right before we tried to signal.
+			}
+		} else {
+			log.Printf("[Task %s] No resume channel found for task in InputRequired state. Executor loop should pick it up.", taskID)
+		}
+	} else if newState == TaskStateWorking {
+		// If the task is now in the working state (and wasn't waiting for input),
+		// the main executor loop should pick it up.
+		// For immediate processing/interruption, a dedicated channel for tasks needing attention
+		// could be added to TaskExecutor and monitored by the main loop.
+		// For now, we rely on the executor's polling/looping mechanism.
+		log.Printf("[Task %s] Task state is now 'working'. Executor loop should pick it up.", taskID)
+		// TODO: Implement a more immediate signaling mechanism if needed for responsiveness.
+	}
+
+
+	log.Printf("[Task %s] AddTaskMessageAndProcess completed successfully.", taskID)
+	return nil // Success
+}
+
+
 // ResumeTask signals a task that is waiting for input to resume execution.
 func (te *TaskExecutor) ResumeTask(taskID string) error {
 	te.mu.Lock()

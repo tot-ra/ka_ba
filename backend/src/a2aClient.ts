@@ -280,4 +280,24 @@ export class A2AClient {
 			return false; // Return false if result is not explicitly true
 		}
 	}
+
+    // Method to add a message to an existing task via JSON-RPC
+    async addMessageToTask(taskId: string, message: Message): Promise<Task | null> {
+        console.log(`[A2AClient] Sending JSON-RPC request for 'tasks/addMessage' for task ${taskId} to ${this.agentUrl}`);
+        const response = await this.sendRequest('tasks/addMessage', { id: taskId, message: message });
+
+        if (response.error) {
+            console.error(`[A2AClient] Error in addMessageToTask response for task ${taskId}:`, response.error);
+            return null; // Return null on error
+        }
+
+        // Assuming the result is the updated Task object
+        // Add validation if necessary
+        if (response.result) {
+            return response.result as Task;
+        } else {
+            console.error(`[A2AClient] Invalid result format for addMessageToTask: Expected Task object, got`, response.result);
+            return null;
+        }
+    }
 }

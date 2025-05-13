@@ -261,5 +261,115 @@ export const taskResolvers = {
                 });
                 }
             },
+        addUserMessageToTask: async (_parent: any, { taskId, message }: { taskId: string, message: string }, context: ApolloContext, _info: any): Promise<any> => {
+            const { agentManager } = context;
+            console.log(`[GraphQL addUserMessageToTask] Received request for task ${taskId} with message: "${message}"`);
+
+            // 1. Find the agent associated with the task
+            // This requires fetching the task first to get the agentId
+            let agentId: string | undefined;
+            try {
+                // Assuming agentManager has a way to get a task by ID across all agents,
+                // or we might need to iterate through agents to find the task.
+                // For now, let's assume we can get the task directly or infer agentId.
+                // A more robust solution might require the frontend to send agentId with taskId.
+                // Let's assume for now we can find the task and its agentId.
+                // This is a simplification and might need refinement based on actual AgentManager capabilities.
+                const allAgents = agentManager.getAgents();
+                let foundTask: A2ATask | undefined;
+                for (const agent of allAgents) {
+                    try {
+                        const tasks = await agentManager.getAgentTasks(agent.id);
+                        foundTask = tasks.find((task: A2ATask) => task.id === taskId);
+                        if (foundTask) {
+                            agentId = agent.id;
+                            break;
+                        }
+                    } catch (error) {
+                        console.warn(`[GraphQL addUserMessageToTask] Could not fetch tasks for agent ${agent.id}: ${error}`);
+                        // Continue to the next agent
+                    }
+                }
+
+                if (!agentId || !foundTask) {
+                     throw new GraphQLError(`Task with ID ${taskId} not found on any registered agent.`, {
+                        extensions: { code: 'TASK_NOT_FOUND' },
+                    });
+                }
+
+                 const agent = agentManager.getAgents().find((a: Agent) => a.id === agentId);
+                 if (!agent) {
+                     // This should not happen if agentId was found, but as a safeguard
+                     throw new GraphQLError(`Agent with ID ${agentId} associated with task ${taskId} not found.`, {
+                         extensions: { code: 'AGENT_NOT_FOUND' },
+                     });
+                 }
+                 console.log(`[GraphQL addUserMessageToTask] Found agent ${agentId} for task ${taskId}.`);
+
+
+                // 2. Create A2A Client
+                const a2aClient = new A2AClient(agent.url);
+
+                // 3. Call a new A2A endpoint on the agent to add the message
+                // This endpoint needs to be implemented in the ka agent.
+                // Assuming an endpoint like /tasks/add-message that takes taskId and message.
+                const addMessageUrl = `${agent.url.replace(/\/+$/, '')}/tasks/add-message`; // Ensure no double slash
+                console.log(`[GraphQL addUserMessageToTask] Calling agent ${agentId} at ${addMessageUrl} to add message to task ${taskId}`);
+
+                // Construct the message payload in A2A format
+                const messagePayload: A2AMessage = {
+                    role: 'user', // User role for the new message
+                    parts: [{
+                        type: 'text',
+                        text: message, // Use 'text' property directly
+                    }],
+                    timestamp: new Date().toISOString(), // Add current timestamp
+                };
+
+                // Send the message to the agent
+                const updatedTask = await a2aClient.addMessageToTask(taskId, messagePayload); // Use the new method
+
+                // 4. Return the updated task (assuming the agent returns the updated task)
+                if (!updatedTask || !updatedTask.status?.state) {
+                     console.error(`[GraphQL addUserMessageToTask] Agent ${agentId} returned invalid updated task data for task ${taskId}:`, updatedTask);
+                     throw new GraphQLError(`Agent ${agentId} returned invalid updated task data (missing state) for task ${taskId}.`, {
+                         extensions: { code: 'AGENT_RESPONSE_INVALID', agentId: agentId, taskId: taskId },
+                     });
+                }
+
+                // Map the structure for the GraphQL response.
+                // Combine history and status.message (if present) and map to messages
+                const combinedMessages: A2AMessage[] = [...(updatedTask.history || []), ...(updatedTask.status?.message ? [updatedTask.status.message] : [])];
+                combinedMessages.sort((a: A2AMessage, b: A2AMessage) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                const mappedUpdatedTask = {
+                    id: updatedTask.id,
+                    state: updatedTask.status.state.toUpperCase(),
+                    // name: updatedTask.name, // Removed: 'name' does not exist on A2A Task type
+                    messages: mapMessages(combinedMessages),
+                    error: updatedTask.status?.state === 'failed' && updatedTask.status?.message?.parts?.[0]?.type === 'text'
+                            ? (updatedTask.status.message.parts[0] as any).text
+                            : undefined,
+                    createdAt: updatedTask.status?.timestamp,
+                    updatedAt: updatedTask.status?.timestamp,
+                    createdAtUnixMs: updatedTask.status?.timestamp ? new Date(updatedTask.status.timestamp).getTime() : Date.now(),
+                    updatedAtUnixMs: updatedTask.status?.timestamp ? new Date(updatedTask.status.timestamp).getTime() : Date.now(),
+                    artifacts: updatedTask.artifacts ? JSON.stringify(updatedTask.artifacts) : undefined, // Needs proper mapping if not stringifiable
+                    agentId: agentId,
+                };
+
+                return mappedUpdatedTask as any; // Cast needed due to structural differences
+
+            } catch (error: any) {
+                console.error(`[GraphQL addUserMessageToTask] Error adding message to task ${taskId}:`, error);
+                 if (error instanceof GraphQLError) {
+                    throw error;
+                }
+                throw new GraphQLError(`Failed to add message to task ${taskId}: ${error.message}`, {
+                    extensions: { code: 'TASK_MESSAGE_ADD_ERROR', taskId: taskId },
+                    originalError: error
+                });
+            }
+        },
     }
 }
