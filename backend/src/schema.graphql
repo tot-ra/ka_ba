@@ -149,6 +149,8 @@ type Mutation {
   deleteTask(agentId: ID!, taskId: ID!): Boolean!
   updateAgentSystemPrompt(agentId: ID!, systemPrompt: String!): Agent! # Mutation to update an agent's system prompt
   addMcpServer(server: InputMcpServerConfig!): McpServerConfig! # Mutation to add a new MCP server
+  editMcpServer(name: String!, server: InputMcpServerConfig!): McpServerConfig! # Mutation to edit an existing MCP server
+  deleteMcpServer(name: String!): Boolean! # Mutation to delete an MCP server
   # Removed startWorkflow
   # Removed stopWorkflow
 }
