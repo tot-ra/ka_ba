@@ -79,6 +79,8 @@ function EditMcpServer() {
     resources: [], // Add initial empty array for resources
   });
 
+  const [rawArgsInput, setRawArgsInput] = useState(''); // New state for raw args input
+
   useEffect(() => {
     const fetchServer = async () => {
       try {
@@ -92,6 +94,7 @@ function EditMcpServer() {
           if (server) {
             setServerConfig(server);
             setFormData(server); // Initialize form data with fetched server config
+            setRawArgsInput(server.args.join(', ')); // Initialize raw args input
             console.log('MCP server fetched successfully:', server);
           } else {
             setError(`MCP server with name "${name}" not found.`);
@@ -117,8 +120,9 @@ function EditMcpServer() {
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleArgsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, args: e.target.value.split(',').map(arg => arg.trim()) });
+  const handleRawArgsInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('Raw args input:', e.target.value);
+    setRawArgsInput(e.target.value);
   };
 
   const handleEnvChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -146,7 +150,7 @@ function EditMcpServer() {
         name: formData.name,
         timeout: formData.timeout,
         command: formData.command,
-        args: formData.args,
+        args: rawArgsInput.split(',').map(arg => arg.trim()), // Parse args from raw input on submit
         transportType: formData.transportType,
         env: formData.env,
         // Exclude tools and resources as they are not part of InputMcpServerConfig
@@ -232,8 +236,8 @@ function EditMcpServer() {
             type="text"
             id="args"
             name="args"
-            value={formData.args.join(', ')}
-            onChange={handleArgsChange}
+            value={rawArgsInput} // Use rawArgsInput for the input value
+            onChange={handleRawArgsInputChange} // Update rawArgsInput on change
           />
         </div>
          <div className={styles.formGroup}>

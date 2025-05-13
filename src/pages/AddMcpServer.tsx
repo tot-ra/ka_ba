@@ -45,7 +45,7 @@ function AddMcpServer() {
   };
 
   const handleArgsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewServer({ ...newServer, args: e.target.value.split(',').map(arg => arg.trim()) });
+    setNewServer({ ...newServer, args: e.target.value.split(',') });
   };
 
   const handleEnvChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
