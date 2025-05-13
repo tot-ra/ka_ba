@@ -160,8 +160,9 @@ func startHTTPServer(
 		agentDescription, 
 		agentModel, 
 		jwtSecretString string, 
-		apiKeys []string, 
+		apiKeys []string,
 		availableTools map[string]tools.Tool,
+		mcpToolInstance *tools.McpTool, // Add mcpToolInstance
 	) {
 	// --- Process Auth Configuration ---
 	jwtAuthEnabled := jwtSecretString != ""
@@ -457,8 +458,8 @@ func startHTTPServer(
 		}
 	}
 
-	// composePromptHandler composes the system prompt based on selected tools
-	composePromptHandler := func(availableTools map[string]tools.Tool) http.HandlerFunc {
+	// composePromptHandler composes the system prompt based on selected tools and MCP servers.
+	composePromptHandler := func(availableTools map[string]tools.Tool, mcpToolInstance *tools.McpTool) http.HandlerFunc { // Add mcpToolInstance
 		return func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -477,8 +478,26 @@ func startHTTPServer(
 				return
 			}
 
-			// System context is now fetched within ComposeSystemPrompt
-			composedPrompt := tools.ComposeSystemPrompt(requestBody.ToolNames, requestBody.McpServerNames, availableTools)
+			// Use the configurations from the McpTool instance
+			if mcpToolInstance == nil || mcpToolInstance.Configs == nil { // Use public Configs field
+				log.Printf("Warning: McpTool instance or configurations not available for composing prompt.")
+				// Proceed with only regular tools if MCP configs are not available
+			}
+
+			var selectedMcpConfigs []tools.McpServerConfig
+			if mcpToolInstance != nil && mcpToolInstance.Configs != nil { // Use public Configs field
+				for _, serverName := range requestBody.McpServerNames {
+					if config, ok := mcpToolInstance.Configs[serverName]; ok { // Use public Configs field
+						selectedMcpConfigs = append(selectedMcpConfigs, config)
+					} else {
+						log.Printf("Warning: Selected MCP server '%s' not found in loaded configurations.", serverName)
+					}
+				}
+			}
+
+
+			// Compose the system prompt
+			composedPrompt := tools.ComposeSystemPrompt(requestBody.ToolNames, selectedMcpConfigs, availableTools)
 
 			// Return the composed prompt as a JSON string
 			response := map[string]string{"systemPrompt": composedPrompt}
@@ -489,17 +508,50 @@ func startHTTPServer(
 		}
 	}
 
+	// updateMcpConfigHandler updates the MCP server configurations for the McpTool.
+	updateMcpConfigHandler := func(mcpToolInstance *tools.McpTool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPut && r.Method != http.MethodPost {
+				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+
+			var requestBody []tools.McpServerConfig // Expecting a JSON array of configs
+
+			if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+				log.Printf("Error decoding MCP config update request body: %v", err)
+				http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+				return
+			}
+
+			// Convert the slice to a map for SetConfigs
+			configMap := make(map[string]tools.McpServerConfig)
+			for _, config := range requestBody {
+				configMap[config.Name] = config
+			}
+
+			mcpToolInstance.SetConfigs(configMap) // Call the SetConfigs method on McpTool
+
+			log.Printf("MCP server configurations updated successfully. Loaded %d servers.", len(configMap))
+
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": fmt.Sprintf("MCP server configurations updated. Loaded %d servers.", len(configMap))})
+		}
+	}
+
 	// --- Route Setup ---
 
 	// Public endpoints remain the same
 	http.HandleFunc("/.well-known/agent.json", agentCardHandler(dynamicAgentCard))
 	http.HandleFunc("/health", healthHandler)
 
-	// New endpoints for tool management, prompt composition, and prompt update
+	// New endpoints for tool management, prompt composition, prompt update, and MCP config update
 	// Register these specific paths BEFORE the root handler
 	http.HandleFunc("/tools", toolsHandler(availableTools))
-	http.HandleFunc("/compose-prompt", composePromptHandler(availableTools))
-	http.HandleFunc("/system-prompt", updateSystemPromptHandler(llmClient)) // Register the new handler
+	http.HandleFunc("/compose-prompt", composePromptHandler(availableTools, mcpToolInstance)) // Pass mcpToolInstance
+	http.HandleFunc("/system-prompt", updateSystemPromptHandler(llmClient)) // Register the system prompt handler
+	http.HandleFunc("/set-mcp-config", updateMcpConfigHandler(mcpToolInstance)) // Register the new MCP config handler
 
 
 	// Root handler for all JSON-RPC requests (should be registered last)
@@ -517,6 +569,6 @@ func startHTTPServer(
 	// --- Start Server ---
 	listenAddr := fmt.Sprintf(":%d", port)
 	fmt.Printf("[http] Agent server running at http://localhost:%d/\n", port)
-	fmt.Println("[http] Registered Handlers: /.well-known/agent.json, /health, /tools, /compose-prompt, /system-prompt, /") // Updated log message order
+	fmt.Println("[http] Registered Handlers: /.well-known/agent.json, /health, /tools, /compose-prompt, /system-prompt, /set-mcp-config, /") // Updated log message order
 	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }

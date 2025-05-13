@@ -20,7 +20,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc --project tsconfig.json && mkdir -p dist/src && cp src/schema.graphql dist/graphql/ && cp ../src/types.ts dist/src/types.js",
+    "build": "tsc --project tsconfig.json && mkdir -p dist/src && cp src/schema.graphql dist/ && cp ../src/types.ts dist/src/types.js",
     "start": "node dist/index.js"
   }
 }
