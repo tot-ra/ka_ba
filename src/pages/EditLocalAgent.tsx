@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import styles from './EditLocalAgent.module.css'; // Use the new CSS module
 import AgentList from '../components/AgentList'; // Import AgentList
@@ -7,8 +6,6 @@ import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import Button from '../components/Button';
 import AgentLogs from '../components/AgentLogs'; // Import AgentLogs
 import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the sendGraphQLRequest utility
-
-type MessageType = 'success' | 'error' | 'info' | null;
 
 interface ToolDefinition {
   name: string;
@@ -73,8 +70,7 @@ const EditLocalAgent: React.FC = () => {
       setIsLoadingAgent(true);
       setErrorLoadingAgent(null);
       try {
-        const response = await axios.post('http://localhost:3000/graphql', {
-          query: `
+        const response = await sendGraphQLRequest(`
             query GetAgent($agentId: ID!) {
               agent(id: $agentId) {
                 id
@@ -86,11 +82,14 @@ const EditLocalAgent: React.FC = () => {
                 pid # Fetch pid
               }
             }
-          `,
-          variables: { agentId },
-        });
-        const agent = response.data.data.agent;
-        if (agent && agent.id) {
+          `, { agentId });
+
+        if (response.errors) {
+          console.error('GraphQL errors fetching agent details:', response.errors);
+          setErrorLoadingAgent('Failed to fetch agent details: ' + response.errors.map(err => err.message).join(', '));
+          setIsLoadingAgent(false);
+        } else if (response.data?.agent) {
+          const agent = response.data.agent as AgentDetails; // Add type assertion
           setAgentDetails(agent);
           setComposedSystemPrompt(agent.systemPrompt || ''); // Initialize prompt with existing one
           // Note: We don't have info on *which* tools were used to compose the *current* prompt,
@@ -102,8 +101,7 @@ const EditLocalAgent: React.FC = () => {
         }
       } catch (error: any) {
         console.error('Error fetching agent details:', error);
-        const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
-        setErrorLoadingAgent(`Error loading agent: ${message}`);
+        setErrorLoadingAgent(`Error loading agent: ${error.message}`);
         setIsLoadingAgent(false);
       }
     };
@@ -117,8 +115,7 @@ const EditLocalAgent: React.FC = () => {
       setIsLoadingAgents(true);
       setErrorLoadingAgents(null);
       try {
-        const response = await axios.post('http://localhost:3000/graphql', {
-          query: `
+        const GET_AGENTS_QUERY = `
             query GetAgents {
               agents {
                 id
@@ -129,19 +126,21 @@ const EditLocalAgent: React.FC = () => {
                 pid # Fetch pid for AgentList
               }
             }
-          `,
-        });
-        const agents = response.data.data.agents;
-        if (Array.isArray(agents)) {
-          setAllAgents(agents);
+          `;
+        const response = await sendGraphQLRequest(GET_AGENTS_QUERY);
+
+        if (response.errors) {
+          console.error('GraphQL errors fetching agents:', response.errors);
+          setErrorLoadingAgents('Failed to load agent list: ' + response.errors.map(err => err.message).join(', '));
+        } else if (Array.isArray(response.data?.agents)) {
+          setAllAgents(response.data.agents as AgentDetails[]); // Add type assertion
         } else {
-          console.error('Failed to fetch agents or received invalid data:', response.data);
+          console.error('Failed to fetch agents or received invalid data:', response);
           setErrorLoadingAgents('Failed to load agent list.');
         }
       } catch (error: any) {
         console.error('Error fetching agents:', error);
-        const message = error.response?.data?.errors?.[0]?.message || error.message || 'An unknown error occurred.';
-        setErrorLoadingAgents(`Error loading agent list: ${message}`);
+        setErrorLoadingAgents(`Error loading agent list: ${error.message}`);
       } finally {
         setIsLoadingAgents(false);
       }
@@ -195,22 +194,23 @@ const EditLocalAgent: React.FC = () => {
   const fetchAvailableTools = async (agentId: string) => {
     setIsFetchingTools(true);
     try {
-      const response = await axios.post('http://localhost:3000/graphql', {
-        query: `
+      const AVAILABLE_TOOLS_QUERY = `
           query AvailableTools($agentId: ID!) {
             availableTools(agentId: $agentId) {
               name
               description
             }
-          }
-        `,
-        variables: { agentId },
-      });
-      const tools = response.data.data.availableTools;
-      if (Array.isArray(tools)) {
-        setAvailableTools(tools);
+            }
+          `;
+      const response = await sendGraphQLRequest(AVAILABLE_TOOLS_QUERY, { agentId });
+
+      if (response.errors) {
+        console.error('GraphQL errors fetching available tools:', response.errors);
+        // Optionally set an error message for tools
+      } else if (Array.isArray(response.data?.availableTools)) {
+        setAvailableTools(response.data.availableTools as ToolDefinition[]); // Add type assertion
       } else {
-        console.error('Failed to fetch available tools or received invalid data:', response.data);
+        console.error('Failed to fetch available tools or received invalid data:', response);
         // Optionally set an error message for tools
       }
     } catch (error: any) {
@@ -234,21 +234,21 @@ const EditLocalAgent: React.FC = () => {
       const composePromptWithAll = async () => {
         setIsComposingPrompt(true);
         try {
-          const response = await axios.post('http://localhost:3000/graphql', {
-            query: `
+          const COMPOSE_PROMPT_MUTATION = `
               mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
                 composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
               }
-            `,
-            variables: { 
-              agentId: agentDetails.id, 
-              toolNames: availableTools.map(tool => tool.name),
-              mcpServerNames: mcpServers.map(server => server.name),
-            },
+            `;
+          const response = await sendGraphQLRequest(COMPOSE_PROMPT_MUTATION, {
+            agentId: agentDetails.id,
+            toolNames: availableTools.map(tool => tool.name),
+            mcpServerNames: mcpServers.map(server => server.name),
           });
-          const composedPrompt = response.data.data.composeSystemPrompt;
-          if (typeof composedPrompt === 'string') {
-            setComposedSystemPrompt(composedPrompt);
+
+          if (response.errors) {
+            console.error('GraphQL errors auto-composing system prompt:', response.errors);
+          } else if (typeof response.data?.composeSystemPrompt === 'string') {
+            setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
           }
         } catch (error) {
           console.error('Error auto-composing system prompt:', error);
@@ -256,7 +256,7 @@ const EditLocalAgent: React.FC = () => {
           setIsComposingPrompt(false);
         }
       };
-      
+
       composePromptWithAll();
     }
   }, [availableTools, mcpServers, agentDetails?.id]); // Depend on both tools and MCP servers
@@ -270,32 +270,31 @@ const EditLocalAgent: React.FC = () => {
       // Automatically recompose prompt when selection changes
       if (agentDetails?.id) {
         setIsComposingPrompt(true);
-        axios.post('http://localhost:3000/graphql', {
-          query: `
+        const COMPOSE_PROMPT_MUTATION = `
             mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
               composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
             }
-          `,
-          variables: { 
-            agentId: agentDetails.id, 
-            toolNames: newSelection,
-            mcpServerNames: selectedMcpServers, // Include current MCP server selection
-          },
+          `;
+        sendGraphQLRequest(COMPOSE_PROMPT_MUTATION, {
+          agentId: agentDetails.id,
+          toolNames: newSelection,
+          mcpServerNames: selectedMcpServers, // Include current MCP server selection
         })
-        .then(response => {
-          const composedPrompt = response.data.data.composeSystemPrompt;
-          if (typeof composedPrompt === 'string') {
-            setComposedSystemPrompt(composedPrompt);
-          }
-        })
-        .catch(error => {
-          console.error('Error recomposing system prompt:', error);
-        })
-        .finally(() => {
-          setIsComposingPrompt(false);
-        });
+          .then(response => {
+            if (response.errors) {
+              console.error('GraphQL errors recomposing system prompt:', response.errors);
+            } else if (typeof response.data?.composeSystemPrompt === 'string') {
+              setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
+            }
+          })
+          .catch(error => {
+            console.error('Error recomposing system prompt:', error);
+          })
+          .finally(() => {
+            setIsComposingPrompt(false);
+          });
       }
-      
+
       return newSelection;
     });
   }, [agentDetails?.id, selectedMcpServers]); // Depend on agentDetails and selectedMcpServers
@@ -309,30 +308,28 @@ const EditLocalAgent: React.FC = () => {
       // Automatically recompose prompt when selection changes
       if (agentDetails?.id) {
         setIsComposingPrompt(true);
-        axios.post('http://localhost:3000/graphql', {
-          query: `
+        sendGraphQLRequest(`
             mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
               composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
             }
-          `,
-          variables: {
-            agentId: agentDetails.id,
-            toolNames: selectedTools, // Include current tool selection
-            mcpServerNames: newSelection,
-          },
+          `, {
+          agentId: agentDetails.id,
+          toolNames: selectedTools, // Include current tool selection
+          mcpServerNames: newSelection,
         })
-        .then(response => {
-          const composedPrompt = response.data.data.composeSystemPrompt;
-          if (typeof composedPrompt === 'string') {
-            setComposedSystemPrompt(composedPrompt);
-          }
-        })
-        .catch(error => {
-          console.error('Error recomposing system prompt:', error);
-        })
-        .finally(() => {
-          setIsComposingPrompt(false);
-        });
+          .then(response => {
+            if (response.errors) {
+              console.error('GraphQL errors recomposing system prompt:', response.errors);
+            } else if (typeof response.data?.composeSystemPrompt === 'string') {
+              setComposedSystemPrompt(response.data.composeSystemPrompt as string); // Add type assertion
+            }
+          })
+          .catch(error => {
+            console.error('Error recomposing system prompt:', error);
+          })
+          .finally(() => {
+            setIsComposingPrompt(false);
+          });
       }
 
       return newSelection;
@@ -350,21 +347,22 @@ const EditLocalAgent: React.FC = () => {
 
     setIsUpdatingPrompt(true);
     try {
-      const response = await axios.post('http://localhost:3000/graphql', {
-        query: `
+      const UPDATE_AGENT_PROMPT_MUTATION = `
           mutation UpdateAgentSystemPrompt($agentId: ID!, $systemPrompt: String!) {
             updateAgentSystemPrompt(agentId: $agentId, systemPrompt: $systemPrompt) {
               id
               name
             }
-          }
-        `,
-        variables: { agentId: agentDetails.id, systemPrompt: composedSystemPrompt },
-      });
-      const updatedAgent = response.data.data.updateAgentSystemPrompt;
-      if (updatedAgent && updatedAgent.id) {
+            }
+          `;
+      const response = await sendGraphQLRequest(UPDATE_AGENT_PROMPT_MUTATION, { agentId: agentDetails.id, systemPrompt: composedSystemPrompt });
+
+      if (response.errors) {
+        console.error('GraphQL errors updating agent system prompt:', response.errors);
+        // Optionally set an error message
+      } else if (response.data?.updateAgentSystemPrompt?.id) {
         // Success - maybe show a message or navigate back
-        console.log('Agent system prompt updated:', updatedAgent);
+        console.log('Agent system prompt updated:', response.data.updateAgentSystemPrompt);
         // Optionally navigate back to agent list or show success
         // navigate('/agents');
 
@@ -372,7 +370,7 @@ const EditLocalAgent: React.FC = () => {
         navigate(`/agents/view/${agentDetails.id}`);
 
       } else {
-        console.error('Failed to update agent system prompt or received invalid data:', response.data);
+        console.error('Failed to update agent system prompt or received invalid data:', response);
         // Optionally set an error message
       }
     } catch (error: any) {
@@ -392,17 +390,16 @@ const EditLocalAgent: React.FC = () => {
   const handleStopAgent = useCallback(async (agentId: string) => {
     console.log('Attempting to stop agent:', agentId);
     try {
-      const response = await axios.post('http://localhost:3000/graphql', {
-        query: `
+      const response = await sendGraphQLRequest(`
           mutation StopKaAgent($id: ID!) {
             stopKaAgent(id: $id)
           }
-        `,
-        variables: {
-          id: agentId,
-        },
+        `, {
+        id: agentId,
       });
-      if (response.data.data.stopKaAgent) {
+      if (response.errors) {
+        console.error('GraphQL errors stopping agent:', response.errors);
+      } else if (response.data?.stopKaAgent) {
         console.log('Agent stopped successfully:', agentId);
         // Refresh the agent list via context after stopping
         fetchAgentsFromContext();
