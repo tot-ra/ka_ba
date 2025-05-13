@@ -8,25 +8,39 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath" // Import filepath for joining paths
 	"strings"
 	"sync" // Import sync for WaitGroup
-
-	// Assuming McpServerConfig is defined elsewhere or needs to be defined here
 )
 
-// Define McpServerConfig struct locally for now, matching the frontend/backend structure
+// Define the structure for ToolDefinition to match the schema
+type ToolDefinition struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	// Add input schema later if needed
+}
+
+// McpServerConfig represents the configuration for an MCP server.
 type McpServerConfig struct {
-	Name        string            `json:"name"`
-	Timeout     int               `json:"timeout"`
-	Command     string            `json:"command"`
-	Args        []string          `json:"args"`
-	TransportType string          `json:"transportType"` // Should be "stdio" for this tool
-	Env         map[string]string `json:"env"`
+	Name          string           `json:"name"`
+	Timeout       int              `json:"timeout"`
+	Command       string           `json:"command"`
+	Args          []string         `json:"args"`
+	TransportType string           `json:"transportType"` // Should be "stdio" for this tool
+	Env           map[string]string `json:"env"`
+	Tools         []ToolDefinition `json:"tools"`     // Added tools field
+	Resources     []string         `json:"resources"` // Added resources field
 }
 
 // McpTool is a Tool implementation for interacting with MCP servers via stdio.
-type McpTool struct{}
+type McpTool struct{
+	Configs map[string]McpServerConfig // Add field to store configurations (made public)
+}
+
+// SetConfigs updates the MCP server configurations for the McpTool.
+func (t *McpTool) SetConfigs(configs map[string]McpServerConfig) {
+	t.Configs = configs // Update reference
+	log.Printf("[McpTool] Updated MCP server configurations. Loaded %d servers.", len(t.Configs)) // Update reference
+}
 
 // GetName returns the name of the MCP tool.
 func (t *McpTool) GetName() string {
@@ -43,21 +57,20 @@ func (t *McpTool) GetDescription() string {
 // based on selected servers. This definition is more of a generic template
 // for the Tool interface contract.
 func (t *McpTool) GetXMLDefinition() string {
-	return `<use_mcp_tool>
-<server_name>server name here</server_name>
-<tool_name>tool name here</tool_name>
-<arguments>
-{
-  "param1": "value1",
-  "param2": "value2"
-}
-</arguments>
-</use_mcp_tool>
+	var promptBuilder strings.Builder
 
-<access_mcp_resource>
-<server_name>server name here</server_name>
-<uri>resource URI here</uri>
-</access_mcp_resource>`
+	promptBuilder.WriteString(`MCP tool is more advanced than other tools as it uses MCP servers which have own tool and resoruce definitions. You can interact with specific MCP server tool using a "tool" attribute within tool tag.`)
+	fmt.Fprintf(&promptBuilder, "Example format for using an MCP server tool:\n")
+	fmt.Fprintf(&promptBuilder, "<tool id=\"mcp\" server=\"server name here\" tool=\"tool name here\">\n")
+	fmt.Fprintf(&promptBuilder, "{\n")
+	fmt.Fprintf(&promptBuilder, "  \"param1\": \"value1\",\n")
+	fmt.Fprintf(&promptBuilder, "  \"param2\": \"value2\"\n")
+	fmt.Fprintf(&promptBuilder, "}\n")
+	fmt.Fprintf(&promptBuilder, "</tool>\n\n")
+
+	fmt.Fprintf(&promptBuilder, "Example format for accessing an MCP resource:\n")
+	fmt.Fprintf(&promptBuilder, "<tool id=\"mcp\" server=\"server name here\" resource=\"resource URI here\"></tool>\n")
+	return promptBuilder.String()
 }
 
 // Execute performs the MCP tool action.
@@ -72,36 +85,16 @@ func (t *McpTool) Execute(ctx context.Context, callDetails FunctionCall) (string
 		return "", fmt.Errorf("mcp tool requires a 'server' attribute")
 	}
 
-	// --- 1. Read MCP Server Configurations ---
-	// Assuming the config file is at the project root in src/config/mcp_servers.json
-	// Need to find the project root relative to the ka executable.
-	// A more robust solution might involve passing the config path to ka.
-	// For now, assume ka is run from the project root or can find the config file.
-	configPath := filepath.Join("src", "config", "mcp_servers.json")
-	log.Printf("[McpTool] Attempting to read MCP server config from: %s", configPath)
-
-	configBytes, err := os.ReadFile(configPath)
-	if err != nil {
-		log.Printf("[McpTool] Error reading MCP server config file %s: %v", configPath, err)
-		return "", fmt.Errorf("failed to read MCP server configuration: %w", err)
-	}
-
-	var allConfigs []McpServerConfig
-	if err := json.Unmarshal(configBytes, &allConfigs); err != nil {
-		log.Printf("[McpTool] Error unmarshalling MCP server config file %s: %v", configPath, err)
-		return "", fmt.Errorf("failed to parse MCP server configuration: %w", err)
+	// --- 1. Use the stored MCP Server Configurations ---
+	// Check if configurations have been set
+	if t.Configs == nil || len(t.Configs) == 0 { // Update reference
+		log.Printf("[McpTool] No MCP server configurations loaded.")
+		return "", fmt.Errorf("no MCP server configurations loaded. Please configure the agent.")
 	}
 
 	// --- 2. Find the specified MCP Server Configuration ---
-	var serverConfig *McpServerConfig
-	for i := range allConfigs {
-		if allConfigs[i].Name == serverName {
-			serverConfig = &allConfigs[i]
-			break
-		}
-	}
-
-	if serverConfig == nil {
+	serverConfig, ok := t.Configs[serverName] // Update reference
+	if !ok {
 		log.Printf("[McpTool] MCP server configuration not found for name: %s", serverName)
 		return "", fmt.Errorf("mcp server configuration not found for '%s'", serverName)
 	}
@@ -136,7 +129,7 @@ func (t *McpTool) Execute(ctx context.Context, callDetails FunctionCall) (string
 		}
 
 		// Construct the JSON-RPC request for tool usage
-		jsonRPCRequestPayload, err = json.Marshal(map[string]interface{}{
+		jsonRPCRequestPayload, err := json.Marshal(map[string]interface{}{
 			"jsonrpc": "2.0",
 			"method":  "use_tool", // Standard MCP method for tool usage
 			"params": map[string]interface{}{
@@ -160,7 +153,7 @@ func (t *McpTool) Execute(ctx context.Context, callDetails FunctionCall) (string
 		}
 
 		// Construct the JSON-RPC request for resource access
-		jsonRPCRequestPayload, err = json.Marshal(map[string]interface{}{
+		jsonRPCRequestPayload, err := json.Marshal(map[string]interface{}{
 			"jsonrpc": "2.0",
 			"method":  "access_resource", // Standard MCP method for resource access
 			"params": map[string]interface{}{

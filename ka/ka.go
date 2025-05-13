@@ -29,8 +29,8 @@ func main() {
 	// Parse command line flags
 	flags := parseFlags()
 
-	// Load available tools
-	availableToolsMap := loadTools()
+	// Load available tools and get the McpTool instance
+	availableToolsMap, mcpToolInstance := loadTools()
 
 	// Determine port from flags and environment
 	port := determinePort(flags.portFlag)
@@ -42,7 +42,7 @@ func main() {
 	currentDir := getCurrentWorkingDirectory()
 
 	if flags.serveFlag {
-		runServerMode(flags, port, availableToolsMap, currentDir)
+		runServerMode(flags, port, availableToolsMap, mcpToolInstance, currentDir) // Pass mcpToolInstance
 	} else {
 		runCLIMode(flags, availableToolsMap) // currentDir no longer passed
 	}
@@ -59,6 +59,7 @@ type FlagOptions struct {
 	descriptionFlag      string
 	jwtSecretFlag        string
 	apiKeysFlag          string
+	mcpConfigFlag        string // Add flag for MCP server configuration
 }
 
 func parseFlags() FlagOptions {
@@ -73,6 +74,7 @@ func parseFlags() FlagOptions {
 	flag.StringVar(&flags.descriptionFlag, "description", "A spawned ka agent instance.", "Description of the agent")
 	flag.StringVar(&flags.jwtSecretFlag, "jwt-secret", "", "JWT secret key for securing endpoints (if provided, JWT auth is enabled)")
 	flag.StringVar(&flags.apiKeysFlag, "api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
+	flag.StringVar(&flags.mcpConfigFlag, "mcp-config", "", "Path to MCP server configuration file or JSON string") // Define the new flag
 
 	// Redirect standard log output to stdout
 	log.SetOutput(os.Stdout)
@@ -81,13 +83,20 @@ func parseFlags() FlagOptions {
 	return flags
 }
 
-func loadTools() map[string]tools.Tool {
+// loadTools loads all available tools and returns the map and the McpTool instance.
+func loadTools() (map[string]tools.Tool, *tools.McpTool) {
 	availableToolsSlice := tools.GetAllTools()
 	availableToolsMap := make(map[string]tools.Tool)
+	var mcpToolInstance *tools.McpTool // Declare a variable to hold the McpTool instance
+
 	for _, tool := range availableToolsSlice {
 		availableToolsMap[tool.GetName()] = tool
+		// Check if the tool is the McpTool and store its instance
+		if mcpTool, ok := tool.(*tools.McpTool); ok {
+			mcpToolInstance = mcpTool
+		}
 	}
-	return availableToolsMap
+	return availableToolsMap, mcpToolInstance
 }
 
 func determinePort(portFlag int) int {
@@ -121,7 +130,7 @@ func getCurrentWorkingDirectory() string {
 	return currentDir
 }
 
-func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]tools.Tool, currentDir string) {
+func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]tools.Tool, mcpToolInstance *tools.McpTool, currentDir string) { // Add mcpToolInstance
 	fmt.Println("[main] Starting in server mode...")
 
 	// Initialize task store
@@ -148,6 +157,7 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 		flags.jwtSecretFlag,
 		apiKeys,
 		availableToolsMap,
+		mcpToolInstance, // Pass mcpToolInstance
 	)
 }
 
@@ -254,8 +264,8 @@ func composeCliSystemMessage(availableToolsMap map[string]tools.Tool) string {
 	}
 
 	// System context is now fetched within ComposeSystemPrompt
-	// In CLI mode, no MCP servers are selected, so pass an empty slice.
-	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, []string{}, availableToolsMap)
+	// In CLI mode, no MCP servers are selected, so pass an empty slice of McpServerConfig.
+	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, []tools.McpServerConfig{}, availableToolsMap)
 	fmt.Printf("[main] Using CLI system message:\n%s\n", cliSystemMessage)
 	return cliSystemMessage
 }

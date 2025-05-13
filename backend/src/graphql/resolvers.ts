@@ -214,7 +214,42 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
         return context.agentManager.removeAgent(id);
       },
       spawnKaAgent: async (_parent: any, args: { model?: string, systemPrompt?: string, apiBaseUrl?: string, port?: number | null, name?: string, description?: string }, context: ApolloContext, _info: any): Promise<Agent | null> => {
-        return context.agentManager.spawnLocalAgent(args);
+        const spawnedAgent = await context.agentManager.spawnLocalAgent(args);
+
+        if (spawnedAgent) {
+          try {
+            // Read MCP server configurations
+            const mcpServers = await readMcpServers();
+            console.log(`[GraphQL spawnKaAgent] Read ${mcpServers.length} MCP server configurations.`);
+
+            if (mcpServers.length > 0) {
+              // Send MCP configurations to the spawned agent
+              const setConfigUrl = `${spawnedAgent.url.replace(/\/+$/, '')}/set-mcp-config`;
+              console.log(`[GraphQL spawnKaAgent] Sending MCP configurations to agent at ${setConfigUrl}`);
+              await axios.post(setConfigUrl, mcpServers); // Send as JSON array
+              console.log(`[GraphQL spawnKaAgent] Successfully sent MCP configurations to agent ${spawnedAgent.id}.`);
+            } else {
+              console.log(`[GraphQL spawnKaAgent] No MCP server configurations to send to agent ${spawnedAgent.id}.`);
+            }
+          } catch (error: any) {
+            console.error(`[GraphQL spawnKaAgent] Error sending MCP configurations to agent ${spawnedAgent.id}:`, error);
+            // Log the original error details for debugging
+            if (error.response) {
+              console.error(`[GraphQL spawnKaAgent] Agent response status: ${error.response.status}`);
+              console.error(`[GraphQL spawnKaAgent] Agent response data:`, error.response.data);
+              console.error(`[GraphQL spawnKaAgent] Agent response headers:`, error.response.headers);
+            } else if (error.request) {
+              console.error(`[GraphQL spawnKaAgent] No response received from agent. Request details:`, error.request);
+            } else {
+              console.error(`[GraphQL spawnKaAgent] Error setting up the request to agent:`, error.message);
+            }
+            // Decide how to handle this error: fail the spawn mutation or just log a warning?
+            // For now, we'll log a warning and return the agent, as the agent might still function without MCP tools.
+            // A more robust solution might require the agent to confirm config received.
+          }
+        }
+
+        return spawnedAgent;
       },
       stopKaAgent: (_parent: any, { id }: { id: string }, context: ApolloContext, _info: any): boolean => {
         // Use removeAgent which handles stopping local agents internally

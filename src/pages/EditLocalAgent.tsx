@@ -516,7 +516,7 @@ const EditLocalAgent: React.FC = () => {
                   <textarea
                     value={composedSystemPrompt}
                     onChange={(e) => setComposedSystemPrompt(e.target.value)}
-                    rows={15}
+                    rows={30}
                     className={styles.formTextarea}
                   />
 

@@ -34,7 +34,7 @@ func (t *AddTaskTool) GetName() string {
 
 // GetDescription returns a description of the tool.
 func (t *AddTaskTool) GetDescription() string {
-	return "Creates a new, independent task that will be processed separately. Provide a descriptive name, a short description (which becomes the initial prompt for the new task), and the full context (which becomes the system prompt for the new task). This new task must not conflict with or depend on the completion of the current task, as it may be started immediately by another process."
+	return "Creates a new, independent task that will be processed separately. It must not conflict (affect same files) with or depend on the completion of the current task, as it may be started immediately by another process. New task speeds up overall workflow by allowing parallel processing of tasks, but is tricky to predict potential conflicts, so use with caution."
 }
 
 // GetXMLDefinition returns the XML structure for the LLM to use.
@@ -42,7 +42,7 @@ func (t *AddTaskTool) GetXMLDefinition() string {
 	return `<tool id="add_task">{
   "name": "A concise and descriptive name for the new task.",
   "description": "A short description or initial prompt for the new task. This will be treated as the first user message to the new task.",
-  "context": "The full context, detailed instructions, or system prompt for the new task. This should contain all necessary information for the new task to be understood and executed independently."
+  "context": "The full context, detailed instructions. This should contain all necessary information for the new task to be understood and executed independently."
 }</tool>`
 }
 
