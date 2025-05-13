@@ -11,6 +11,7 @@
 - Be concise, write clean code
 - Instead of writing // TODO ..., add your tasks to TODO.md
 - You MUST NOT write any comments
+- DO NOT change code that is not related to the task you are focusing on. If want something to improve - create tasks instead.
 - When writing code, check similar code around it to be consistent (for example how DB access functions are used)
 - When writing new code, consider moving it to a new file if current file is getting too big (> 500 lines)
 - When writing tests, create new small tests. Do not add multiple cases in one test, do not use parametric tests.

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "aaa",
+    "timeout": 60,
+    "command": "npx",
+    "args": [
+      "-y @upstash/context7-mcp@latest"
+    ],
+    "transportType": "stdio",
+    "env": {}
+  }
+]

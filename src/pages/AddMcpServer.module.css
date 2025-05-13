@@ -1,0 +1,35 @@
+/* Styles for the AddMcpServer page */
+.container {
+  padding: 20px;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  max-width: 600px; /* Increased max-width */
+  margin-bottom: 20px;
+}
+
+.form label {
+  padding-top: 5px; /* Align labels with input fields */
+}
+
+.form input[type="text"],
+.form input[type="number"],
+.form textarea {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+  box-sizing: border-box; /* Include padding and border in element's total width */
+}
+
+.form textarea {
+  resize: vertical; /* Allow vertical resizing */
+}
+
+.buttonContainer {
+  grid-column: span 2;
+  text-align: right;
+}

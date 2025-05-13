@@ -8,6 +8,26 @@ type Agent {
   systemPrompt: String # Add systemPrompt field
 }
 
+# --- MCP Server Related Types ---
+
+type McpServerConfig {
+  name: String!
+  timeout: Int!
+  command: String!
+  args: [String!]!
+  transportType: String!
+  env: JSONObject!
+}
+
+input InputMcpServerConfig {
+  name: String!
+  timeout: Int!
+  command: String!
+  args: [String!]!
+  transportType: String!
+  env: JSONObject!
+}
+
 # --- Tool Related Types ---
 
 type ToolDefinition {
@@ -103,6 +123,7 @@ type Query {
   agentLogs(agentId: ID!): [String!]
   listTasks(agentId: ID!): [Task!]! # Added query to list tasks for an agent
   availableTools(agentId: ID!): [ToolDefinition!]! # Query to list available tools for an agent
+  mcpServers: [McpServerConfig!]! # Query to list all MCP servers
 }
 
 type Subscription {
@@ -127,6 +148,7 @@ type Mutation {
   ): Task! # Returns the initial task state
   deleteTask(agentId: ID!, taskId: ID!): Boolean!
   updateAgentSystemPrompt(agentId: ID!, systemPrompt: String!): Agent! # Mutation to update an agent's system prompt
+  addMcpServer(server: InputMcpServerConfig!): McpServerConfig! # Mutation to add a new MCP server
   # Removed startWorkflow
   # Removed stopWorkflow
 }

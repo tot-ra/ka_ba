@@ -1,0 +1,16 @@
+- [x] Add in top menu new link "MCP"
+- [x] Add new view "ListMCP" which will list mcp servers
+- [x] Add ability to add new MCP server
+- [x] Store these mcp servers in a json file
+- [x] Implement backend endpoints to read and write mcp_servers.json
+- [x] Separate ListMCP into new mcp server creation view and listing
+- [x] Improve layout to use similar styles, same button component like other views
+- [x] Make inputs wider in mcp server creation
+- [x] Add placeholders, change Transport Type to a radio button
+- [x] Remove e.g. from placeholders
+- [x] Fix backend logic for adding MCP servers (corrected file path for mcp_servers.json)
+- [x] Fix mcp server creation to use GraphQL mutation instead of REST endpoint
+- [x] Update MCP server listing to use GraphQL query
+- [ ] Build the project (`make build`)
+- [ ] Test adding a new MCP server via the UI
+- [ ] Test MCP server listing via the UI

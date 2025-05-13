@@ -5,6 +5,8 @@ import AddLocalAgent from './pages/AddLocalAgent'; // Import the new local agent
 import AddExternalAgent from './pages/AddExternalAgent'; // Import the new external agent component
 import EditLocalAgent from './pages/EditLocalAgent'; // Import the new edit local agent component
 import AgentInteraction from './pages/AgentInteraction'; // Import the AgentInteraction component
+import ListMCP from './pages/ListMCP'; // Import the ListMCP component
+import AddMcpServer from './pages/AddMcpServer'; // Import the AddMcpServer component
 // Removed OrchestrationManagement import
 // Removed WorkflowDefinition import
 import './App.css'; // Assuming a basic App.css might be needed
@@ -24,11 +26,16 @@ function App() {
               <li>
                 <Link to="/agents">Agents</Link>
               </li>
+              <li>
+                <Link to="/mcp">MCP servers</Link>
+              </li>
             </ul>
           </nav>
 
           <Routes>
             <Route path="/agents" element={<AgentManagement />} />
+            <Route path="/mcp" element={<ListMCP />} />
+            <Route path="/mcp/add" element={<AddMcpServer />} /> {/* Add route for adding MCP server */}
             <Route path="/add-local-agent" element={<AddLocalAgent />} />
             <Route path="/add-external-agent" element={<AddExternalAgent />} />
             <Route path="/agents/edit/:agentId" element={<EditLocalAgent />} />

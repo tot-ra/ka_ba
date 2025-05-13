@@ -7,6 +7,7 @@ import { GraphQLError } from 'graphql';
 import { ApolloContext } from './server.js';
 import { Repeater } from '@repeaterjs/repeater'; // Import Repeater for AsyncIterator creation
 import axios from 'axios'; // Import axios for HTTP calls to ka agent
+import { readMcpServers, writeMcpServers } from '../services/mcpServerService.js'; // Import MCP server service functions
 
 // Define the payload structure for the agentLogs subscription
 export interface LogEntryPayload {
@@ -38,6 +39,21 @@ interface CreateTaskArgs {
 interface ToolDefinition {
   name: string;
   description: string;
+}
+
+// Define the structure for McpServerConfig to match the schema
+interface McpServerConfig {
+  name: string;
+  timeout: number;
+  command: string;
+  args: string[];
+  transportType: string;
+  env: { [key: string]: string };
+}
+
+// Define interface for addMcpServer mutation arguments
+interface AddMcpServerArgs {
+  server: McpServerConfig;
 }
 
 
@@ -109,7 +125,7 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
               updatedAt: task.updated_at,
               artifacts: task.artifacts, // Assuming artifacts matches directly (might need mapping)
               agentId: agentId, // Add agentId from the query arguments
-            };
+              };
           });
 
           console.log(`[Resolver listTasks] Mapped tasks for agent ${agentId}:`, mappedTasks);
@@ -171,6 +187,19 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
           throw new GraphQLError(`Failed to fetch available tools from agent ${agentId}: ${error.message}`, {
             extensions: { code: 'AGENT_COMMUNICATION_ERROR', agentId: agentId, originalError: { message: error.message, stack: error.stack, responseStatus: error.response?.status, responseData: error.response?.data } },
             originalError: error
+          });
+        }
+      },
+      // Resolver to fetch all MCP servers
+      mcpServers: async (_parent: any, _args: any, _context: ApolloContext, _info: any): Promise<McpServerConfig[]> => {
+        try {
+          const servers = await readMcpServers();
+          return servers;
+        } catch (error: any) {
+          console.error('Error adding MCP server:', error);
+          throw new GraphQLError('Failed to add MCP server', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR' },
+            originalError: error,
           });
         }
       },
@@ -355,12 +384,12 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
               state: uppercaseState, // Use the validated and converted state
               messages: mapMessages(combinedMessages), // Use the combined and sorted messages
               error: initialTask.status?.state === 'failed' && initialTask.status?.message?.parts?.[0]?.type === 'text'
-                     ? (initialTask.status.message.parts[0] as any).text // Access error message from status.message
-                     : undefined,
-              createdAt: initialTask.status?.timestamp, // Map timestamp
-              updatedAt: initialTask.status?.timestamp, // Map timestamp
-              artifacts: initialTask.artifacts ? JSON.stringify(initialTask.artifacts) : undefined, // Map artifacts (needs proper mapping)
-              agentId: selectedAgent.id, // Add the selected agent's ID
+                       ? (initialTask.status.message.parts[0] as any).text // Access error message from status.message
+                       : undefined,
+                createdAt: initialTask.status?.timestamp, // Map timestamp
+                updatedAt: initialTask.status?.timestamp, // Map timestamp
+                artifacts: initialTask.artifacts ? JSON.stringify(initialTask.artifacts) : undefined, // Map artifacts (needs proper mapping)
+                agentId: selectedAgent.id, // Add the selected agent's ID
             };
             return mappedInitialTask as any; // Cast needed due to structural differences
           } else {
@@ -413,7 +442,15 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
             originalError: error
           });
           }
-        },
+      },
+
+      addMcpServer: async (_parent: any, { server }: AddMcpServerArgs, _context: ApolloContext, _info: any): Promise<McpServerConfig> => { 
+        try { const servers = await readMcpServers(); servers.push(server); await writeMcpServers(servers); return server; } 
+        catch (error: any) { console.error('Error adding MCP server:', error); 
+          throw new GraphQLError('Failed to add MCP server', { extensions: { code: 'INTERNAL_SERVER_ERROR' }, originalError: error, }); } 
+      },
+
+
       },
       Subscription: {
         agentLogs: {
@@ -487,25 +524,25 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
                   updatedAt: payload.status?.timestamp, // Map timestamp from status
                   artifacts: payload.artifacts, // Assuming artifacts matches directly
                   agentId: agentId, // Add agentId from the subscription arguments
-                };
-                push(mappedTask as any); // Push the mapped payload to the iterator
+              };
+              push(mappedTask as any); // Push the mapped payload to the iterator
               };
 
-              context.eventEmitter.on(topic, listener); // Start listening
-              console.log(`[Resolver taskUpdates subscribe] Attached listener to topic ${topic}`);
+            context.eventEmitter.on(topic, listener); // Start listening
+            console.log(`[Resolver taskUpdates subscribe] Attached listener to topic ${topic}`);
 
-              // stop.then is called when the client disconnects
-              await stop;
+            // stop.then is called when the client disconnects
+            await stop;
 
-              context.eventEmitter.off(topic, listener); // Clean up listener
-              console.log(`[Resolver taskUpdates subscribe] Removed listener from topic ${topic} on disconnect`);
+            context.eventEmitter.off(topic, listener); // Clean up listener
+            console.log(`[Resolver taskUpdates subscribe] Removed listener from topic ${topic} on disconnect`);
             });
-          },
-          resolve: (payload: any) => { // Changed resolve payload type to any
-            // The payload is already mapped in the subscribe function
-            return payload;
-          },
+        },
+        resolve: (payload: any) => { // Changed resolve payload type to any
+          // The payload is already mapped in the subscribe function
+          return payload;
         },
       },
+      },
     };
-}
+    }
