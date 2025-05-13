@@ -459,12 +459,15 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
             const mappedInitialTask = {
               id: initialTask.id,
               state: uppercaseState, // Use the validated and converted state
+              name: taskName, // Include the task name
               messages: mapMessages(combinedMessages), // Use the combined and sorted messages
               error: initialTask.status?.state === 'failed' && initialTask.status?.message?.parts?.[0]?.type === 'text'
                        ? (initialTask.status.message.parts[0] as any).text // Access error message from status.message
                        : undefined,
                 createdAt: initialTask.status?.timestamp, // Map timestamp
                 updatedAt: initialTask.status?.timestamp, // Map timestamp
+                createdAtUnixMs: initialTask.status?.timestamp ? new Date(initialTask.status.timestamp).getTime() : Date.now(), // Add createdAtUnixMs
+                updatedAtUnixMs: initialTask.status?.timestamp ? new Date(initialTask.status.timestamp).getTime() : Date.now(), // Add updatedAtUnixMs
                 artifacts: initialTask.artifacts ? JSON.stringify(initialTask.artifacts) : undefined, // Map artifacts (needs proper mapping)
                 agentId: selectedAgent.id, // Add the selected agent's ID
             };

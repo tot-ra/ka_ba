@@ -10,8 +10,9 @@ export const TASK_UPDATES_SUBSCRIPTION = gql`
   subscription TaskUpdates($agentId: ID!) {
     taskUpdates(agentId: $agentId) {
       id
+      name
       state
-      messages { # Use the new messages field
+      messages {
         role
         parts
         timestamp # Include timestamp
@@ -47,17 +48,20 @@ export const CREATE_TASK_MUTATION = gql`
   mutation CreateTask($agentId: ID, $message: InputMessage!) {
     createTask(agentId: $agentId, message: $message) {
       id
+      name
       state
-      messages { # Use the new messages field
+      messages {
         role
         parts
         toolCalls
         toolCallId
-        timestamp # Include timestamp
+        timestamp
       }
       error
       createdAt
+      createdAtUnixMs
       updatedAt
+      updatedAtUnixMs
       artifacts
     }
   }

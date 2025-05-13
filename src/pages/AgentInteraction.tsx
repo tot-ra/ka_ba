@@ -307,6 +307,8 @@ const AgentInteraction: React.FC = () => {
         setError(`GraphQL Error: ${errorMessages}`);
       } else if (response.data?.createTask) {
         const createdTask = response.data.createTask;
+
+        console.log('Created task:', createdTask);
         setCurrentTask(createdTask);
         setError(null);
         setTasks(prevTasks => [createdTask, ...prevTasks]);
@@ -396,7 +398,9 @@ const AgentInteraction: React.FC = () => {
                   taskInput={taskInput}
                   setTaskInput={setTaskInput}
                   onSendTask={handleSendTask}
-                  onSendInput={async (input: { text: string; files: File[] }) => { /* Placeholder for input required */ console.log('Input required handler triggered with:', input); }} // Keep a placeholder with correct signature and explicit type
+                  onSendInput={async (input: { text: string; files: File[] }) => {
+                    console.log('Input required handler triggered with:', input); 
+                  }}
                   isLoading={isLoading}
                   currentTask={currentTask}
                 />
