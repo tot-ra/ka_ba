@@ -53,8 +53,8 @@ func getSystemContext() SystemContext {
 	}
 }
 
-// ComposeSystemPrompt constructs the full XML system prompt based on selected tools.
-func ComposeSystemPrompt(selectedToolNames []string, availableTools map[string]Tool) string {
+// ComposeSystemPrompt constructs the full XML system prompt based on selected tools and MCP servers.
+func ComposeSystemPrompt(selectedToolNames []string, selectedMcpServerNames []string, availableTools map[string]Tool) string {
 	context := getSystemContext()
 	var toolDefinitionsXML strings.Builder
 
@@ -89,14 +89,21 @@ You have access to the following tools:
 `
 	fmt.Fprintf(&toolDefinitionsXML, basePrompt)
 
-	// Add definitions for selected tools
+	// Add descriptions for selected tools
 	for _, toolName := range selectedToolNames {
 		if tool, ok := availableTools[toolName]; ok {
 			fmt.Fprintf(&toolDefinitionsXML, "- %s: %s\n", tool.GetName(), tool.GetDescription())
 		}
 	}
 
-	// Add tool call instruction block with specific formats for each tool
+	// Add descriptions for selected MCP servers
+	if len(selectedMcpServerNames) > 0 {
+		fmt.Fprintf(&toolDefinitionsXML, "- use_mcp_tool: Use a tool provided by a connected MCP server.\n")
+		fmt.Fprintf(&toolDefinitionsXML, "- access_mcp_resource: Access a resource provided by a connected MCP server.\n")
+	}
+
+
+	// Add tool call instruction block with specific formats for each tool and MCP server
 	toolDefinitionsXML.WriteString(`
 Tool Invocation Formats:
 You can invoke tools using the following XML formats. Use the specific format for each tool:
@@ -106,6 +113,38 @@ You can invoke tools using the following XML formats. Use the specific format fo
 			// It's good practice to ensure GetXMLDefinition() doesn't return empty or excessively long strings.
 			// For now, we assume it's well-behaved.
 			fmt.Fprintf(&toolDefinitionsXML, "\nFor tool '%s':\n%s\n", tool.GetName(), tool.GetXMLDefinition())
+		}
+	}
+
+	// Add invocation formats for selected MCP servers
+	// Add invocation formats for selected MCP servers
+	if len(selectedMcpServerNames) > 0 {
+		toolDefinitionsXML.WriteString(`
+For MCP servers:
+You can interact with MCP servers using a single tool tag with the 'id' attribute set to 'mcp' and a 'server' attribute specifying the server name. The content within the tag should be the arguments for the specific tool or resource you want to use on that server.
+
+Example format for using an MCP tool:
+<tool id="mcp" server="[server_name]">
+{
+  "tool_name": "tool name here",
+  "arguments": {
+    "param1": "value1",
+    "param2": "value2"
+  }
+}
+</tool>
+
+Example format for accessing an MCP resource:
+<tool id="mcp" server="[server_name]">
+{
+  "resource_uri": "resource URI here"
+}
+</tool>
+
+Available MCP Servers:
+`)
+		for _, serverName := range selectedMcpServerNames {
+			fmt.Fprintf(&toolDefinitionsXML, "- %s\n", serverName)
 		}
 	}
 

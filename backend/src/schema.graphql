@@ -136,7 +136,7 @@ type Mutation {
   removeAgent(id: ID!): Boolean!
   spawnKaAgent(model: String, systemPrompt: String, apiBaseUrl: String, port: Int, name: String, description: String): Agent!
   stopKaAgent(id: ID!): Boolean!
-  composeSystemPrompt(agentId: ID!, toolNames: [String!]!): String! # Mutation to compose system prompt
+  composeSystemPrompt(agentId: ID!, toolNames: [String!]!, mcpServerNames: [String!]!): String! # Mutation to compose system prompt
   createTask(
     agentId: ID # Optional: Specify agent directly
     sessionId: String # Optional session ID

@@ -6,10 +6,11 @@ func GetAllTools() []Tool {
 		&ListFilesTool{},
 		&GetTimeTool{},
 		&ReadFileTool{},
-		&WriteToFileTool{}, // Added the new WriteToFileTool
+		&WriteToFileTool{},
 		&SearchFilesTool{},
 		&AskFollowupQuestionTool{},
-		&AddTaskTool{}, // Added the new AddTaskTool
+		&AddTaskTool{},
+		&McpTool{}, // Added the new McpTool
 		// Add instances of other tool implementations here as they are created.
 		// Example: &WriteFileTool{}, etc.
 	}

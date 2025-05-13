@@ -5,6 +5,7 @@ import styles from './EditLocalAgent.module.css'; // Use the new CSS module
 import AgentList from '../components/AgentList'; // Import AgentList
 import Button from '../components/Button';
 import AgentLogs from '../components/AgentLogs'; // Import AgentLogs
+import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the sendGraphQLRequest utility
 
 type MessageType = 'success' | 'error' | 'info' | null;
 
@@ -23,6 +24,15 @@ interface AgentDetails {
   pid?: number; // Add pid for AgentList
 }
 
+interface McpServerConfig {
+  name: string;
+  timeout: number;
+  command: string;
+  args: string[];
+  transportType: string;
+  env: { [key: string]: string };
+}
+
 const EditLocalAgent: React.FC = () => {
   const navigate = useNavigate();
   const { agentId } = useParams<{ agentId: string }>(); // Get agentId from URL
@@ -33,11 +43,15 @@ const EditLocalAgent: React.FC = () => {
 
   const [allAgents, setAllAgents] = useState<AgentDetails[]>([]); // State for all agents
   const [isLoadingAgents, setIsLoadingAgents] = useState(true); // Loading state for all agents
-  const [errorLoadingAgents, setErrorLoadingAgents] = useState<string | null>(null); // Error state for all agents
+  const [errorLoadingAgents, setErrorLoadingAgents] = useState<string | null>(null);
 
+  const [mcpServers, setMcpServers] = useState<McpServerConfig[]>([]); // State for MCP servers
+  const [isLoadingMcpServers, setIsLoadingMcpServers] = useState(true); // Loading state for MCP servers
+  const [errorLoadingMcpServers, setErrorLoadingMcpServers] = useState<string | null>(null);
 
   const [availableTools, setAvailableTools] = useState<ToolDefinition[]>([]);
-  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [selectedTools, setSelectedTools] = useState<string[]>([]); // Stores names of selected regular tools
+  const [selectedMcpServers, setSelectedMcpServers] = useState<string[]>([]); // Stores names of selected MCP servers
   const [composedSystemPrompt, setComposedSystemPrompt] = useState<string>('');
   const [isFetchingTools, setIsFetchingTools] = useState(false);
   const [isComposingPrompt, setIsComposingPrompt] = useState(false);
@@ -132,6 +146,48 @@ const EditLocalAgent: React.FC = () => {
     fetchAllAgents();
   }, []); // Fetch agents only once on mount
 
+  // Fetch MCP servers on component mount
+  useEffect(() => {
+    const fetchMcpServers = async () => {
+      setIsLoadingMcpServers(true);
+      setErrorLoadingMcpServers(null);
+      const GET_MCP_SERVERS_QUERY = `
+        query GetMcpServers {
+          mcpServers {
+            name
+            timeout
+            command
+            args
+            transportType
+            env
+          }
+        }
+      `;
+      try {
+        const response = await sendGraphQLRequest(GET_MCP_SERVERS_QUERY);
+
+        if (response.errors) {
+          console.error('GraphQL errors fetching MCP servers:', response.errors);
+          setErrorLoadingMcpServers('Failed to fetch MCP servers: ' + response.errors.map(err => err.message).join(', '));
+        } else if (response.data?.mcpServers) {
+          console.log('MCP servers fetched successfully:', response.data.mcpServers);
+          setMcpServers(response.data.mcpServers);
+        } else {
+          console.error('Unexpected GraphQL response fetching MCP servers:', response);
+          setErrorLoadingMcpServers('Failed to fetch MCP servers: Unexpected response from server.');
+        }
+      } catch (error: any) {
+        setErrorLoadingMcpServers('Failed to fetch MCP servers: ' + error.message);
+        console.error('Error fetching MCP servers:', error);
+      } finally {
+        setIsLoadingMcpServers(false);
+      }
+    };
+
+    fetchMcpServers();
+  }, []); // Fetch MCP servers only once on mount
+
+
   const fetchAvailableTools = async (agentId: string) => {
     setIsFetchingTools(true);
     try {
@@ -162,23 +218,29 @@ const EditLocalAgent: React.FC = () => {
     }
   };
 
-  // Add a new useEffect to automatically select all tools and compose prompt when tools are loaded
+  // Add a new useEffect to automatically select all tools and compose prompt when tools and MCP servers are loaded
   useEffect(() => {
-    if (availableTools.length > 0 && agentDetails?.id) {
+    if (availableTools.length > 0 && mcpServers.length > 0 && agentDetails?.id) {
       // Select all tools automatically
       setSelectedTools(availableTools.map(tool => tool.name));
+      // Select all MCP servers automatically
+      setSelectedMcpServers(mcpServers.map(server => server.name));
       
       // Trigger prompt composition automatically
-      const composePromptWithAllTools = async () => {
+      const composePromptWithAll = async () => {
         setIsComposingPrompt(true);
         try {
           const response = await axios.post('http://localhost:3000/graphql', {
             query: `
-              mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!) {
-                composeSystemPrompt(agentId: $agentId, toolNames: $toolNames)
+              mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
+                composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
               }
             `,
-            variables: { agentId: agentDetails.id, toolNames: availableTools.map(tool => tool.name) },
+            variables: { 
+              agentId: agentDetails.id, 
+              toolNames: availableTools.map(tool => tool.name),
+              mcpServerNames: mcpServers.map(server => server.name),
+            },
           });
           const composedPrompt = response.data.data.composeSystemPrompt;
           if (typeof composedPrompt === 'string') {
@@ -191,9 +253,9 @@ const EditLocalAgent: React.FC = () => {
         }
       };
       
-      composePromptWithAllTools();
+      composePromptWithAll();
     }
-  }, [availableTools, agentDetails?.id]);
+  }, [availableTools, mcpServers, agentDetails?.id]); // Depend on both tools and MCP servers
 
   const handleToolSelection = useCallback((toolName: string) => {
     setSelectedTools(prevSelected => {
@@ -206,11 +268,15 @@ const EditLocalAgent: React.FC = () => {
         setIsComposingPrompt(true);
         axios.post('http://localhost:3000/graphql', {
           query: `
-            mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!) {
-              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames)
+            mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
+              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
             }
           `,
-          variables: { agentId: agentDetails.id, toolNames: newSelection },
+          variables: { 
+            agentId: agentDetails.id, 
+            toolNames: newSelection,
+            mcpServerNames: selectedMcpServers, // Include current MCP server selection
+          },
         })
         .then(response => {
           const composedPrompt = response.data.data.composeSystemPrompt;
@@ -228,7 +294,47 @@ const EditLocalAgent: React.FC = () => {
       
       return newSelection;
     });
-  }, [agentDetails?.id]);
+  }, [agentDetails?.id, selectedMcpServers]); // Depend on agentDetails and selectedMcpServers
+
+  const handleMcpServerSelection = useCallback((serverName: string) => {
+    setSelectedMcpServers(prevSelected => {
+      const newSelection = prevSelected.includes(serverName)
+        ? prevSelected.filter(name => name !== serverName)
+        : [...prevSelected, serverName];
+
+      // Automatically recompose prompt when selection changes
+      if (agentDetails?.id) {
+        setIsComposingPrompt(true);
+        axios.post('http://localhost:3000/graphql', {
+          query: `
+            mutation ComposeSystemPrompt($agentId: ID!, $toolNames: [String!]!, $mcpServerNames: [String!]!) {
+              composeSystemPrompt(agentId: $agentId, toolNames: $toolNames, mcpServerNames: $mcpServerNames)
+            }
+          `,
+          variables: {
+            agentId: agentDetails.id,
+            toolNames: selectedTools, // Include current tool selection
+            mcpServerNames: newSelection,
+          },
+        })
+        .then(response => {
+          const composedPrompt = response.data.data.composeSystemPrompt;
+          if (typeof composedPrompt === 'string') {
+            setComposedSystemPrompt(composedPrompt);
+          }
+        })
+        .catch(error => {
+          console.error('Error recomposing system prompt:', error);
+        })
+        .finally(() => {
+          setIsComposingPrompt(false);
+        });
+      }
+
+      return newSelection;
+    });
+  }, [agentDetails?.id, selectedTools]); // Depend on agentDetails and selectedTools
+
 
   // The handleComposePrompt function has been removed
 
@@ -286,12 +392,16 @@ const EditLocalAgent: React.FC = () => {
   }, []);
 
 
-  if (isLoadingAgent || isLoadingAgents) {
-    return <div className={styles.splitViewContainer}><div className={styles.leftPane}><p>Loading agent details and list...</p></div></div>;
+  if (isLoadingAgent || isLoadingAgents || isLoadingMcpServers) {
+    return <div className={styles.splitViewContainer}><div className={styles.leftPane}><p>Loading agent details, list, and MCP servers...</p></div></div>;
   }
 
   if (errorLoadingAgent) {
     return <div className={styles.splitViewContainer}><div className={styles.leftPane}><p className={styles.alertError}>{errorLoadingAgent}</p></div></div>;
+  }
+
+  if (errorLoadingMcpServers) {
+    return <div className={styles.splitViewContainer}><div className={styles.leftPane}><p className={styles.alertError}>{errorLoadingMcpServers}</p></div></div>;
   }
 
   if (!agentDetails) {
@@ -377,6 +487,29 @@ const EditLocalAgent: React.FC = () => {
                 <p>No tools available for this agent.</p>
               )}
 
+              <h3>Available MCP Servers</h3>
+              {isLoadingMcpServers ? (
+                <p>Loading MCP servers...</p>
+              ) : mcpServers.length > 0 ? (
+                <div>
+                  {mcpServers.map(server => (
+                    <div key={server.name} className={styles.toolCheckbox}> {/* Reuse toolCheckbox style */}
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={selectedMcpServers.includes(server.name)}
+                          onChange={() => handleMcpServerSelection(server.name)}
+                        />
+                        <strong>{server.name}:</strong> {server.transportType} ({server.command} {server.args.join(' ')})
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>No MCP servers configured.</p>
+              )}
+
+
               {composedSystemPrompt && (
                 <div className={styles.composedPromptSection}>
                   <h4>System Prompt:</h4>
@@ -397,11 +530,11 @@ const EditLocalAgent: React.FC = () => {
 
                   <Button
                     onClick={handleUpdateAgentPrompt}
-                    disabled={isUpdatingPrompt}
+                    disabled={isUpdatingPrompt || isComposingPrompt} // Disable while composing
                     variant="primary"
                   >
-                    {isUpdatingPrompt && <div className={styles.spinner}></div>}
-                    {isUpdatingPrompt ? 'Updating Agent...' : 'Update Agent with this Prompt'}
+                    {isUpdatingPrompt || isComposingPrompt ? <div className={styles.spinner}></div> : null}
+                    {isUpdatingPrompt ? 'Updating Agent...' : isComposingPrompt ? 'Composing Prompt...' : 'Update Agent with this Prompt'}
                   </Button>
                 </div>
               )}

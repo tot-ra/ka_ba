@@ -254,7 +254,8 @@ func composeCliSystemMessage(availableToolsMap map[string]tools.Tool) string {
 	}
 
 	// System context is now fetched within ComposeSystemPrompt
-	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, availableToolsMap)
+	// In CLI mode, no MCP servers are selected, so pass an empty slice.
+	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, []string{}, availableToolsMap)
 	fmt.Printf("[main] Using CLI system message:\n%s\n", cliSystemMessage)
 	return cliSystemMessage
 }
