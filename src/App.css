@@ -1,17 +1,35 @@
-/* ba/src/App.css */
-#root {
-  /* Removed max-width and margin: 0 auto */
+nav {
+  display: flex;
+  padding: 0px 20px;
+  background-color: #f0f0f0;
+}
+
+nav h1{
+  margin: 5px 0;
   padding: 0;
 }
 
 nav ul {
-  background: rgb(242, 242, 242);
+  flex-grow: 1;
+  margin: 0;
+  display: flex;
+  flex-direction: row;
   list-style: none;
-  padding: 0;
-  padding: 10px;
+  /* vertical centering */
+  align-items: center;
 }
 
-nav li {
-  display: inline;
-  margin-right: 10px;
+nav ul li{
+  padding: 10px 20px;
+}
+
+nav ul li a {
+  color: black;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.active-link {
+  background-color: #d0d0d0; /* Example background color for active link */
+  border-bottom: 2px solid blue; /* Example border for active link */
 }

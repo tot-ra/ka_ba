@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import Navigation from './components/Navigation';
 import AgentManagement from './pages/AgentManagement';
 import AddLocalAgent from './pages/AddLocalAgent'; // Import the new local agent component
 import AddExternalAgent from './pages/AddExternalAgent'; // Import the new external agent component
@@ -18,21 +19,7 @@ function App() {
     <AgentProvider>
       <Router>
         <div>
-
-          <nav style={{display:'flex', justifyContent:'space-between', padding:'0px 20px', backgroundColor:'#f0f0f0'}}>
-            <h1>🙌🏻 ka_ba 🦚</h1>
-
-            <ul  style={{ flexGrow: 1, marginLeft: '20px'}}>
-
-              <li>
-                <Link to="/agents">Agents</Link>
-              </li>
-              <li>
-                <Link to="/mcp">MCP servers</Link>
-              </li>
-            </ul>
-          </nav>
-
+          <Navigation />
           <Routes>
             <Route path="/agents" element={<AgentManagement />} />
             <Route path="/mcp" element={<ListMCP />} />
