@@ -1,6 +1,7 @@
 import React, { useState, FormEvent } from 'react'; // Import FormEvent
 import styles from './TaskDetails.module.css';
 import { gql, useMutation } from '@apollo/client'; // Import gql and useMutation
+import Button from './Button'; // Import the Button component
 
 import { Message, MessagePart, Task } from '../types';
 
@@ -428,18 +429,18 @@ const getStatusClassName = (state: string | undefined | null): string => {
             rows={3}
             disabled={isSendingMessage} // Disable while sending
           />
-          <button
+          <Button
             type="submit"
             className={styles.sendMessageButton}
-            disabled={!userMessageInput.trim() || isSendingMessage} // Disable if input is empty or sending
-          >
-            {isSendingMessage ? 'Sending...' : 'Send Message'}
-          </button>
-          {sendMessageError && (
-            <div className={styles.errorMessage}>{sendMessageError}</div>
-          )}
-        </form>
-      )}
+          disabled={!userMessageInput.trim() || isSendingMessage} // Disable if input is empty or sending
+        >
+          {isSendingMessage ? 'Sending...' : 'Send Message'}
+        </Button>
+        {sendMessageError && (
+          <div className={styles.errorMessage}>{sendMessageError}</div>
+        )}
+      </form>
+    )}
 
     </div>
   );

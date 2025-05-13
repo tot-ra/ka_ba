@@ -184,3 +184,18 @@
   padding: 8px;
   border-radius: 4px;
 }
+
+.messageInputTextarea {
+  flex-grow: 1;
+  margin-right: 10px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical; /* Allow vertical resizing */
+  width: 100%; /* Make textarea 100% wide */
+  box-sizing: border-box; /* Include padding and border in element's total width */
+}
+
+.sendMessageButton {
+  /* Existing styles for the send button */
+}
