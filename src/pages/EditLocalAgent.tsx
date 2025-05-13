@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import styles from './EditLocalAgent.module.css'; // Use the new CSS module
 import AgentList from '../components/AgentList'; // Import AgentList
+import { useAgent } from '../contexts/AgentContext'; // Import useAgent hook
 import Button from '../components/Button';
 import AgentLogs from '../components/AgentLogs'; // Import AgentLogs
 import { sendGraphQLRequest } from '../utils/graphqlClient'; // Import the sendGraphQLRequest utility
@@ -36,6 +37,9 @@ interface McpServerConfig {
 const EditLocalAgent: React.FC = () => {
   const navigate = useNavigate();
   const { agentId } = useParams<{ agentId: string }>(); // Get agentId from URL
+
+  // Use context for agents and selectedAgentId
+  const { fetchAgents: fetchAgentsFromContext, setSelectedAgentId } = useAgent();
 
   const [agentDetails, setAgentDetails] = useState<AgentDetails | null>(null);
   const [isLoadingAgent, setIsLoadingAgent] = useState(true);
@@ -385,11 +389,35 @@ const EditLocalAgent: React.FC = () => {
     navigate(`/agents/edit/${id}`);
   }, [navigate]);
 
-  const handleStopAgent = useCallback(async (id: string) => {
-    console.log(`Attempting to stop agent with ID: ${id}`);
-    // TODO: Implement actual stop agent logic or lift state
-    alert(`Stop agent functionality not implemented on this page. Agent ID: ${id}`);
-  }, []);
+  const handleStopAgent = useCallback(async (agentId: string) => {
+    console.log('Attempting to stop agent:', agentId);
+    try {
+      const response = await axios.post('http://localhost:3000/graphql', {
+        query: `
+          mutation StopKaAgent($id: ID!) {
+            stopKaAgent(id: $id)
+          }
+        `,
+        variables: {
+          id: agentId,
+        },
+      });
+      if (response.data.data.stopKaAgent) {
+        console.log('Agent stopped successfully:', agentId);
+        // Refresh the agent list via context after stopping
+        fetchAgentsFromContext();
+        // If the stopped agent was selected, deselect it via context and navigate back to the list
+        if (agentDetails?.id === agentId) { // Use agentDetails?.id to check if the current agent is the one stopped
+          setSelectedAgentId(null);
+          navigate('/agents'); // Navigate back to the agent list
+        }
+      } else {
+        console.error('Failed to stop agent:', agentId);
+      }
+    } catch (error) {
+      console.error('Error stopping agent:', error);
+    }
+  }, [fetchAgentsFromContext, setSelectedAgentId, agentDetails?.id]); // Add dependencies
 
 
   if (isLoadingAgent || isLoadingAgents || isLoadingMcpServers) {
