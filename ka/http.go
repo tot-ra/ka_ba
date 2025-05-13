@@ -484,6 +484,8 @@ func startHTTPServer(
 				// Proceed with only regular tools if MCP configs are not available
 			}
 
+			log.Printf("[composePromptHandler] Received MCP server names: %v", requestBody.McpServerNames)
+
 			var selectedMcpConfigs []tools.McpServerConfig
 			if mcpToolInstance != nil && mcpToolInstance.Configs != nil { // Use public Configs field
 				for _, serverName := range requestBody.McpServerNames {
@@ -531,9 +533,12 @@ func startHTTPServer(
 				configMap[config.Name] = config
 			}
 
+			log.Printf("[updateMcpConfigHandler] Received %d MCP server configurations.", len(requestBody))
+			log.Printf("[updateMcpConfigHandler] Calling mcpToolInstance.SetConfigs with configMap: %+v", configMap)
+
 			mcpToolInstance.SetConfigs(configMap) // Call the SetConfigs method on McpTool
 
-			log.Printf("MCP server configurations updated successfully. Loaded %d servers.", len(configMap))
+			log.Printf("[updateMcpConfigHandler] MCP server configurations updated successfully. Loaded %d servers.", len(configMap))
 
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": fmt.Sprintf("MCP server configurations updated. Loaded %d servers.", len(configMap))})
