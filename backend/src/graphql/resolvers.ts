@@ -450,8 +450,50 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
           throw new GraphQLError('Failed to add MCP server', { extensions: { code: 'INTERNAL_SERVER_ERROR' }, originalError: error, }); } 
       },
 
-
+      // Resolver to edit an existing MCP server
+      editMcpServer: async (_parent: any, { name, server }: { name: string, server: McpServerConfig }, _context: ApolloContext, _info: any): Promise<McpServerConfig> => {
+        try {
+          const servers = await readMcpServers();
+          const serverIndex = servers.findIndex(s => s.name === name);
+          if (serverIndex === -1) {
+            throw new GraphQLError(`MCP server with name "${name}" not found.`, {
+              extensions: { code: 'NOT_FOUND' },
+            });
+          }
+          servers[serverIndex] = server;
+          await writeMcpServers(servers);
+          return server;
+        } catch (error: any) {
+          console.error(`Error editing MCP server "${name}":`, error);
+          throw new GraphQLError(`Failed to edit MCP server "${name}"`, {
+            extensions: { code: 'INTERNAL_SERVER_ERROR' },
+            originalError: error,
+          });
+        }
       },
+
+      // Resolver to delete an MCP server
+      deleteMcpServer: async (_parent: any, { name }: { name: string }, _context: ApolloContext, _info: any): Promise<boolean> => {
+        try {
+          const servers = await readMcpServers();
+          const initialLength = servers.length;
+          const updatedServers = servers.filter(s => s.name !== name);
+          if (updatedServers.length === initialLength) {
+             throw new GraphQLError(`MCP server with name "${name}" not found.`, {
+               extensions: { code: 'NOT_FOUND' },
+             });
+          }
+          await writeMcpServers(updatedServers);
+          return true;
+        } catch (error: any) {
+          console.error(`Error deleting MCP server "${name}":`, error);
+          throw new GraphQLError(`Failed to delete MCP server "${name}"`, {
+            extensions: { code: 'INTERNAL_SERVER_ERROR' },
+            originalError: error,
+          });
+        }
+      },
+    },
       Subscription: {
         agentLogs: {
           // Define the subscription topic dynamically based on agentId
