@@ -1,3 +1,4 @@
+- read README.md to understand the project
 - Use TODO.md to split your task into sub-tasks for better planning and overview. 
 - Mark them [x] as complete when you see fit.
 - When you "execute this command" tool, please always add piping of output to a logs file, so that you can read it. For example "make build &> tmp.log" (notice errors piped to stdout)
