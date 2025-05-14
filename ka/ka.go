@@ -190,12 +190,13 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 	}
 
 	// Create TaskExecutor
-	// The system prompt for the TaskExecutor should probably come from configuration or a default
-	// For now, let's use an empty string as the initial system message for the server.
-	// A separate endpoint exists to update the system prompt.
-	serverSystemMessage := ""
+	// Compose a default system message for the TaskExecutor in server mode
+	// This includes the agent's identity, objective, communication style, and available tools.
+	// A separate endpoint exists to update the system prompt dynamically.
+	serverSystemMessage := composeCliSystemMessage(availableToolsMap) // Use the same composition logic as CLI mode
 	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, availableToolsMap, serverSystemMessage)
 	fmt.Printf("[main] TaskExecutor initialized with %d available tools.\n", len(availableToolsMap))
+	log.Printf("[runServerMode] TaskExecutor initialized with system message:\n%s\n", serverSystemMessage) // Added logging
 
 	// Process API keys
 	apiKeys := processAPIKeys(flags.apiKeysFlag)
