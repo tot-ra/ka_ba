@@ -151,15 +151,15 @@ func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message 
 }
 
 // startHTTPServer sets up and starts the HTTP server for the agent.
-// It now accepts the TaskExecutor, the LLMClient, and the map of available tools.
+// It now accepts the TaskExecutor, the LLMClient interface, and the map of available tools.
 func startHTTPServer(
-		taskExecutor *a2a.TaskExecutor, 
-		llmClient *llm.LLMClient, 
-		port int, 
-		agentName, 
-		agentDescription, 
-		agentModel, 
-		jwtSecretString string, 
+		taskExecutor *a2a.TaskExecutor,
+		llmClient llm.LLMClient,
+		port int,
+		agentName,
+		agentDescription,
+		agentModel,
+		jwtSecretString string,
 		apiKeys []string,
 		availableTools map[string]tools.Tool,
 		mcpToolInstance *tools.McpTool, // Add mcpToolInstance
@@ -428,8 +428,8 @@ func startHTTPServer(
 		}
 	}
 
-	// updateSystemPromptHandler updates the agent's system prompt
-	updateSystemPromptHandler := func(llmClient *llm.LLMClient) http.HandlerFunc {
+	// updateSystemPromptHandler updates the agent's system prompt stored in the TaskExecutor.
+	updateSystemPromptHandler := func(taskExecutor *a2a.TaskExecutor) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPut && r.Method != http.MethodPost {
 				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -452,8 +452,8 @@ func startHTTPServer(
 				return
 			}
 
-			llmClient.UpdateSystemMessage(requestBody.SystemPrompt) // Call the new method on LLMClient
-			log.Printf("System prompt updated successfully.")
+			taskExecutor.SystemMessage = requestBody.SystemPrompt // Update the system message in TaskExecutor
+			log.Printf("System prompt updated successfully to: %s", taskExecutor.SystemMessage)
 
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(map[string]string{"status": "success", "message": "System prompt updated"})
@@ -557,7 +557,7 @@ func startHTTPServer(
 	// Register these specific paths BEFORE the root handler
 	http.HandleFunc("/tools", toolsHandler(availableTools))
 	http.HandleFunc("/compose-prompt", composePromptHandler(availableTools, mcpToolInstance)) // Pass mcpToolInstance
-	http.HandleFunc("/system-prompt", updateSystemPromptHandler(llmClient)) // Register the system prompt handler
+	http.HandleFunc("/system-prompt", updateSystemPromptHandler(taskExecutor)) // Register the system prompt handler, pass taskExecutor
 	http.HandleFunc("/set-mcp-config", updateMcpConfigHandler(mcpToolInstance)) // Register the new MCP config handler
 
 

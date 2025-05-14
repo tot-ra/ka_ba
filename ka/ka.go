@@ -137,10 +137,17 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 	taskStore := initializeTaskStore()
 
 	// Create LLM client for server mode
-	llmClient := llm.NewLLMClient(apiURL, flags.modelFlag, "", flags.maxContextLengthFlag)
+	llmClient, err := llm.NewLMStudioClient(apiURL, flags.modelFlag, "", flags.maxContextLengthFlag)
+	if err != nil {
+		log.Fatalf("Failed to create LLM client: %v", err)
+	}
 
 	// Create TaskExecutor
-	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, availableToolsMap)
+	// The system prompt for the TaskExecutor should probably come from configuration or a default
+	// For now, let's use an empty string as the initial system message for the server.
+	// A separate endpoint exists to update the system prompt.
+	serverSystemMessage := ""
+	taskExecutor := a2a.NewTaskExecutor(llmClient, taskStore, availableToolsMap, serverSystemMessage)
 	fmt.Printf("[main] TaskExecutor initialized with %d available tools.\n", len(availableToolsMap))
 
 	// Process API keys
@@ -207,7 +214,10 @@ func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) {
 	cliSystemMessage := composeCliSystemMessage(availableToolsMap)
 
 	// Create LLM client for CLI mode
-	cliLLMClient := llm.NewLLMClient(apiURL, flags.modelFlag, cliSystemMessage, flags.maxContextLengthFlag)
+	cliLLMClient, err := llm.NewLMStudioClient(apiURL, flags.modelFlag, cliSystemMessage, flags.maxContextLengthFlag)
+	if err != nil {
+		log.Fatalf("Failed to create CLI LLM client: %v", err)
+	}
 
 	// Send prompt to LLM and handle response
 	sendPromptToLLM(cliLLMClient, cliSystemMessage, userPrompt, stream)
@@ -270,7 +280,7 @@ func composeCliSystemMessage(availableToolsMap map[string]tools.Tool) string {
 	return cliSystemMessage
 }
 
-func sendPromptToLLM(cliLLMClient *llm.LLMClient, cliSystemMessage, userPrompt string, stream bool) {
+func sendPromptToLLM(cliLLMClient llm.LLMClient, cliSystemMessage, userPrompt string, stream bool) {
 	messages := []llm.Message{
 		{Role: "system", Content: cliSystemMessage},
 		{Role: "user", Content: userPrompt},

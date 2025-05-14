@@ -19,7 +19,7 @@ import (
 func HandleLLMExecution(
 	ctx context.Context,
 	taskID string,
-	llmClient *llm.LLMClient,
+	llmClient llm.LLMClient,
 	taskStore TaskStore, // Use local TaskStore
 	messages []llm.Message,
 	sseWriter *SSEWriter,
@@ -156,7 +156,7 @@ func HandleLLMExecution(
 func handleLLMExecutionStream(
 	ctx context.Context,
 	taskID string,
-	llmClient *llm.LLMClient,
+	llmClient llm.LLMClient,
 	taskStore TaskStore, // Use local TaskStore
 	messages []llm.Message,
 	sseWriter *SSEWriter,
