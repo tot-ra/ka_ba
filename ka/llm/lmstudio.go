@@ -76,13 +76,12 @@ func (c *LMStudioClient) Chat(ctx context.Context, messages []Message, stream bo
 	return completion, finalInputTokens, completionTokens, err
 }
 
-// prepareMessages adds the system message to the provided messages
+// prepareMessages returns the provided messages. The system message is expected to be
+// already included in the messages slice passed to the Chat method.
 func (c *LMStudioClient) prepareMessages(messages []Message) []Message {
-	systemMessage := Message{
-		Role:    "system",
-		Content: c.SystemMessage,
-	}
-	return append([]Message{systemMessage}, messages...)
+	// The messages slice passed to this function from sendPromptToLLM in ka/ka.go
+	// already contains the system message. Prepending it again is redundant.
+	return messages
 }
 
 // handleContextLimits calculates token usage and truncates messages if needed
@@ -146,11 +145,16 @@ func (c *LMStudioClient) sendRequest(ctx context.Context, messages []Message, st
 		Stream:      stream,
 	}
 
+	// Add logging to show the messages slice before marshaling
+	messagesJSON, _ := json.Marshal(messages)
+	fmt.Printf("Messages slice before marshaling in sendRequest: %s\n", string(messagesJSON))
+
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return "", 0, err
 	}
 
+	fmt.Printf("LMStudioClient System Message before sending request: %s\n", c.SystemMessage) // Added logging
 	fmt.Printf("Sending request to %s with payload: %s\n", c.APIURL, string(payload))
 
 	// Create and send HTTP request

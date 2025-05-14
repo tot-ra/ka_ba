@@ -4,7 +4,6 @@ import (
 	"context" // Import the context package
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"ka/a2a"
 	"ka/llm"
 	"ka/tools" // Import the tools package
@@ -14,13 +13,13 @@ import (
 	// "runtime" // No longer needed here
 	"strconv" // Added for port conversion
 	"strings" // Added for API key splitting
-	// "time"    // No longer needed here
+	// "time" // Removed unused import
 )
 
 const (
-	model                   = ""
+	model                   = "" // Consider making this configurable via flags/env
 	apiURL                  = "http://localhost:1234/v1/chat/completions"
-	defaultMaxContextLength = 2048
+	defaultMaxContextLength = 8192 // Increased default context length to accommodate long system prompt
 )
 
 var availableToolsMap map[string]tools.Tool
@@ -47,11 +46,11 @@ func main() {
 	if flags.serveFlag {
 		runServerMode(flags, port, availableToolsMap, mcpToolInstance, currentDir) // Pass mcpToolInstance
 	} else {
-		runCLIMode(flags, availableToolsMap) // currentDir no longer passed
+		runCLIMode(flags, availableToolsMap) // Pass flags struct
 	}
 }
 
-// FlagOptions holds all command line flags
+// FlagOptions holds all command line flags and the user prompt
 type FlagOptions struct {
 	serveFlag            bool
 	streamFlag           bool
@@ -64,6 +63,7 @@ type FlagOptions struct {
 	apiKeysFlag          string
 	mcpConfigFlag string // Add flag for MCP server configuration
 	providerFlag  string // Add flag for LLM provider type
+	userPrompt    string // Add field for user prompt
 }
 
 func parseFlags() FlagOptions {
@@ -84,6 +84,12 @@ func parseFlags() FlagOptions {
 	flag.Parse() // The crash is happening here or immediately after
 
 	log.Printf("[parseFlags] flag.Parse() completed.")
+
+	// Capture the non-flag arguments as the user prompt
+	args := flag.Args()
+	if len(args) > 0 {
+		flags.userPrompt = strings.Join(args, " ") // Join all arguments to handle multi-word prompts
+	}
 
 	// Redirect standard log output to stdout
 	log.SetOutput(os.Stdout)
@@ -207,11 +213,11 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 		availableToolsMap,
 		mcpToolInstance, // Pass mcpToolInstance
 		// Removed flags.providerFlag
-	) // Removed environmentVariables
+	)
 }
 
 func initializeTaskStore() a2a.TaskStore {
-	taskStoreDir := os.Getenv("TASK_STORE_DIR")
+	taskStoreDir := os.Getenv("TASK_STORE_DIR") // Consider making this configurable via flags
 	if taskStoreDir == "" {
 		fmt.Println("[main] TASK_STORE_DIR not set, using default task directory.")
 	} else {
@@ -240,7 +246,7 @@ func processAPIKeys(apiKeysFlag string) []string {
 	return apiKeys
 }
 
-func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) { // Removed environmentVariables
+func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) { // Accept FlagOptions struct
 	// Warn about auth flags in CLI mode
 	warnAboutAuthFlags(flags.jwtSecretFlag, flags.apiKeysFlag)
 
@@ -249,8 +255,13 @@ func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) { //
 	// Determine if streaming should be enabled
 	stream := determineStreamFlag(flags.streamFlag)
 
-	// Get user prompt from args or stdin
-	userPrompt := getUserPrompt()
+	// User prompt is now available directly in the flags struct
+	userPrompt := flags.userPrompt
+
+	// Check if user prompt is empty and print usage if so
+	if userPrompt == "" {
+		printUsageAndExit()
+	}
 
 	// Compose system prompt with all available tools
 	cliSystemMessage := composeCliSystemMessage(availableToolsMap)
@@ -286,26 +297,6 @@ func determineStreamFlag(streamFlag bool) bool {
 	return stream
 }
 
-func getUserPrompt() string {
-	var userPrompt string
-	args := flag.Args()
-	if len(args) > 0 {
-		userPrompt = args[0]
-	} else if !isTerminal(os.Stdin) {
-		inputBytes, err := ioutil.ReadAll(os.Stdin)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error reading from stdin:", err)
-			os.Exit(1)
-		}
-		userPrompt = string(inputBytes)
-	}
-
-	if userPrompt == "" {
-		printUsageAndExit()
-	}
-
-	return userPrompt
-}
 
 func printUsageAndExit() {
 	fmt.Fprintln(os.Stderr, "Error: No prompt provided via arguments or stdin.")
@@ -325,6 +316,7 @@ func composeCliSystemMessage(availableToolsMap map[string]tools.Tool) string {
 	// System context is now fetched within ComposeSystemPrompt
 	// In CLI mode, no MCP servers are selected, so pass an empty slice of McpServerConfig.
 	cliSystemMessage := tools.ComposeSystemPrompt(allToolNames, []tools.McpServerConfig{}, availableToolsMap)
+	log.Printf("[main] Composed CLI system message: %s", cliSystemMessage) // Added logging
 	fmt.Printf("[main] Using CLI system message:\n%s\n", cliSystemMessage)
 	return cliSystemMessage
 }
