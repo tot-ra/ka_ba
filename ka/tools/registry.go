@@ -10,9 +10,7 @@ func GetAllTools() []Tool {
 		&SearchFilesTool{},
 		&AskFollowupQuestionTool{},
 		&AddTaskTool{},
-		&McpTool{}, // Added the new McpTool
-		&ExecuteCommandTool{}, // Added the new ExecuteCommandTool
-		// Add instances of other tool implementations here as they are created.
-		// Example: &WriteFileTool{}, etc.
+		&McpTool{},
+		&ExecuteCommandTool{},
 	}
 }
