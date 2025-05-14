@@ -336,8 +336,49 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		}
 	}
 
-	if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
-		log.Printf("[Task %s] Detected %d tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
+	// Check if the ask_followup_question tool was called
+	askFollowupQuestionCalled := false
+	if lastAssistantMessage != nil {
+		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
+			if toolCall.Function.Name == "ask_followup_question" {
+				askFollowupQuestionCalled = true
+				break
+			}
+		}
+	}
+
+	if askFollowupQuestionCalled {
+		// If ask_followup_question was called, transition to InputRequired and wait
+		log.Printf("[Task %s] Detected ask_followup_question tool call. Setting state to InputRequired.", t.ID)
+
+		// Revert state to InputRequired
+		setStateErr := te.TaskStore.SetState(t.ID, TaskStateInputRequired)
+		if setStateErr != nil {
+			log.Printf("[Task %s] Failed to set task state to InputRequired after ask_followup_question: %v", t.ID, setStateErr)
+			te.TaskStore.SetState(t.ID, TaskStateFailed) // Attempt to set failed state
+			return false, setStateErr                    // Stop processing
+		}
+		fmt.Printf("[Task %s] State set to InputRequired. Waiting for resume signal...\n", t.ID)
+
+		// Wait for the resume signal or context cancellation
+		select {
+		case <-resumeCh:
+			fmt.Printf("[Task %s] Resume signal received. Continuing loop.\n", t.ID)
+			// Set state back to Working before the next iteration
+			if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
+				log.Printf("[Task %s] Failed to set state back to Working after resume: %v", t.ID, err)
+				return false, err // Stop processing if we can't reset state
+			}
+			return true, nil // Continue the loop
+		case <-ctx.Done():
+			fmt.Printf("[Task %s] Context cancelled while waiting for input. Exiting.\n", t.ID)
+			te.TaskStore.SetState(t.ID, TaskStateCanceled) // Set final state
+			return false, ctx.Err()                        // Stop processing due to cancellation
+		}
+
+	} else if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
+		// If other tool calls were detected (and ask_followup_question was NOT)
+		log.Printf("[Task %s] Detected %d other tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
 
 		// Pass the map of available tools to the dispatcher
 		toolDispatcher := NewToolDispatcher(te.TaskStore, te.AvailableTools) // Pass te.AvailableTools
@@ -346,10 +387,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
 			toolResultMsg, dispatchErr := toolDispatcher.DispatchToolCall(ctx, t.ID, toolCall)
 			if dispatchErr != nil {
-				// Log the dispatch error but continue processing other tool calls
 				log.Printf("[Task %s] Error dispatching tool call %s (%s): %v", t.ID, toolCall.ID, toolCall.Function.Name, dispatchErr)
-				// The DispatchToolCall function already includes an error message in the returned Message,
-				// so we just append the message.
 			}
 			toolResults = append(toolResults, toolResultMsg)
 		}
@@ -357,16 +395,13 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		// Process tool results for any special sentinel values (e.g., new task requests)
 		processedToolResults := []Message{}
 		for _, resMsg := range toolResults {
-			// isNewTaskRequest := false // Removed unused variable
 			if len(resMsg.Parts) > 0 {
 				if textPart, ok := resMsg.Parts[0].(TextPart); ok {
 					if strings.HasPrefix(textPart.Text, tools.AddTaskSentinelPrefix) {
-						// isNewTaskRequest = true // Removed unused variable
 						jsonData := strings.TrimPrefix(textPart.Text, tools.AddTaskSentinelPrefix)
 						var newTaskData tools.NewTaskRequestData
 						if err := json.Unmarshal([]byte(jsonData), &newTaskData); err != nil {
 							log.Printf("[Task %s] Error unmarshalling new task request data: %v. Raw: %s", t.ID, err, jsonData)
-							// Replace original sentinel with an error message for the LLM
 							resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("Error processing add_task tool: failed to parse request data: %v", err)}
 						} else {
 							log.Printf("[Task %s] Received new task request: Name='%s', Parent='%s'", t.ID, newTaskData.Name, newTaskData.ParentTaskID)
@@ -382,7 +417,6 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 							} else {
 								log.Printf("[Task %s] Successfully created new sub-task %s (Parent: %s) via add_task tool.", t.ID, newTask.ID, newTask.ParentTaskID)
 								resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("New task %s created successfully.", newTask.ID)}
-								// TODO: Consider if/how to trigger execution of newTask.ID. For now, it's just created.
 							}
 						}
 					}
@@ -413,7 +447,7 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		return true, nil // Continue the loop to send tool results to LLM
 
 	} else if requiresInput {
-		// Process the result based on whether input is required (if no tool calls were made)
+		// Process the result based on whether input is required (if no tool calls were made, but [INPUT_REQUIRED] was present)
 		log.Printf("[Task %s] Input Required detected in full response (no tool calls).", t.ID)
 		if !assistantMessageSaved { // Only add if HandleLLMExecution didn't already
 			outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
@@ -424,7 +458,6 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 			})
 			if updateErr != nil {
 				log.Printf("[Task %s] Failed to update task with input required output: %v", t.ID, updateErr)
-				// Consider setting state to failed here? For now, just log.
 			}
 		}
 
@@ -432,7 +465,6 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 		setStateErr := te.TaskStore.SetState(t.ID, TaskStateInputRequired)
 		if setStateErr != nil {
 			log.Printf("[Task %s] Failed to revert task state to InputRequired: %v", t.ID, setStateErr)
-			// If we can't set InputRequired, the task is stuck. Maybe set to Failed?
 			te.TaskStore.SetState(t.ID, TaskStateFailed) // Attempt to set failed state
 			return false, setStateErr                    // Stop processing
 		}
@@ -445,7 +477,6 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 			// Set state back to Working before the next iteration
 			if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
 				log.Printf("[Task %s] Failed to set state back to Working after resume: %v", t.ID, err)
-				// Consider setting state to failed here?
 				return false, err // Stop processing if we can't reset state
 			}
 			return true, nil // Continue the loop
@@ -468,7 +499,6 @@ func (te *TaskExecutor) processTaskIteration(ctx context.Context, t *Task, resum
 			})
 			if updateErr != nil {
 				log.Printf("[Task %s] Failed to update task with completed output: %v", t.ID, updateErr)
-				// State might already be COMPLETED, but log the error.
 			}
 		}
 
@@ -572,8 +602,52 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		}
 	}
 
-	if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
-		log.Printf("[Task %s Stream] Detected %d tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
+	// Check if the ask_followup_question tool was called
+	askFollowupQuestionCalled := false
+	if lastAssistantMessage != nil {
+		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
+			if toolCall.Function.Name == "ask_followup_question" {
+				askFollowupQuestionCalled = true
+				break
+			}
+		}
+	}
+
+	if askFollowupQuestionCalled {
+		// If ask_followup_question was called, transition to InputRequired and wait
+		log.Printf("[Task %s Stream] Detected ask_followup_question tool call. Setting state to InputRequired.", t.ID)
+
+		setStateErr := te.TaskStore.SetState(t.ID, TaskStateInputRequired)
+		if setStateErr == nil {
+			inputRequiredStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateInputRequired)})
+			sseWriter.SendEvent("state", string(inputRequiredStateData))
+		} else {
+			log.Printf("[Task %s Stream] Failed to set task state to InputRequired: %v", t.ID, setStateErr)
+			failedStateData, _ := json.Marshal(map[string]interface{}{"status": string(TaskStateFailed), "error": "Failed to transition to input-required state"})
+			sseWriter.SendEvent("state", string(failedStateData))
+		}
+		fmt.Printf("[Task %s Stream] State set to InputRequired. Waiting for signal...\n", t.ID)
+
+		select {
+		case <-resumeCh:
+			fmt.Printf("[Task %s Stream] Resume signal received. Continuing loop.\n", t.ID)
+			workingStateData, _ := json.Marshal(map[string]string{"status": string(TaskStateWorking)})
+			sseWriter.SendEvent("state", string(workingStateData))
+			// Need to set state back to working in the store as well
+			if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
+				log.Printf("[Task %s Stream] Failed to set state back to Working after resume: %v", t.ID, err)
+				return false, err // Stop processing
+			}
+			return true, nil // Continue loop
+		case <-ctx.Done():
+			fmt.Printf("[Task %s Stream] Context cancelled while waiting for input. Exiting.\n", t.ID)
+			te.TaskStore.SetState(t.ID, TaskStateCanceled)
+			return false, ctx.Err() // Stop processing
+		}
+
+	} else if lastAssistantMessage != nil && len(lastAssistantMessage.ParsedToolCalls) > 0 {
+		// If other tool calls were detected (and ask_followup_question was NOT)
+		log.Printf("[Task %s Stream] Detected %d other tool calls in LLM response.", t.ID, len(lastAssistantMessage.ParsedToolCalls))
 
 		// Pass the map of available tools to the dispatcher
 		toolDispatcher := NewToolDispatcher(te.TaskStore, te.AvailableTools) // Pass te.AvailableTools
@@ -582,10 +656,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		for _, toolCall := range lastAssistantMessage.ParsedToolCalls {
 			toolResultMsg, dispatchErr := toolDispatcher.DispatchToolCall(ctx, t.ID, toolCall)
 			if dispatchErr != nil {
-				// Log the dispatch error but continue processing other tool calls
 				log.Printf("[Task %s Stream] Error dispatching tool call %s (%s): %v", t.ID, toolCall.ID, toolCall.Function.Name, dispatchErr)
-				// The DispatchToolCall function already includes an error message in the returned Message,
-				// so we just append the message.
 			}
 			toolResults = append(toolResults, toolResultMsg)
 		}
@@ -593,11 +664,9 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		// Process tool results for any special sentinel values (e.g., new task requests) - STREAMING VERSION
 		processedToolResults := []Message{}
 		for _, resMsg := range toolResults {
-			// isNewTaskRequest := false // Removed unused variable
 			if len(resMsg.Parts) > 0 {
 				if textPart, ok := resMsg.Parts[0].(TextPart); ok {
 					if strings.HasPrefix(textPart.Text, tools.AddTaskSentinelPrefix) {
-						// isNewTaskRequest = true // Removed unused variable
 						jsonData := strings.TrimPrefix(textPart.Text, tools.AddTaskSentinelPrefix)
 						var newTaskData tools.NewTaskRequestData
 						if err := json.Unmarshal([]byte(jsonData), &newTaskData); err != nil {
@@ -617,8 +686,6 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 							} else {
 								log.Printf("[Task %s Stream] Successfully created new sub-task %s (Parent: %s) via add_task tool.", t.ID, newTask.ID, newTask.ParentTaskID)
 								resMsg.Parts[0] = TextPart{Type: "text", Text: fmt.Sprintf("New task %s created successfully.", newTask.ID)}
-								// TODO: Consider if/how to trigger execution of newTask.ID. For now, it's just created.
-								// For streaming, we might want to send an SSE event about the new task.
 								newTaskCreationEventData, _ := json.Marshal(map[string]string{
 									"type":         "new_sub_task_created",
 									"parentTaskId": t.ID,
@@ -665,7 +732,7 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 		return true, nil // Continue the loop to send tool results to LLM
 
 	} else if requiresInput {
-		// Process the result based on whether input is required (if no tool calls were made)
+		// Process the result based on whether input is required (if no tool calls were made, but [INPUT_REQUIRED] was present)
 		log.Printf("[Task %s Stream] Input Required detected in full response (no tool calls).", t.ID)
 		if !assistantMessageSaved { // Only add if handleLLMExecutionStream didn't already (it doesn't, but for consistency)
 			outputMessage := Message{Role: RoleAssistant, Parts: []Part{TextPart{Type: "text", Text: fullResultString}}}
@@ -698,14 +765,12 @@ func (te *TaskExecutor) processTaskStreamIteration(ctx context.Context, t *Task,
 			// Need to set state back to working in the store as well
 			if err := te.TaskStore.SetState(t.ID, TaskStateWorking); err != nil {
 				log.Printf("[Task %s Stream] Failed to set state back to Working after resume: %v", t.ID, err)
-				// Send error state via SSE?
 				return false, err // Stop processing
 			}
 			return true, nil // Continue loop
 		case <-ctx.Done():
 			fmt.Printf("[Task %s Stream] Context cancelled while waiting for input. Exiting.\n", t.ID)
 			te.TaskStore.SetState(t.ID, TaskStateCanceled)
-			// Optionally send final SSE event
 			return false, ctx.Err() // Stop processing
 		}
 	} else {
