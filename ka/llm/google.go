@@ -23,9 +23,7 @@ type GoogleClient struct {
 // NewGoogleClient creates a new GoogleClient.
 // It expects the API key to be provided.
 func NewGoogleClient(apiKey, model string) (*GoogleClient, error) {
-	log.Printf("[NewGoogleClient] Received apiKey argument: %s", apiKey)
 	envAPIKey := os.Getenv("GEMINI_API_KEY")
-	log.Printf("[NewGoogleClient] GEMINI_API_KEY from environment: %s", envAPIKey)
 
 	if apiKey == "" {
 		// Attempt to get API key from environment variable if not provided
@@ -34,7 +32,6 @@ func NewGoogleClient(apiKey, model string) (*GoogleClient, error) {
 			return nil, fmt.Errorf("Google API key is required and not found in GEMINI_API_KEY environment variable")
 		}
 	}
-	log.Printf("[NewGoogleClient] Using API Key: %s", apiKey)
 
 	if model == "" {
 		model = "gemini-2.5-pro-preview-05-06" // Default model if not provided
