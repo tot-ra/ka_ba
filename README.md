@@ -4,22 +4,13 @@ AI Agent Runtime (`ka`) and agent orchestration application (`ba`).
 
 <img width="1780" alt="Screenshot 2025-05-09 at 22 54 39" src="https://github.com/user-attachments/assets/46117831-bffb-431d-be7a-618f30f9ead6" />
 
-
-## Naming
-> *ka* (𓂓) and *ba* (𓅽) - is the ancient Egyptian concept of the soul layers.
-> The "vital essence" and the "personality".
-> 
-> kaaba ( 🕋 ) - "House of God"
-> 
-> baka (jap. バカ) - "fool"
-
-
-## Goals and vision
+## Features, Goals and Vision
 - Agent creation
     - ☑️ Modular system prompt dependent on tools
     - ☑️ System context
         - Add project path with initial 2-layer-deep file list (100 files max)
 - Agent runtime
+    - Basic CLI interaction with LLM
     - ☑️ Tools
         - CLI
         - Generated code execution  (eg. generate custom pythong/go/js code and run it in docker container as a tool output)
@@ -153,6 +144,11 @@ The primary goal is to create a flexible and extensible runtime that can manage 
 
 
 ## `ka` Features
+### Basic CLI interaction with LLM
+Uses GEMINI_API_KEY from env variables to talk to google gemini model
+```bash
+./ka --provider google "hi"
+```
 
 *   **A2A HTTP Server:**
     *   Serves agent self-description at `/.well-known/agent.json`.
