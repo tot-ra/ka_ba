@@ -27,9 +27,6 @@ var availableToolsMap map[string]tools.Tool
 
 func main() {
 	log.Printf("[main] Starting ka agent process.")
-	// Add logging to check GEMINI_API_KEY environment variable
-	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-
 	log.Printf("[main] Parsing command line flags.")
 	// Parse command line flags
 	flags := parseFlags()
