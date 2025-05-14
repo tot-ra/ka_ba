@@ -8,6 +8,15 @@ import { LogManager } from './logManager.js';
 import { PortManager } from './portManager.js';
 import axios from 'axios'; // Import axios
 
+// Define the structure for the UpdateAgentInput to match the GraphQL schema
+interface UpdateAgentInput {
+  name?: string;
+  description?: string;
+  systemPrompt?: string;
+  providerType?: 'LMSTUDIO' | 'GOOGLE'; // Match the enum values
+  environmentVariables?: { [key: string]: any };
+}
+
 export class AgentManager {
   private agentRegistry: AgentRegistry;
   private localAgentManager: LocalAgentManager;
@@ -83,7 +92,48 @@ export class AgentManager {
     return this.agentDiscoveryService.findBestAgentForTask(taskPrompt);
   }
 
-  // New method to update a local agent's system prompt
+  // Method to update agent details
+  public updateAgent(agentId: string, updates: UpdateAgentInput): Agent | undefined {
+    const agent = this.agentRegistry.findAgent(agentId);
+    if (!agent) {
+      return undefined; // Agent not found
+    }
+
+    // Apply updates to the agent object
+    if (updates.name !== undefined) {
+      agent.name = updates.name;
+    }
+    if (updates.description !== undefined) {
+      agent.description = updates.description;
+    }
+    if (updates.providerType !== undefined) {
+      agent.providerType = updates.providerType;
+    }
+    if (updates.environmentVariables !== undefined) {
+      agent.environmentVariables = updates.environmentVariables;
+    }
+
+    // Handle systemPrompt update separately if it's a local agent
+    if (agent.isLocal && updates.systemPrompt !== undefined) {
+       // Note: This is a simplified approach. A more robust solution
+       // would await the HTTP call and handle potential errors.
+       // For now, we'll just call the existing updateAgentSystemPrompt
+       // and let it handle its own errors and logging.
+       this.updateAgentSystemPrompt(agentId, updates.systemPrompt).catch(error => {
+          console.error(`[AgentManager] Error updating system prompt for agent ${agentId} during general update:`, error);
+          // Decide how to handle this error - maybe set an error state on the agent?
+       });
+       // Update the systemPrompt in the registry immediately for UI feedback
+       agent.systemPrompt = updates.systemPrompt;
+    }
+
+    // The agentRegistry holds the reference, so updating the found agent
+    // directly modifies the agent in the registry.
+    console.log(`[AgentManager] Agent ${agentId} updated in registry.`);
+    return agent; // Return the updated agent
+  }
+
+  // Existing method to update a local agent's system prompt via HTTP
   public async updateAgentSystemPrompt(agentId: string, systemPrompt: string): Promise<Agent> {
     const agent = this.agentRegistry.findAgent(agentId);
     if (!agent) {

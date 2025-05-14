@@ -1,3 +1,8 @@
+enum LlmProviderType {
+  LMSTUDIO
+  GOOGLE
+}
+
 type Agent {
   id: ID!
   url: String!
@@ -6,6 +11,8 @@ type Agent {
   isLocal: Boolean!
   pid: Int # Process ID, only available for local agents
   systemPrompt: String # Add systemPrompt field
+  providerType: LlmProviderType # Add LLM provider type
+  environmentVariables: JSONObject # Add environment variables
 }
 
 # --- MCP Server Related Types ---
@@ -135,10 +142,18 @@ type Subscription {
   taskUpdates(agentId: ID!, taskId: ID): Task! # Subscription for real-time task updates
 }
 
+input UpdateAgentInput {
+  name: String
+  description: String
+  systemPrompt: String
+  providerType: LlmProviderType
+  environmentVariables: JSONObject
+}
+
 type Mutation {
   addAgent(url: String!, name: String): Agent!
   removeAgent(id: ID!): Boolean!
-  spawnKaAgent(model: String, systemPrompt: String, apiBaseUrl: String, port: Int, name: String, description: String): Agent!
+  spawnKaAgent(model: String, systemPrompt: String, apiBaseUrl: String, port: Int, name: String, description: String, providerType: LlmProviderType, environmentVariables: JSONObject): Agent!
   stopKaAgent(id: ID!): Boolean!
   composeSystemPrompt(agentId: ID!, toolNames: [String!]!, mcpServerNames: [String!]!): String! # Mutation to compose system prompt
   createTask(
@@ -152,6 +167,7 @@ type Mutation {
   ): Task! # Returns the initial task state
   deleteTask(agentId: ID!, taskId: ID!): Boolean!
   updateAgentSystemPrompt(agentId: ID!, systemPrompt: String!): Agent! # Mutation to update an agent's system prompt
+  updateAgent(agentId: ID!, updates: UpdateAgentInput!): Agent! # Mutation to update agent details
   addMcpServer(server: InputMcpServerConfig!): McpServerConfig! # Mutation to add a new MCP server
   editMcpServer(name: String!, server: InputMcpServerConfig!): McpServerConfig! # Mutation to edit an existing MCP server
   deleteMcpServer(name: String!): Boolean! # Mutation to delete an MCP server

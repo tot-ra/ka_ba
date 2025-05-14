@@ -5,6 +5,8 @@ import { Agent, AgentRegistry } from './agentRegistry.js';
 import { PortManager } from './portManager.js';
 import { LogManager } from './logManager.js';
 import { EventEmitter } from 'node:events';
+import { promises as fs } from 'fs'; // Import fs.promises for async file operations
+import os from 'os'; // Import os module for temporary directory
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -34,9 +36,9 @@ export class LocalAgentManager {
     this.eventEmitter = eventEmitter;
   }
 
-  public async spawnLocalAgent(args: { model?: string, systemPrompt?: string, apiBaseUrl?: string, port?: number | null, name?: string, description?: string }): Promise<Agent | null> {
-    const { model, systemPrompt, apiBaseUrl, port: requestedPort, name, description } = args;
-    console.log('Attempting to spawn ka agent with:', { model, systemPrompt, apiBaseUrl, port: requestedPort, name, description });
+  public async spawnLocalAgent(args: { model?: string, systemPrompt?: string, apiBaseUrl?: string, port?: number | null, name?: string, description?: string, providerType?: string, environmentVariables?: { [key: string]: any } }): Promise<Agent | null> {
+    const { model, systemPrompt, apiBaseUrl, port: requestedPort, name, description, providerType, environmentVariables } = args;
+    console.log('Attempting to spawn ka agent with:', { model, systemPrompt, apiBaseUrl, port: requestedPort, name, description, providerType, environmentVariables });
 
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (model) env.LLM_MODEL = model;
@@ -53,15 +55,24 @@ export class LocalAgentManager {
       return null;
     }
 
-    env.PORT = agentPort.toString();
     const agentUrl = `http://localhost:${agentPort}`;
     console.log(`Attempting to spawn ka agent at ${agentUrl} using PORT=${agentPort}`);
 
     // Assign a unique ID to the new agent *before* spawning so we can use it for the task directory
     const newAgentId = this.agentRegistry.getNextAgentId();
 
-    // Set the TASK_STORE_DIR environment variable for the spawned process
-    const taskStoreDir = `kaba/backend/_tasks/${newAgentId}`;
+    // Create a unique task store directory in a temporary location
+    const tempDir = os.tmpdir();
+    const taskStoreDir = join(tempDir, `ka_tasks_${newAgentId}`);
+    try {
+      await fs.mkdir(taskStoreDir, { recursive: true });
+      console.log(`Created task store directory for agent ${newAgentId}: ${taskStoreDir}`);
+    } catch (error: any) {
+      console.error(`Failed to create task store directory ${taskStoreDir}:`, error);
+      return null; // Fail spawning if directory creation fails
+    }
+
+    // Set the TASK_STORE_DIR environment variable for the spawned process to the absolute path
     env.TASK_STORE_DIR = taskStoreDir;
     console.log(`Setting TASK_STORE_DIR for agent ${newAgentId}: ${taskStoreDir}`);
 
@@ -70,13 +81,31 @@ export class LocalAgentManager {
     if (description) kaArgs.push('--description', description);
     if (model) kaArgs.push('--model', model);
     if (systemPrompt) kaArgs.push('--system-prompt', systemPrompt);
+    if (providerType) kaArgs.push('--provider', providerType);
     kaArgs.push('server');
     console.log('Spawning ka with args:', kaArgs);
 
+    // Add environment variables directly to the env object for the spawned process
+    const processEnv: NodeJS.ProcessEnv = { ...process.env }; // Start with current process env
+    if (environmentVariables) {
+      for (const key in environmentVariables) {
+        if (Object.prototype.hasOwnProperty.call(environmentVariables, key)) {
+          // Ensure value is a string
+          processEnv[key] = String(environmentVariables[key]);
+        }
+      }
+    }
+    // Add other necessary env vars like PORT and TASK_STORE_DIR
+    processEnv.PORT = agentPort.toString();
+    processEnv.TASK_STORE_DIR = taskStoreDir;
+
+
     const kaProcess = spawn(kaExecutablePath, kaArgs, {
-      env,
+      env: processEnv, // Use the constructed environment variables
       detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Optionally set the working directory if needed, but setting TASK_STORE_DIR to an absolute path might be enough
+      // cwd: '/path/to/writable/directory',
     });
 
     kaProcess.unref();
@@ -91,7 +120,7 @@ export class LocalAgentManager {
           process: kaProcess,
           pid: kaProcess.pid,
           port: agentPort,
-          config: { model, systemPrompt, apiBaseUrl },
+          config: { model, systemPrompt, apiBaseUrl }, // Keep existing config fields
         });
         console.log(`Stored spawned process info for agent ID: ${newAgent.id} with PID: ${kaProcess.pid} on port ${agentPort}`);
 
@@ -115,6 +144,17 @@ export class LocalAgentManager {
       }
       return null;
     }
+  }
+
+  private setupProcessExitHandler(kaProcess: ChildProcess, agentId: string): void {
+      kaProcess.on('exit', (code: number | null, signal: string | null) => {
+          console.log(`Spawned agent process (ID: ${agentId}) exited after successful start with code ${code}, signal ${signal}.`);
+          this.cleanupAgentData(agentId);
+      });
+  }
+
+  public getSpawnedProcessInfo(agentId: string): SpawnedProcessInfo | undefined {
+      return this.spawnedProcesses.get(agentId);
   }
 
   public stopLocalAgent(id: string): boolean {
@@ -259,16 +299,5 @@ export class LocalAgentManager {
         }
       });
     });
-  }
-
-  private setupProcessExitHandler(kaProcess: ChildProcess, agentId: string): void {
-      kaProcess.on('exit', (code: number | null, signal: string | null) => {
-          console.log(`Spawned agent process (ID: ${agentId}) exited after successful start with code ${code}, signal ${signal}.`);
-          this.cleanupAgentData(agentId);
-      });
-  }
-
-  public getSpawnedProcessInfo(agentId: string): SpawnedProcessInfo | undefined {
-      return this.spawnedProcesses.get(agentId);
   }
 }

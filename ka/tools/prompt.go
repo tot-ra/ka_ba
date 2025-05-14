@@ -60,7 +60,7 @@ func ComposeSystemPrompt(selectedToolNames []string, selectedMcpServers []McpSer
 	var promptBuilder strings.Builder // Use a builder for efficiency
 
 	// Base system prompt
-	basePrompt := `
+	basePrompt := strings.TrimSpace(`
 IDENTITY
 ====
 You are an expert software engineer with extensive knowledge in various programming languages, frameworks, and tools. 
@@ -102,8 +102,9 @@ TOOLS
 
 
 You have access to the following tools:
-`
+`)
 	promptBuilder.WriteString(basePrompt)
+	promptBuilder.WriteString("\n") // Add a single newline after the base prompt
 
 	// Add tool call instruction block with specific formats for each tool and MCP server
 	promptBuilder.WriteString(`
@@ -151,8 +152,8 @@ You can invoke tools using the following XML formats. Use the specific format fo
 
 
 
-fmt.Fprintf(&promptBuilder, `
-
+	// Add PLANNING, CODING, and SYSTEM INFORMATION blocks
+	fmt.Fprintf(&promptBuilder, `
 
 PLANNING
 ====
@@ -169,14 +170,13 @@ CODING
 - DO NOT comment your code
 - Cover pure functions with unit tests
 
-
 SYSTEM INFORMATION
 ====
 Operating System: %s
 Shell: %s
 Agent start time: %s
 Current User: %s
-Current Working Directory: %s`, context.OS, context.Shell, context.User, context.Time, context.WorkDir)
+Current Working Directory: %s`, context.OS, context.Shell, context.Time, context.User, context.WorkDir)
 
 	return promptBuilder.String()
 }

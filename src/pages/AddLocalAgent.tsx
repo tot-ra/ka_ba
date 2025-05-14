@@ -14,11 +14,13 @@ const AddLocalAgent: React.FC = () => {
   const navigate = useNavigate();
 
   const [spawnAgentConfig, setSpawnAgentConfig] = useState({
-    model: 'qwen3-30b-a3b',
-    apiBaseUrl: 'http://192.168.1.205:1234',
+    model: 'gemini-2.5-pro-preview-05-06', //'qwen3-30b-a3b',
+    apiBaseUrl: '', //'http://192.168.1.205:1234',
     port: '',
     name: 'Software Engineer',
     description: 'An AI assistant specialized in software engineering tasks.',
+    providerType: 'GOOGLE', // or LMSTUDIO
+    environmentVariables: '{"GEMINI_API_KEY":""}', // Default empty JSON object string
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSpawning, setIsSpawning] = useState(false);
@@ -46,12 +48,24 @@ const AddLocalAgent: React.FC = () => {
 
     console.log('Attempting to spawn agent with config:', spawnAgentConfig);
 
+    let parsedEnvironmentVariables = {};
+    try {
+      parsedEnvironmentVariables = JSON.parse(spawnAgentConfig.environmentVariables);
+    } catch (e) {
+      setStatusMessage('Error: Invalid JSON for environment variables.');
+      setMessageType('error');
+      setIsSpawning(false);
+      return; // Stop the spawn process if JSON is invalid
+    }
+
     const variables = {
       model: spawnAgentConfig.model,
       apiBaseUrl: spawnAgentConfig.apiBaseUrl,
       port: spawnAgentConfig.port ? parseInt(spawnAgentConfig.port.toString(), 10) : null,
       name: spawnAgentConfig.name || null,
       description: spawnAgentConfig.description || null,
+      providerType: spawnAgentConfig.providerType,
+      environmentVariables: parsedEnvironmentVariables,
       // systemPrompt is no longer sent during spawn
     };
     console.log('Variables being sent for spawn:', variables);
@@ -59,8 +73,8 @@ const AddLocalAgent: React.FC = () => {
     try {
       const response = await axios.post('http://localhost:3000/graphql', {
         query: `
-          mutation SpawnKaAgent($model: String, $apiBaseUrl: String, $port: Int, $name: String, $description: String) {
-            spawnKaAgent(model: $model, apiBaseUrl: $apiBaseUrl, port: $port, name: $name, description: $description) {
+          mutation SpawnKaAgent($model: String, $apiBaseUrl: String, $port: Int, $name: String, $description: String, $providerType: LlmProviderType, $environmentVariables: JSONObject) {
+            spawnKaAgent(model: $model, apiBaseUrl: $apiBaseUrl, port: $port, name: $name, description: $description, providerType: $providerType, environmentVariables: $environmentVariables) {
               id
               url
               name
@@ -73,7 +87,6 @@ const AddLocalAgent: React.FC = () => {
       });
       const spawnedAgent = response.data.data.spawnKaAgent;
       if (spawnedAgent && spawnedAgent.id) {
-        console.log('Agent spawned successfully:', spawnedAgent);
         console.log('Agent spawned successfully:', spawnedAgent);
         setSpawnedAgentId(spawnedAgent.id);
         setStatusMessage(`Agent "${spawnedAgent.name}" spawned successfully! Redirecting to edit view...`);
@@ -327,6 +340,36 @@ const AddLocalAgent: React.FC = () => {
                 </div>
               </>
             )}
+
+            {/* LLM Provider Type */}
+            <div className={styles.formField}>
+              <label htmlFor="providerType" className={styles.formLabel}>LLM Provider</label>
+              <select
+                id="providerType"
+                name="providerType"
+                value={spawnAgentConfig.providerType}
+                onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, providerType: e.target.value })}
+                className={styles.formInput}
+              >
+                <option value="LMSTUDIO">LM Studio</option>
+                <option value="GOOGLE">Google</option>
+                {/* Add other providers here as they are supported */}
+              </select>
+            </div>
+
+            {/* Environment Variables */}
+            <div className={styles.formField}>
+              <label htmlFor="environmentVariables" className={styles.formLabel}>Environment Variables (JSON)</label>
+              <textarea
+                id="environmentVariables"
+                name="environmentVariables"
+                placeholder='e.g., {"GEMINI_API_KEY": "YOUR_API_KEY"}'
+                value={spawnAgentConfig.environmentVariables}
+                onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, environmentVariables: e.target.value })}
+                rows={5}
+                className={styles.formTextarea}
+              />
+            </div>
 
             {/* Submit Button */}
             <div className={styles.formField}>

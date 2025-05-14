@@ -45,10 +45,12 @@ func TestComposeSystemPrompt(t *testing.T) {
 			selectedToolNames: []string{},
 			selectedMcpServers: []McpServerConfig{},
 			expectedSubstrings: []string{
-				"You are an expert software engineer.",
+				"IDENTITY",
 				"OBJECTIVE",
 				"COMMUNICATION STYLE",
 				"TOOLS",
+				"PLANNING",
+				"CODING",
 				"SYSTEM INFORMATION",
 			},
 			unexpectedSubstrings: []string{

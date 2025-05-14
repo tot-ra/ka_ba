@@ -8,6 +8,9 @@ export interface Agent {
   isLocal: boolean;
   capabilities?: AgentCapabilities | null;
   subscriptionController?: AbortController; // Use AbortController directly
+  systemPrompt?: string; // Add systemPrompt field
+  providerType?: 'LMSTUDIO' | 'GOOGLE'; // Add LLM provider type
+  environmentVariables?: { [key: string]: any }; // Add environment variables
 }
 
 interface AgentCapabilities {

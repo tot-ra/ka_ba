@@ -30,8 +30,8 @@ type LLMClient interface {
 // Use a map for flexibility to support provider-specific parameters.
 type ClientConfig map[string]interface{}
 
-// NewClientFactory creates a new LLMClient based on the provider type and configuration.
-func NewClientFactory(providerType string, config ClientConfig) (LLMClient, error) {
+// NewClientFactory creates a new LLMClient based on the provider type, configuration, and environment variables.
+func NewClientFactory(providerType string, config ClientConfig, envVars map[string]string) (LLMClient, error) {
 	switch providerType {
 	case "lmstudio":
 		// Extract parameters for LMStudioClient from the config map
@@ -52,10 +52,14 @@ func NewClientFactory(providerType string, config ClientConfig) (LLMClient, erro
 		// Extract parameters for GoogleClient from the config map
 		apiKey, ok := config["apiKey"].(string)
 		if !ok {
-			// Check environment variable if not provided in config
-			apiKey = os.Getenv("GEMINI_API_KEY")
-			if apiKey == "" {
-				return nil, fmt.Errorf("google config missing apiKey and GEMINI_API_KEY environment variable not set")
+			// Check provided environment variables first
+			apiKey, ok = envVars["GEMINI_API_KEY"]
+			if !ok {
+				// Fallback to process environment variables
+				apiKey = os.Getenv("GEMINI_API_KEY")
+				if apiKey == "" {
+					return nil, fmt.Errorf("google config missing apiKey and GEMINI_API_KEY environment variable not set")
+				}
 			}
 		}
 		model, ok := config["model"].(string)

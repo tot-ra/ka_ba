@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	model                   = "qwen3-30b-a3b"
+	model                   = ""
 	apiURL                  = "http://localhost:1234/v1/chat/completions"
 	defaultMaxContextLength = 2048
 )
@@ -26,8 +26,15 @@ const (
 var availableToolsMap map[string]tools.Tool
 
 func main() {
+	log.Printf("[main] Starting ka agent process.")
+	// Add logging to check GEMINI_API_KEY environment variable
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+	log.Printf("[main] GEMINI_API_KEY environment variable: %s", geminiAPIKey)
+
+	log.Printf("[main] Parsing command line flags.")
 	// Parse command line flags
 	flags := parseFlags()
+	log.Printf("[main] Flags parsed.")
 
 	// Load available tools and get the McpTool instance
 	availableToolsMap, mcpToolInstance := loadTools()
@@ -78,15 +85,19 @@ func parseFlags() FlagOptions {
 	flag.StringVar(&flags.mcpConfigFlag, "mcp-config", "", "Path to MCP server configuration file or JSON string") // Define the new flag
 	flag.StringVar(&flags.providerFlag, "provider", "lmstudio", "LLM provider to use (e.g., 'lmstudio', 'google')") // Define the new provider flag
 
+	flag.Parse() // The crash is happening here or immediately after
+
+	log.Printf("[parseFlags] flag.Parse() completed.")
+
 	// Redirect standard log output to stdout
 	log.SetOutput(os.Stdout)
 
-	flag.Parse()
 	return flags
 }
 
 // loadTools loads all available tools and returns the map and the McpTool instance.
 func loadTools() (map[string]tools.Tool, *tools.McpTool) {
+	log.Printf("[loadTools] Entering loadTools function.")
 	availableToolsSlice := tools.GetAllTools()
 	availableToolsMap := make(map[string]tools.Tool)
 	var mcpToolInstance *tools.McpTool // Declare a variable to hold the McpTool instance
@@ -132,21 +143,46 @@ func getCurrentWorkingDirectory() string {
 	return currentDir
 }
 
-func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]tools.Tool, mcpToolInstance *tools.McpTool, currentDir string) { // Add mcpToolInstance
+func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]tools.Tool, mcpToolInstance *tools.McpTool, currentDir string) { // Removed environmentVariables
+	log.Printf("[runServerMode] Entering server mode.")
 	fmt.Println("[main] Starting in server mode...")
 
+	log.Printf("[runServerMode] Initializing task store.")
 	// Initialize task store
 	taskStore := initializeTaskStore()
+	log.Printf("[runServerMode] Task store initialized.")
+
+	log.Printf("[runServerMode] Creating LLM client for server mode.")
+
+	// Determine API URL based on provider and environment variable
+	currentAPIURL := apiURL // Default for LM Studio
+	if flags.providerFlag == "lmstudio" {
+		envAPIURL := os.Getenv("LLM_API_BASE")
+		if envAPIURL != "" {
+			currentAPIURL = envAPIURL
+			log.Printf("[runServerMode] Using LLM_API_BASE environment variable for LMStudio API URL: %s", currentAPIURL)
+		} else {
+			log.Printf("[runServerMode] LLM_API_BASE environment variable not set, using default LMStudio API URL: %s", currentAPIURL)
+		}
+	} else if flags.providerFlag == "google" {
+		// Google API key is handled within NewGoogleClient using GEMINI_API_KEY env var
+		// No specific API URL needs to be set here for Google provider
+		currentAPIURL = "" // Or some indicator that API URL is not configured via this field for Google
+	}
+
+	// Convert provider flag to lowercase for matching in NewClientFactory
+	providerTypeLower := strings.ToLower(flags.providerFlag)
+	log.Printf("[runServerMode] Using provider type: %s (originally %s)", providerTypeLower, flags.providerFlag)
 
 	// Create LLM client for server mode using the factory
 	llmConfig := llm.ClientConfig{
-		"apiURL":           apiURL, // Default API URL for LM Studio
+		"apiURL":           currentAPIURL, // Use determined API URL
 		"model":            flags.modelFlag,
 		"systemMessage":    "", // Initial system message for server mode
 		"maxContextLength": flags.maxContextLengthFlag,
 		// Google API key is now only read from GEMINI_API_KEY env var in NewGoogleClient
 	}
-	llmClient, err := llm.NewClientFactory(flags.providerFlag, llmConfig)
+	llmClient, err := llm.NewClientFactory(providerTypeLower, llmConfig, make(map[string]string)) // Pass lowercase provider type
 	if err != nil {
 		log.Fatalf("Failed to create LLM client for server mode: %v", err)
 	}
@@ -174,7 +210,8 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 		apiKeys,
 		availableToolsMap,
 		mcpToolInstance, // Pass mcpToolInstance
-	)
+		// Removed flags.providerFlag
+	) // Removed environmentVariables
 }
 
 func initializeTaskStore() a2a.TaskStore {
@@ -207,7 +244,7 @@ func processAPIKeys(apiKeysFlag string) []string {
 	return apiKeys
 }
 
-func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) {
+func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) { // Removed environmentVariables
 	// Warn about auth flags in CLI mode
 	warnAboutAuthFlags(flags.jwtSecretFlag, flags.apiKeysFlag)
 
@@ -230,7 +267,7 @@ func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) {
 		"maxContextLength": flags.maxContextLengthFlag,
 		// Google API key is now only read from GEMINI_API_KEY env var in NewGoogleClient
 	}
-	cliLLMClient, err := llm.NewClientFactory(flags.providerFlag, cliLLMConfig)
+	cliLLMClient, err := llm.NewClientFactory(flags.providerFlag, cliLLMConfig, make(map[string]string)) // Pass an empty map for env vars
 	if err != nil {
 		log.Fatalf("Failed to create LLM client for CLI mode: %v", err)
 	}

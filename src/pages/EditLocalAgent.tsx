@@ -20,6 +20,8 @@ interface AgentDetails {
   isLocal: boolean;
   systemPrompt?: string; // Add systemPrompt field
   pid?: number; // Add pid for AgentList
+  providerType?: 'LMSTUDIO' | 'GOOGLE'; // Add LLM provider type
+  environmentVariables?: { [key: string]: any }; // Add environment variables
 }
 
 interface McpServerConfig {
@@ -41,6 +43,8 @@ const EditLocalAgent: React.FC = () => {
   const [agentDetails, setAgentDetails] = useState<AgentDetails | null>(null);
   const [isLoadingAgent, setIsLoadingAgent] = useState(true);
   const [errorLoadingAgent, setErrorLoadingAgent] = useState<string | null>(null);
+
+  const [editedAgentDetails, setEditedAgentDetails] = useState<Partial<AgentDetails>>({}); // State for edited fields
 
   const [allAgents, setAllAgents] = useState<AgentDetails[]>([]); // State for all agents
   const [isLoadingAgents, setIsLoadingAgents] = useState(true); // Loading state for all agents
@@ -77,34 +81,43 @@ const EditLocalAgent: React.FC = () => {
                 url
                 name
                 description
-                isLocal
-                systemPrompt # Fetch systemPrompt
-                pid # Fetch pid
-              }
-            }
-          `, { agentId });
-
-        if (response.errors) {
-          console.error('GraphQL errors fetching agent details:', response.errors);
-          setErrorLoadingAgent('Failed to fetch agent details: ' + response.errors.map(err => err.message).join(', '));
-          setIsLoadingAgent(false);
-        } else if (response.data?.agent) {
-          const agent = response.data.agent as AgentDetails; // Add type assertion
-          setAgentDetails(agent);
-          setComposedSystemPrompt(agent.systemPrompt || ''); // Initialize prompt with existing one
-          // Note: We don't have info on *which* tools were used to compose the *current* prompt,
-          // so we'll just fetch available tools and let the user re-select/re-compose if needed.
-          fetchAvailableTools(agent.id);
-        } else {
-          setErrorLoadingAgent('Agent not found or failed to fetch details.');
-          setIsLoadingAgent(false);
+            isLocal
+            systemPrompt # Fetch systemPrompt
+            pid # Fetch pid
+            providerType # Fetch providerType
+            environmentVariables # Fetch environmentVariables
+          }
         }
-      } catch (error: any) {
-        console.error('Error fetching agent details:', error);
-        setErrorLoadingAgent(`Error loading agent: ${error.message}`);
-        setIsLoadingAgent(false);
-      }
-    };
+      `, { agentId });
+
+    if (response.errors) {
+      console.error('GraphQL errors fetching agent details:', response.errors);
+      setErrorLoadingAgent('Failed to fetch agent details: ' + response.errors.map(err => err.message).join(', '));
+      setIsLoadingAgent(false);
+    } else if (response.data?.agent) {
+      const agent = response.data.agent as AgentDetails; // Add type assertion
+      setAgentDetails(agent);
+      setEditedAgentDetails({ // Initialize edited state with fetched details
+        name: agent.name,
+        description: agent.description,
+        systemPrompt: agent.systemPrompt,
+        providerType: agent.providerType,
+        environmentVariables: agent.environmentVariables,
+      });
+      setComposedSystemPrompt(agent.systemPrompt || ''); // Initialize prompt with existing one
+      // Note: We don't have info on *which* tools were used to compose the *current* prompt,
+      // so we'll just fetch available tools and let the user re-select/re-compose if needed.
+      fetchAvailableTools(agent.id);
+    } else {
+      setErrorLoadingAgent('Agent not found or failed to fetch details.');
+      setIsLoadingAgent(false);
+    }
+  } catch (error: any) {
+    console.error('Error fetching agent details:', error);
+    setErrorLoadingAgent(`Error loading agent: ${error.message}`);
+    setIsLoadingAgent(false);
+  }
+};
 
     fetchAgentDetails();
   }, [agentId]); // Re-run effect if agentId changes
@@ -357,44 +370,61 @@ const EditLocalAgent: React.FC = () => {
   }, [agentDetails?.id, selectedTools]); // Depend on agentDetails and selectedTools
 
 
-  // The handleComposePrompt function has been removed
-
-  const handleUpdateAgentPrompt = async () => {
-    if (!agentDetails || !composedSystemPrompt) {
-      // Should not happen if button is disabled correctly
+  const handleUpdateAgent = async () => {
+    if (!agentDetails || Object.keys(editedAgentDetails).length === 0) {
+      // No changes to save or agent details not loaded
       return;
     }
 
-    setIsUpdatingPrompt(true);
+    setIsUpdatingPrompt(true); // Reuse this state for any update
     try {
-      const UPDATE_AGENT_PROMPT_MUTATION = `
-          mutation UpdateAgentSystemPrompt($agentId: ID!, $systemPrompt: String!) {
-            updateAgentSystemPrompt(agentId: $agentId, systemPrompt: $systemPrompt) {
+      // Prepare updates object, ensuring environmentVariables is a parsed JSON object
+      let updatesToSend: any = { ...editedAgentDetails };
+      if (typeof updatesToSend.environmentVariables === 'string') {
+         try {
+            updatesToSend.environmentVariables = JSON.parse(updatesToSend.environmentVariables);
+         } catch (e) {
+            console.error('Invalid JSON for environment variables:', e);
+            // Handle invalid JSON error, maybe set a status message
+            setIsUpdatingPrompt(false);
+            return;
+         }
+      }
+
+
+      const UPDATE_AGENT_MUTATION = `
+          mutation UpdateAgent($agentId: ID!, $updates: UpdateAgentInput!) {
+            updateAgent(agentId: $agentId, updates: $updates) {
               id
               name
+              description
+              systemPrompt
+              providerType
+              environmentVariables
             }
-            }
-          `;
-      const response = await sendGraphQLRequest(UPDATE_AGENT_PROMPT_MUTATION, { agentId: agentDetails.id, systemPrompt: composedSystemPrompt });
+          }
+        `;
+      const response = await sendGraphQLRequest(UPDATE_AGENT_MUTATION, { agentId: agentDetails.id, updates: updatesToSend });
 
       if (response.errors) {
-        console.error('GraphQL errors updating agent system prompt:', response.errors);
+        console.error('GraphQL errors updating agent:', response.errors);
         // Optionally set an error message
-      } else if (response.data?.updateAgentSystemPrompt?.id) {
-        // Success - maybe show a message or navigate back
-        console.log('Agent system prompt updated:', response.data.updateAgentSystemPrompt);
-        // Optionally navigate back to agent list or show success
-        // navigate('/agents');
+      } else if (response.data?.updateAgent?.id) {
+        // Success - update local state with the new details from the response
+        console.log('Agent updated successfully:', response.data.updateAgent);
+        setAgentDetails(response.data.updateAgent);
+        setEditedAgentDetails(response.data.updateAgent); // Update edited state as well
+        setComposedSystemPrompt(response.data.updateAgent.systemPrompt || ''); // Update composed prompt
 
         // Add navigation to agent view page
         navigate(`/agents/view/${agentDetails.id}`);
 
       } else {
-        console.error('Failed to update agent system prompt or received invalid data:', response);
+        console.error('Failed to update agent or received invalid data:', response);
         // Optionally set an error message
       }
     } catch (error: any) {
-      console.error('Error updating agent system prompt:', error);
+      console.error('Error updating agent:', error);
       // Optionally set an error message
     } finally {
       setIsUpdatingPrompt(false);
@@ -509,6 +539,72 @@ const EditLocalAgent: React.FC = () => {
             <p>Agent PID: {agentDetails.pid}</p>
             <p>Agent URL: <a target="_blank" rel="noopener noreferrer" href={agentDetails.url}>{agentDetails.url}</a></p>
 
+            {/* Agent Name */}
+            <div className={styles.formField}>
+              <label htmlFor="editName" className={styles.formLabel}>Agent Name</label>
+              <input
+                type="text"
+                id="editName"
+                name="name"
+                value={editedAgentDetails.name || ''}
+                onChange={(e) => setEditedAgentDetails({ ...editedAgentDetails, name: e.target.value })}
+                className={styles.formInput}
+              />
+            </div>
+
+            {/* Agent Description */}
+            <div className={styles.formField}>
+              <label htmlFor="editDescription" className={styles.formLabel}>Agent Description</label>
+              <textarea
+                 id="editDescription"
+                 name="description"
+                 value={editedAgentDetails.description || ''}
+                 onChange={(e) => setEditedAgentDetails({ ...editedAgentDetails, description: e.target.value })}
+                 rows={3}
+                 className={styles.formTextarea}
+              />
+            </div>
+
+            {/* LLM Provider Type */}
+            <div className={styles.formField}>
+              <label htmlFor="editProviderType" className={styles.formLabel}>LLM Provider</label>
+              <select
+                id="editProviderType"
+                name="providerType"
+                value={editedAgentDetails.providerType || ''}
+                onChange={(e) => setEditedAgentDetails({ ...editedAgentDetails, providerType: e.target.value as 'LMSTUDIO' | 'GOOGLE' })}
+                className={styles.formInput}
+              >
+                <option value="LMSTUDIO">LM Studio</option>
+                <option value="GOOGLE">Google</option>
+                {/* Add other providers here as they are supported */}
+              </select>
+            </div>
+
+             {/* Environment Variables */}
+            <div className={styles.formField}>
+              <label htmlFor="editEnvironmentVariables" className={styles.formLabel}>Environment Variables (JSON)</label>
+              <textarea
+                id="editEnvironmentVariables"
+                name="environmentVariables"
+                placeholder='e.g., {"GEMINI_API_KEY": "YOUR_API_KEY"}'
+                value={typeof editedAgentDetails.environmentVariables === 'object' ? JSON.stringify(editedAgentDetails.environmentVariables, null, 2) : editedAgentDetails.environmentVariables || ''}
+                onChange={(e) => {
+                  try {
+                    // Attempt to parse the JSON string
+                    const parsedEnv = JSON.parse(e.target.value);
+                    setEditedAgentDetails({ ...editedAgentDetails, environmentVariables: parsedEnv });
+                  } catch (error) {
+                    // If parsing fails, store the raw string and handle the error on update
+                    setEditedAgentDetails({ ...editedAgentDetails, environmentVariables: e.target.value as any }); // Store as string for now, handle error on update
+                  }
+                }}
+                rows={5}
+                className={styles.formTextarea}
+              />
+            </div>
+
+
             <div className={styles.toolSelectionSection}>
               <h3>Available Tools</h3>
               {isFetchingTools ? (
@@ -574,12 +670,12 @@ const EditLocalAgent: React.FC = () => {
                   </Button>
 
                   <Button
-                    onClick={handleUpdateAgentPrompt}
-                    disabled={isUpdatingPrompt || isComposingPrompt} // Disable while composing
+                    onClick={handleUpdateAgent} // Use the new update handler
+                    disabled={isUpdatingPrompt || isComposingPrompt} // Disable while composing or updating
                     variant="primary"
                   >
                     {isUpdatingPrompt || isComposingPrompt ? <div className={styles.spinner}></div> : null}
-                    {isUpdatingPrompt ? 'Updating Agent...' : isComposingPrompt ? 'Composing Prompt...' : 'Update Agent with this Prompt'}
+                    {isUpdatingPrompt ? 'Updating Agent...' : isComposingPrompt ? 'Composing Prompt...' : 'Update Agent'}
                   </Button>
                 </div>
               )}
