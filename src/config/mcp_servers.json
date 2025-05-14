@@ -55,5 +55,222 @@
       }
     ],
     "resources": []
+  },
+  {
+    "name": "clarifai",
+    "timeout": 60,
+    "command": "~/work/clarifai-mcp-server-local/mcp_binary",
+    "args": [
+      "--default-user-id artjom-clarify --default-app-id gratheon-website-4 --pat ... --output-path /Users/artjom/Desktop/"
+    ],
+    "transportType": "stdio",
+    "env": {},
+    "tools": [
+      {
+        "description": "Performs inference on a local image file using a specified or default Clarifai model. Defaults to 'general-image-detection' model if none specified.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "filepath": {
+              "description": "Absolute path to the local image file.",
+              "type": "string"
+            },
+            "model_id": {
+              "description": "Optional: Specific model ID to use. Defaults to 'general-image-detection' if omitted.",
+              "type": "string"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "filepath"
+          ],
+          "type": "object"
+        },
+        "name": "clarifai_image_by_path"
+      },
+      {
+        "description": "Performs inference on an image URL using a specified or default Clarifai model.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "image_url": {
+              "description": "URL of the image file.",
+              "type": "string"
+            },
+            "model_id": {
+              "description": "Optional: Specific model ID to use. Defaults to a general-image-detection if omitted.",
+              "type": "string"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "image_url"
+          ],
+          "type": "object"
+        },
+        "name": "clarifai_image_by_url"
+      },
+      {
+        "description": "Generates an image based on a text prompt using a specified or default Clarifai text-to-image model. Requires the server to be started with a valid --pat flag.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "model_id": {
+              "description": "Optional: Specific text-to-image model ID. Defaults to a suitable model if omitted.",
+              "type": "string"
+            },
+            "text_prompt": {
+              "description": "Text prompt describing the desired image.",
+              "type": "string"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text_prompt"
+          ],
+          "type": "object"
+        },
+        "name": "generate_image"
+      },
+      {
+        "description": "Uploads a local file to Clarifai as an input.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "filepath": {
+              "description": "Absolute path to the local file to upload.",
+              "type": "string"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "filepath"
+          ],
+          "type": "object"
+        },
+        "name": "upload_file"
+      },
+      {
+        "description": "Searches inputs based on a text query using Clarifai's PostInputSearches.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "page": {
+              "description": "Optional: Page number for pagination (starts from 1).",
+              "type": "integer"
+            },
+            "per_page": {
+              "description": "Optional: Number of results per page.",
+              "type": "integer"
+            },
+            "query": {
+              "description": "The text query string to search for.",
+              "type": "string"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        },
+        "name": "search_by_text"
+      },
+      {
+        "description": "Searches inputs based on similarity to a local image file using Clarifai's PostInputSearches.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "filepath": {
+              "description": "Absolute path to the local image file to use for similarity search.",
+              "type": "string"
+            },
+            "page": {
+              "description": "Optional: Page number for pagination (starts from 1).",
+              "type": "integer"
+            },
+            "per_page": {
+              "description": "Optional: Number of results per page.",
+              "type": "integer"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "filepath"
+          ],
+          "type": "object"
+        },
+        "name": "search_by_filepath"
+      },
+      {
+        "description": "Searches inputs based on similarity to an image URL using Clarifai's PostInputSearches.",
+        "inputSchema": {
+          "properties": {
+            "app_id": {
+              "description": "Optional: App ID context. Defaults to the app associated with the PAT.",
+              "type": "string"
+            },
+            "image_url": {
+              "description": "URL of the image to use for similarity search.",
+              "type": "string"
+            },
+            "page": {
+              "description": "Optional: Page number for pagination (starts from 1).",
+              "type": "integer"
+            },
+            "per_page": {
+              "description": "Optional: Number of results per page.",
+              "type": "integer"
+            },
+            "user_id": {
+              "description": "Optional: User ID context. Defaults to the user associated with the PAT.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "image_url"
+          ],
+          "type": "object"
+        },
+        "name": "search_by_url"
+      }
+    ],
+    "resources": []
   }
 ]

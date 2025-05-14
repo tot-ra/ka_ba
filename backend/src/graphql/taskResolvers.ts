@@ -35,6 +35,7 @@ function mapMessages(messages: A2AMessage[] | undefined | null): any[] { // Use 
       ...msg,
       role: msg.role?.toUpperCase(), // Convert role to uppercase
       timestamp: msg.timestamp, // Include timestamp
+      timestampUnixMs: msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now(), // Add Unix timestamp in milliseconds
       // Keep parts as is for now, assuming GraphQL handles JSONObject
     }));
   }
@@ -354,7 +355,7 @@ export const taskResolvers = {
                     updatedAt: updatedTask.status?.timestamp,
                     createdAtUnixMs: updatedTask.status?.timestamp ? new Date(updatedTask.status.timestamp).getTime() : Date.now(),
                     updatedAtUnixMs: updatedTask.status?.timestamp ? new Date(updatedTask.status.timestamp).getTime() : Date.now(),
-                    artifacts: updatedTask.artifacts ? JSON.stringify(updatedTask.artifacts) : undefined, // Needs proper mapping if not stringifiable
+                    artifacts: updatedTask.artifacts, // Return artifacts directly as JSONObject
                     agentId: agentId,
                 };
 

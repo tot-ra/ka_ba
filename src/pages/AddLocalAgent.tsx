@@ -14,13 +14,13 @@ const AddLocalAgent: React.FC = () => {
   const navigate = useNavigate();
 
   const [spawnAgentConfig, setSpawnAgentConfig] = useState({
-    model: 'gemini-2.5-pro-preview-05-06', //'qwen3-30b-a3b',
-    apiBaseUrl: '', //'http://192.168.1.205:1234',
+    model: 'qwen3-30b-a3b', //'qwen3-30b-a3b',
+    apiBaseUrl: 'http://192.168.13.6:1234',
     port: '',
     name: 'Software Engineer',
     description: 'An AI assistant specialized in software engineering tasks.',
-    providerType: 'GOOGLE', // or LMSTUDIO
-    environmentVariables: '{"GEMINI_API_KEY":""}', // Default empty JSON object string
+    providerType: 'LMSTUDIO', // or LMSTUDIO
+    environmentVariables: '{}', // Default empty JSON object string
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isSpawning, setIsSpawning] = useState(false);
@@ -276,6 +276,39 @@ const AddLocalAgent: React.FC = () => {
               />
             </div>
 
+  
+            <div className={styles.formField}>
+              <label htmlFor="providerType" className={styles.formLabel}>LLM Provider</label>
+              <select
+                id="providerType"
+                name="providerType"
+                value={spawnAgentConfig.providerType}
+                onChange={(e) => {
+                  const providerType = e.target.value;
+                  setSpawnAgentConfig(prevState => {
+                    const newState = { ...prevState, providerType };
+                    if (providerType === 'LMSTUDIO') {
+                      newState.model = 'qwen3-30b-a3b';
+                      newState.apiBaseUrl = 'http://192.168.13.6:1234';
+                    } else {
+                      // Reset model and apiBaseUrl for other providers if needed
+                      // For now, we'll leave them as is or set to defaults if necessary
+                      // Based on the initial state, 'gemini-2.5-pro-preview-05-06' is the default for GOOGLE
+                       newState.model = 'gemini-2.5-pro-preview-05-06';
+                       newState.apiBaseUrl = '';
+                       newState.environmentVariables = '{"GEMINI_API_KEY":""}'
+                    }
+                    return newState;
+                  });
+                }}
+                className={styles.formInput}
+              >
+                <option value="LMSTUDIO">LM Studio</option>
+                <option value="GOOGLE">Google</option>
+                {/* Add other providers here as they are supported */}
+              </select>
+            </div>
+
             {/* Show Advanced Checkbox */}
             <div className={styles.checkboxGroup}>
               <label htmlFor="showAdvanced" className={styles.checkboxLabel}>
@@ -338,38 +371,26 @@ const AddLocalAgent: React.FC = () => {
                     className={styles.formInput}
                   />
                 </div>
+
+
+                {/* Environment Variables */}
+                <div className={styles.formField}>
+                  <label htmlFor="environmentVariables" className={styles.formLabel}>Environment Variables (JSON)</label>
+                  <textarea
+                    id="environmentVariables"
+                    name="environmentVariables"
+                    placeholder='e.g., {"GEMINI_API_KEY": "YOUR_API_KEY"}'
+                    value={spawnAgentConfig.environmentVariables}
+                    onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, environmentVariables: e.target.value })}
+                    rows={5}
+                    className={styles.formTextarea}
+                  />
+                </div>
+              
               </>
             )}
 
-            {/* LLM Provider Type */}
-            <div className={styles.formField}>
-              <label htmlFor="providerType" className={styles.formLabel}>LLM Provider</label>
-              <select
-                id="providerType"
-                name="providerType"
-                value={spawnAgentConfig.providerType}
-                onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, providerType: e.target.value })}
-                className={styles.formInput}
-              >
-                <option value="LMSTUDIO">LM Studio</option>
-                <option value="GOOGLE">Google</option>
-                {/* Add other providers here as they are supported */}
-              </select>
-            </div>
-
-            {/* Environment Variables */}
-            <div className={styles.formField}>
-              <label htmlFor="environmentVariables" className={styles.formLabel}>Environment Variables (JSON)</label>
-              <textarea
-                id="environmentVariables"
-                name="environmentVariables"
-                placeholder='e.g., {"GEMINI_API_KEY": "YOUR_API_KEY"}'
-                value={spawnAgentConfig.environmentVariables}
-                onChange={(e) => setSpawnAgentConfig({ ...spawnAgentConfig, environmentVariables: e.target.value })}
-                rows={5}
-                className={styles.formTextarea}
-              />
-            </div>
+          
 
             {/* Submit Button */}
             <div className={styles.formField}>
