@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os" // Import os package
 )
 
 type Message struct {
@@ -25,12 +26,45 @@ type LLMClient interface {
 	// Add other common methods here if needed universally
 }
 
-// NewClientFactory creates a new LLMClient based on the provider type.
-func NewClientFactory(providerType string, apiURL, model, systemMessage string, maxContextLength int) (LLMClient, error) {
+// ClientConfig holds configuration parameters for creating an LLMClient.
+// Use a map for flexibility to support provider-specific parameters.
+type ClientConfig map[string]interface{}
+
+// NewClientFactory creates a new LLMClient based on the provider type and configuration.
+func NewClientFactory(providerType string, config ClientConfig) (LLMClient, error) {
 	switch providerType {
 	case "lmstudio":
+		// Extract parameters for LMStudioClient from the config map
+		apiURL, ok := config["apiURL"].(string)
+		if !ok {
+			return nil, fmt.Errorf("lmstudio config missing or invalid apiURL")
+		}
+		model, ok := config["model"].(string)
+		if !ok {
+			return nil, fmt.Errorf("lmstudio config missing or invalid model")
+		}
+		systemMessage, _ := config["systemMessage"].(string) // SystemMessage is optional
+		maxContextLength, _ := config["maxContextLength"].(int) // maxContextLength is optional
+
 		return NewLMStudioClient(apiURL, model, systemMessage, maxContextLength)
-	// Add cases for other providers here
+
+	case "google":
+		// Extract parameters for GoogleClient from the config map
+		apiKey, ok := config["apiKey"].(string)
+		if !ok {
+			// Check environment variable if not provided in config
+			apiKey = os.Getenv("GEMINI_API_KEY")
+			if apiKey == "" {
+				return nil, fmt.Errorf("google config missing apiKey and GEMINI_API_KEY environment variable not set")
+			}
+		}
+		model, ok := config["model"].(string)
+		if !ok {
+			return nil, fmt.Errorf("google config missing or invalid model")
+		}
+
+		return NewGoogleClient(apiKey, model)
+
 	default:
 		return nil, fmt.Errorf("unsupported LLM provider type: %s", providerType)
 	}

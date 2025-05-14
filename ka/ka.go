@@ -59,7 +59,8 @@ type FlagOptions struct {
 	descriptionFlag      string
 	jwtSecretFlag        string
 	apiKeysFlag          string
-	mcpConfigFlag        string // Add flag for MCP server configuration
+	mcpConfigFlag string // Add flag for MCP server configuration
+	providerFlag  string // Add flag for LLM provider type
 }
 
 func parseFlags() FlagOptions {
@@ -75,6 +76,7 @@ func parseFlags() FlagOptions {
 	flag.StringVar(&flags.jwtSecretFlag, "jwt-secret", "", "JWT secret key for securing endpoints (if provided, JWT auth is enabled)")
 	flag.StringVar(&flags.apiKeysFlag, "api-keys", "", "Comma-separated list of valid API keys (if provided, API key auth is enabled)")
 	flag.StringVar(&flags.mcpConfigFlag, "mcp-config", "", "Path to MCP server configuration file or JSON string") // Define the new flag
+	flag.StringVar(&flags.providerFlag, "provider", "lmstudio", "LLM provider to use (e.g., 'lmstudio', 'google')") // Define the new provider flag
 
 	// Redirect standard log output to stdout
 	log.SetOutput(os.Stdout)
@@ -136,10 +138,17 @@ func runServerMode(flags FlagOptions, port int, availableToolsMap map[string]too
 	// Initialize task store
 	taskStore := initializeTaskStore()
 
-	// Create LLM client for server mode
-	llmClient, err := llm.NewLMStudioClient(apiURL, flags.modelFlag, "", flags.maxContextLengthFlag)
+	// Create LLM client for server mode using the factory
+	llmConfig := llm.ClientConfig{
+		"apiURL":           apiURL, // Default API URL for LM Studio
+		"model":            flags.modelFlag,
+		"systemMessage":    "", // Initial system message for server mode
+		"maxContextLength": flags.maxContextLengthFlag,
+		// Google API key is now only read from GEMINI_API_KEY env var in NewGoogleClient
+	}
+	llmClient, err := llm.NewClientFactory(flags.providerFlag, llmConfig)
 	if err != nil {
-		log.Fatalf("Failed to create LLM client: %v", err)
+		log.Fatalf("Failed to create LLM client for server mode: %v", err)
 	}
 
 	// Create TaskExecutor
@@ -213,10 +222,17 @@ func runCLIMode(flags FlagOptions, availableToolsMap map[string]tools.Tool) {
 	// Compose system prompt with all available tools
 	cliSystemMessage := composeCliSystemMessage(availableToolsMap)
 
-	// Create LLM client for CLI mode
-	cliLLMClient, err := llm.NewLMStudioClient(apiURL, flags.modelFlag, cliSystemMessage, flags.maxContextLengthFlag)
+	// Create LLM client for CLI mode using the factory
+	cliLLMConfig := llm.ClientConfig{
+		"apiURL":           apiURL, // Default API URL for LM Studio
+		"model":            flags.modelFlag,
+		"systemMessage":    cliSystemMessage, // System message for CLI mode
+		"maxContextLength": flags.maxContextLengthFlag,
+		// Google API key is now only read from GEMINI_API_KEY env var in NewGoogleClient
+	}
+	cliLLMClient, err := llm.NewClientFactory(flags.providerFlag, cliLLMConfig)
 	if err != nil {
-		log.Fatalf("Failed to create CLI LLM client: %v", err)
+		log.Fatalf("Failed to create LLM client for CLI mode: %v", err)
 	}
 
 	// Send prompt to LLM and handle response
